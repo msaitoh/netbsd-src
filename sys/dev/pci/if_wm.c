@@ -9200,7 +9200,7 @@ wm_rxeof(struct wm_rxqueue *rxq, u_int limit)
 
 		/*
 		 * Okay, we have the entire packet now. The chip is
-		 * configured to include the FCS except I35[05], I21[01].
+		 * configured to include the FCS except I35[04], I21[01].
 		 * (not all chips can be configured to strip it), so we need
 		 * to trim it. Those chips have an eratta, the RCTL_SECRC bit
 		 * in RCTL register is always set, so we don't trim it.
@@ -16114,7 +16114,7 @@ wm_lv_jumbo_workaround_ich8lan(struct wm_softc *sc, bool enable)
 		return rv;
 
 	/* Disable Rx path while enabling/disabling workaround */
-	sc->phy.readreg_locked(dev, 2, I82579_DFT_CTRL, &dft_ctrl);
+	rv = sc->phy.readreg_locked(dev, 2, I82579_DFT_CTRL, &dft_ctrl);
 	if (rv != 0)
 		goto out;
 	rv = sc->phy.writereg_locked(dev, 2, I82579_DFT_CTRL,
