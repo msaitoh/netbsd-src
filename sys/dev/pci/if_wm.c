@@ -6571,6 +6571,8 @@ wm_stop_locked(struct ifnet *ifp, int disable)
 	for (qidx = 0; qidx < sc->sc_nqueues; qidx++) {
 		struct wm_queue *wmq = &sc->sc_queue[qidx];
 		struct wm_txqueue *txq = &wmq->wmq_txq;
+		struct mbuf *m;
+
 		mutex_enter(txq->txq_lock);
 		txq->txq_sending = false; /* Ensure watchdog disabled */
 		for (i = 0; i < WM_TXQUEUELEN(txq); i++) {
@@ -6581,6 +6583,9 @@ wm_stop_locked(struct ifnet *ifp, int disable)
 				txs->txs_mbuf = NULL;
 			}
 		}
+		/* Drain txq_interq */
+		while ((m = pcq_get(txq->txq_interq)) != NULL)
+			m_freem(m);
 		mutex_exit(txq->txq_lock);
 	}
 
