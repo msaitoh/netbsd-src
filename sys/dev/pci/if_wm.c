@@ -481,6 +481,7 @@ struct wm_queue {
 
 	struct wm_txqueue wmq_txq;
 	struct wm_rxqueue wmq_rxq;
+	char sysctlname[32];		/* Name for sysctl */
 
 	bool wmq_txrx_use_workqueue;
 	struct work wmq_cookie;
@@ -5883,8 +5884,8 @@ static void
 wm_init_sysctls(struct wm_softc *sc)
 {
 	struct sysctllog **log;
-	const struct sysctlnode *rnode, *cnode;
-	int rv;
+	const struct sysctlnode *rnode, *qnode, *cnode;
+	int i, rv;
 	const char *dvname;
 
 	log = &sc->sc_sysctllog;
@@ -5902,6 +5903,40 @@ wm_init_sysctls(struct wm_softc *sc)
 	    NULL, 0, &sc->sc_txrx_use_workqueue, 0, CTL_CREATE, CTL_EOL);
 	if (rv != 0)
 		goto teardown;
+
+	for (i = 0; i < sc->sc_nqueues; i++) {
+		struct wm_queue *wmq = &sc->sc_queue[i];
+		struct wm_txqueue *txq = &wmq->wmq_txq;
+		struct wm_rxqueue *rxq = &wmq->wmq_rxq;
+
+		snprintf(sc->sc_queue[i].sysctlname,
+		    sizeof(sc->sc_queue[i].sysctlname), "q%d", i);
+
+		if (sysctl_createv(log, 0, &rnode, &qnode,
+		    0, CTLTYPE_NODE,
+		    sc->sc_queue[i].sysctlname, SYSCTL_DESCR("Queue Name"),
+		    NULL, 0, NULL, 0, CTL_CREATE, CTL_EOL) != 0)
+			break;
+		if (sysctl_createv(log, 0, &qnode, &cnode,
+		    CTLFLAG_READONLY, CTLTYPE_INT,
+		    "txq_free", SYSCTL_DESCR("TX queue free"),
+		    NULL, 0, &txq->txq_free,
+		    0, CTL_CREATE, CTL_EOL) != 0)
+			break;
+		if (sysctl_createv(log, 0, &qnode, &cnode,
+		    CTLFLAG_READONLY, CTLTYPE_INT,
+		    "txq_next", SYSCTL_DESCR("TX queue next"),
+		    NULL, 0, &txq->txq_next,
+		    0, CTL_CREATE, CTL_EOL) != 0)
+			break;
+
+		if (sysctl_createv(log, 0, &qnode, &cnode,
+		    CTLFLAG_READONLY, CTLTYPE_INT,
+		    "rxq_ptr", SYSCTL_DESCR("RX queue pointer"),
+		    NULL, 0, &rxq->rxq_ptr,
+		    0, CTL_CREATE, CTL_EOL) != 0)
+			break;
+	}
 
 #ifdef WM_DEBUG
 	rv = sysctl_createv(log, 0, &rnode, &cnode, CTLFLAG_READWRITE,
