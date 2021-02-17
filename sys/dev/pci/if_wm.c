@@ -313,6 +313,12 @@ static const uint32_t wm_82580_rxpbs_table[] = {
 
 struct wm_softc;
 
+#if defined(_LP64) && !defined(WM_DISABLE_EVENT_COUNTERS)
+#if !defined(WM_EVENT_COUNTERS)
+#define WM_EVENT_COUNTERS 1
+#endif
+#endif
+
 #ifdef WM_EVENT_COUNTERS
 #define WM_Q_EVCNT_DEFINE(qname, evname)				\
 	char qname##_##evname##_evcnt_name[sizeof("qname##XX##evname")]; \
