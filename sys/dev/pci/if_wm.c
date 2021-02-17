@@ -660,8 +660,12 @@ do {									\
 } while (/*CONSTCOND*/0)
 
 #ifdef WM_EVENT_COUNTERS
-#define	WM_EVCNT_INCR(ev)	(ev)->ev_count++
-#define	WM_EVCNT_ADD(ev, val)	(ev)->ev_count += (val)
+#define	WM_EVCNT_INCR(ev)						\
+	atomic_store_relaxed(&((ev)->ev_count),				\
+	    atomic_load_relaxed(&(ev)->ev_count) + 1)
+#define	WM_EVCNT_ADD(ev, val)						\
+	atomic_store_relaxed(&((ev)->ev_count),				\
+	    atomic_load_relaxed(&(ev)->ev_count) + (val))
 
 #define WM_Q_EVCNT_INCR(qname, evname)			\
 	WM_EVCNT_INCR(&(qname)->qname##_ev_##evname)
