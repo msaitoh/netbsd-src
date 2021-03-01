@@ -9344,19 +9344,12 @@ wm_rxeof(struct wm_rxqueue *rxq, u_int limit)
 
 		/* Set up checksum info for this packet. */
 		wm_rxdesc_ensure_checksum(rxq, status, errors, m);
-		/*
-		 * Update the receive pointer holding rxq_lock consistent with
-		 * increment counter.
-		 */
+
 		rxq->rxq_ptr = i;
 		rxq->rxq_packets++;
 		rxq->rxq_bytes += len;
-		mutex_exit(rxq->rxq_lock);
-
 		/* Pass it on. */
 		if_percpuq_enqueue(sc->sc_ipq, m);
-
-		mutex_enter(rxq->rxq_lock);
 
 		if (rxq->rxq_stopping)
 			break;
