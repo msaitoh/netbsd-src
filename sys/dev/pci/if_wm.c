@@ -14573,7 +14573,7 @@ wm_put_phy_82575(struct wm_softc *sc)
 
 	DPRINTF(sc, WM_DEBUG_LOCK, ("%s: %s called\n",
 		device_xname(sc->sc_dev), __func__));
-	return wm_put_swfw_semaphore(sc, swfwphysem[sc->sc_funcid]);
+	wm_put_swfw_semaphore(sc, swfwphysem[sc->sc_funcid]);
 }
 
 static int
