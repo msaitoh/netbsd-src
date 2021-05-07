@@ -1334,10 +1334,10 @@ ixgbe_refresh_mbufs(struct rx_ring *rxr, int limit)
 	struct adapter      *adapter = rxr->adapter;
 	struct ixgbe_rx_buf *rxbuf;
 	struct mbuf         *mp;
-	int                 i, j, error;
+	int                 i, j, error, idx_start, idx_end = 0;
 	bool                refreshed = false;
 
-	i = j = rxr->next_to_refresh;
+	i = j = idx_start = rxr->next_to_refresh;
 	/* Control the loop with one beyond */
 	if (++j == rxr->num_desc)
 		j = 0;
@@ -1384,15 +1384,35 @@ ixgbe_refresh_mbufs(struct rx_ring *rxr, int limit)
 			rxbuf->flags &= ~IXGBE_RX_COPY;
 		}
 
+		rxr->rx_base[i].wb.upper.status_error = 0;	/* clear DD */
+		idx_end = i + 1;
+
 		refreshed = true;
 		/* Next is precalculated */
 		i = j;
 		rxr->next_to_refresh = i;
-		if (++j == rxr->num_desc)
+		if (++j == rxr->num_desc) {
 			j = 0;
+
+			bus_dmamap_sync(rxr->rxdma.dma_tag->dt_dmat,
+			    rxr->rxdma.dma_map,
+			    idx_start * sizeof(union ixgbe_adv_rx_desc),
+			    (idx_end - idx_start) *
+			    sizeof(union ixgbe_adv_rx_desc),
+			    BUS_DMASYNC_PREREAD | BUS_DMASYNC_PREWRITE);
+			idx_start = idx_end = 0;
+		}
 	}
 
 update:
+	if (idx_end > idx_start) {
+		bus_dmamap_sync(rxr->rxdma.dma_tag->dt_dmat,
+		    rxr->rxdma.dma_map,
+		    idx_start * sizeof(union ixgbe_adv_rx_desc),
+		    (idx_end - idx_start) * sizeof(union ixgbe_adv_rx_desc),
+		    BUS_DMASYNC_PREREAD | BUS_DMASYNC_PREWRITE);
+	}
+
 	if (refreshed) /* Update hardware tail index */
 		IXGBE_WRITE_REG(&adapter->hw, rxr->tail, rxr->next_to_refresh);
 
@@ -1841,7 +1861,9 @@ ixgbe_rxeof(struct ix_queue *que)
 		bool        eop;
 
 		/* Sync the ring. */
-		ixgbe_dmamap_sync(rxr->rxdma.dma_tag, rxr->rxdma.dma_map,
+		bus_dmamap_sync(rxr->rxdma.dma_tag->dt_dmat, rxr->rxdma.dma_map,
+		    i * sizeof(union ixgbe_adv_rx_desc),
+		    sizeof(union ixgbe_adv_rx_desc),
 		    BUS_DMASYNC_POSTREAD | BUS_DMASYNC_POSTWRITE);
 
 		cur = &rxr->rx_base[i];
@@ -1857,7 +1879,6 @@ ixgbe_rxeof(struct ix_queue *que)
 		sendmp = NULL;
 		nbuf = NULL;
 		rsc = 0;
-		cur->wb.upper.status_error = 0;
 		rbuf = &rxr->rx_buffers[i];
 		mp = rbuf->buf;
 
@@ -2072,9 +2093,6 @@ ixgbe_rxeof(struct ix_queue *que)
 #endif
 		}
 next_desc:
-		ixgbe_dmamap_sync(rxr->rxdma.dma_tag, rxr->rxdma.dma_map,
-		    BUS_DMASYNC_PREREAD | BUS_DMASYNC_PREWRITE);
-
 		/* Advance our pointers to the next descriptor. */
 		if (++i == rxr->num_desc)
 			i = 0;
@@ -2084,16 +2102,17 @@ next_desc:
 			ixgbe_rx_input(rxr, ifp, sendmp, ptype);
 		}
 
-		/* Every 8 descriptors we go to refresh mbufs */
-		if (processed == 8) {
+		/*
+		 * we go to refresh mbufs for each descriptors that fits in
+		 * each cache line size
+		 */
+#define NDESC_PER_CACHELINE	\
+	(CACHE_LINE_SIZE / sizeof(union ixgbe_adv_rx_desc))
+		if ((i & (NDESC_PER_CACHELINE - 1)) == 0) {
 			ixgbe_refresh_mbufs(rxr, i);
 			processed = 0;
 		}
 	}
-
-	/* Refresh any remaining buf structs */
-	if (ixgbe_rx_unrefreshed(rxr))
-		ixgbe_refresh_mbufs(rxr, i);
 
 	rxr->next_to_check = i;
 
