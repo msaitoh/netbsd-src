@@ -241,15 +241,31 @@ rkpcie_attach(device_t parent, device_t self, void *aux)
 	aprint_naive("\n");
 	aprint_normal(": RK3399 PCIe\n");
 
+	fdtbus_clock_assign(phandle);
+	clock_enable_all(phandle);
+
 	struct fdtbus_regulator *regulator;
+	regulator = fdtbus_regulator_acquire(phandle, "vpcie12-supply");
+	if (regulator != NULL) {
+		fdtbus_regulator_enable(regulator);
+		fdtbus_regulator_release(regulator);
+	}
 	regulator = fdtbus_regulator_acquire(phandle, "vpcie3v3-supply");
 	if (regulator != NULL) {
 		fdtbus_regulator_enable(regulator);
 		fdtbus_regulator_release(regulator);
 	}
-		
-	fdtbus_clock_assign(phandle);
-	clock_enable_all(phandle);
+	regulator = fdtbus_regulator_acquire(phandle, "vpcie1v8-supply");
+	if (regulator != NULL) {
+		fdtbus_regulator_enable(regulator);
+		fdtbus_regulator_release(regulator);
+	}
+	regulator = fdtbus_regulator_acquire(phandle, "vpcie0v9-supply");
+	if (regulator != NULL) {
+		fdtbus_regulator_enable(regulator);
+		fdtbus_regulator_release(regulator);
+	}
+	delay(1000);
 
 	ep_gpio = fdtbus_gpio_acquire(phandle, "ep-gpios", GPIO_PIN_OUTPUT);
 
@@ -258,6 +274,7 @@ rkpcie_attach(device_t parent, device_t self, void *aux)
 	if (of_getprop_uint32(phandle, "num-lanes", &num_lanes) != 0)
 		num_lanes = 1;
 
+	printf("num-lanes=%u\n", num_lanes);
 again:
 	fdtbus_gpio_write(ep_gpio, 0);
 
@@ -276,6 +293,7 @@ again:
 	}
 
 	reset_assert(phandle, "core");
+	delay(10000);
 	reset_assert(phandle, "mgmt");
 	reset_assert(phandle, "mgmt-sticky");
 	reset_assert(phandle, "pipe");
@@ -293,8 +311,11 @@ again:
 
 	/* Switch into Root Complex mode. */
 	HWRITE4(sc, PCIE_CLIENT_BASIC_STRAP_CONF,
-	    PCBSC_MS_ROOTPORT | PCBSC_CONF_EN | PCBSC_LC(num_lanes));
+	    PCBSC_MS_ROOTPORT | PCBSC_CONF_EN | PCBSC_LC(num_lanes)
+		| PCBSC_LINK_TRAIN_EN);
 
+	printf("BASIC_STRAP_CONF=%08x\n",
+	    HREAD4(sc, PCIE_CLIENT_BASIC_STRAP_CONF));
 	if (phy[3] && fdtbus_phy_enable(phy[3], true) != 0) {
 		aprint_error(": couldn't enable phy3\n");
 	}
@@ -313,13 +334,30 @@ again:
 	reset_deassert(phandle, "mgmt");
 	reset_deassert(phandle, "pipe");
 
+	/* FTS count */
+	printf("LM_PLC1 = %08x\n", HREAD4(sc, PCIE_LM_PLC1));
+	HWRITE4(sc, PCIE_LM_PLC1,
+	    HREAD4(sc, PCIE_LM_PLC1) | PCIE_LM_PLC1_FTS_MASK);
+	printf("LM_PLC1(2) = %08x\n", HREAD4(sc, PCIE_LM_PLC1));
+
+	/* Common clock */
+	printf("LCSR = %08x\n", HREAD4(sc, PCIE_RC_CONFIG_LCSR));
+	HWRITE4(sc, PCIE_RC_CONFIG_LCSR,
+	    HREAD4(sc, PCIE_RC_CONFIG_LCSR) | PCIE_LCSR_COMCLKCFG);
+
+	/* 128 RCB */
+	printf("LCSR = %08x\n", HREAD4(sc, PCIE_RC_CONFIG_LCSR));
+	HWRITE4(sc, PCIE_RC_CONFIG_LCSR,
+	    HREAD4(sc, PCIE_RC_CONFIG_LCSR) | PCIE_LCSR_RCB);
+	printf("LCSR(2) = %08x\n", HREAD4(sc, PCIE_RC_CONFIG_LCSR));
+	
 	fdtbus_gpio_write(ep_gpio, 1);
 	delay(20000);	/* 20 ms according to PCI-e BS "Conventional Reset" */
 
 	/* Start link training. */
 	HWRITE4(sc, PCIE_CLIENT_BASIC_STRAP_CONF, PCBSC_LINK_TRAIN_EN);
 
-	for (timo = 500; timo > 0; timo--) {
+	for (timo = 2000; timo > 0; timo--) {
 		status = HREAD4(sc, PCIE_CLIENT_BASIC_STATUS1);
 		if (PCBS1_LINK_ST(status) == PCBS1_LS_DL_DONE)
 			break;
@@ -333,21 +371,24 @@ again:
 			goto again;
 		}
 		return;
-	}
+	} else
+		device_printf(self, "link training %d msecs\n", 2000 - timo);
 
 	if (max_link_speed == 2) {
 		HWRITE4(sc, PCIE_RC_CONFIG_LCSR, HREAD4(sc, PCIE_RC_CONFIG_LCSR) | PCIE_LCSR_RETRAIN);
-		for (timo = 500; timo > 0; timo--) {
+		for (timo = 2000; timo > 0; timo--) {
 			status = HREAD4(sc, PCIE_LM_CORE_CTRL);
 			if ((status & PCIE_CORE_PL_CONF_SPEED_MASK) == PCIE_CORE_PL_CONF_SPEED_5G)
 				break;
-			delay(1000);
+			delay(2000);
 		}
 		if (timo == 0) {
 			device_printf(self, "Gen2 link training timeout\n");
 			--max_link_speed;
 			goto again;
-		}
+		} else
+			device_printf(self, "link training %d msecs (2)\n",
+			    2000 - timo);
 	}
 	delay(80000);	/* wait 100 ms before CSR access. already waited 20. */
 
