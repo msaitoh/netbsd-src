@@ -54,6 +54,8 @@ __KERNEL_RCSID(0, "$NetBSD: bus_dma.c,v 1.132 2021/02/07 10:47:40 skrll Exp $");
 #include <dev/mm.h>
 #endif
 
+// #define DEBUG_DMA 1
+
 #ifdef BUSDMA_COUNTERS
 static struct evcnt bus_dma_creates =
 	EVCNT_INITIALIZER(EVCNT_TYPE_MISC, NULL, "busdma", "creates");
@@ -960,6 +962,21 @@ _bus_dmamap_sync_linear(bus_dma_tag_t t, bus_dmamap_t map, bus_addr_t offset,
 	}
 }
 
+static void
+_dump_mbuf(bus_dma_tag_t t, bus_dmamap_t map, bus_size_t offset,
+    bus_size_t len, int ops)
+{
+	bus_dma_segment_t *ds = map->dm_segs;
+	struct mbuf *m = map->_dm_origbuf;
+
+	printf("DUMP!:\n");
+	printf("offset = %zu, len = %zu, ds_len = %zu\n",
+	    offset, len, ds->ds_len);
+	printf("m_len = %u\n", m->m_len);
+	printf("m_pkthdr.len = %u\n", m->m_pkthdr.len);
+	printf("m->m_next = %p\n", m->m_next);
+}
+
 static inline void
 _bus_dmamap_sync_mbuf(bus_dma_tag_t t, bus_dmamap_t map, bus_size_t offset,
     bus_size_t len, int ops)
@@ -968,7 +985,11 @@ _bus_dmamap_sync_mbuf(bus_dma_tag_t t, bus_dmamap_t map, bus_size_t offset,
 	struct mbuf *m = map->_dm_origbuf;
 	bus_size_t voff = offset;
 	bus_size_t ds_off = offset;
+	bus_size_t origlen = len;
+	int loop = 0;
 
+	if (m == NULL)
+		printf("m == NULL!!!\n");
 	while (len > 0) {
 		/* Find the current dma segment */
 		while (ds_off >= ds->ds_len) {
@@ -977,7 +998,51 @@ _bus_dmamap_sync_mbuf(bus_dma_tag_t t, bus_dmamap_t map, bus_size_t offset,
 		}
 		/* Find the current mbuf. */
 		while (voff >= m->m_len) {
+			if (m->m_next == NULL) {
+				_dump_mbuf(t, map, offset, origlen, ops);
+				printf("%d: voff = %zu, m->m_len=%d\n", loop,
+				    voff, m->m_len);
+			}
 			voff -= m->m_len;
+#if 1
+			if (m->m_next == NULL) {
+				bus_dma_segment_t *ds2 = map->dm_segs;
+				struct mbuf *m2 = map->_dm_origbuf;
+				bus_size_t voff2 = offset;
+				bus_size_t ds_off2 = offset;
+				int i;
+
+				printf("%d: map = %p, sync offset = %zu, len = %zu, nsegs = %d\n",
+				    loop, map, offset, len, map->dm_nsegs);
+				
+				printf("segdump: ds2->ds_len = %zu\n",
+					ds2->ds_len);
+				i = 0;
+				printf("ds[%d] = %zu\n", i, ds2->ds_len);
+				while (ds_off2 >= ds2->ds_len) {
+					ds_off2 -= ds2->ds_len;
+					ds2++;
+					i++;
+					printf("ds[%d] = %zu\n", i,
+					    ds2->ds_len);
+				}
+				printf("mdump: m2 = %p, m2->m_len = %d, m2->m_next = %p\n",
+				    m2, m2->m_len, m2->m_next);
+				i = 0;
+				while (voff2 >= m2->m_len) {
+					voff2 -= m2->m_len;
+					printf("m[%d].m_len = %d, m_next = %p\n",
+					    i, m2->m_len, m2->m_next);
+					m2 = m2->m_next;
+					if (m2 == NULL)
+						break;
+				}
+			}
+#endif
+#if 0
+			if (m->m_next == NULL)
+				break;
+#endif
 			m = m->m_next;
 		}
 
@@ -1019,6 +1084,7 @@ _bus_dmamap_sync_mbuf(bus_dma_tag_t t, bus_dmamap_t map, bus_size_t offset,
 		voff += seglen;
 		ds_off += seglen;
 		len -= seglen;
+		loop++;
 	}
 }
 
@@ -1708,6 +1774,7 @@ _bus_dmamem_alloc_range(bus_dma_tag_t t, bus_size_t size, bus_size_t alignment,
 	 */
 	error = uvm_pglistalloc(size, low, high, alignment, uboundary,
 	    &mlist, nsegs, (flags & BUS_DMA_NOWAIT) == 0);
+//	printf("a2\n");
 	if (error)
 		return error;
 
