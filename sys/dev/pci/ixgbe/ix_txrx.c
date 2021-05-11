@@ -120,6 +120,11 @@ static int           ixgbe_dma_malloc(struct adapter *, bus_size_t,
 static void          ixgbe_dma_free(struct adapter *, struct ixgbe_dma_alloc *);
 
 static void	ixgbe_setup_hw_rsc(struct rx_ring *);
+#if 0
+static int	ixgbe_get_buf(struct rx_ring *, int);
+#else
+struct mbuf *	ixgbe_getjcl(int);
+#endif
 
 /************************************************************************
  * ixgbe_legacy_start_locked - Transmit entry point
@@ -1345,12 +1350,20 @@ ixgbe_refresh_mbufs(struct rx_ring *rxr, int limit)
 	while (j != limit) {
 		rxbuf = &rxr->rx_buffers[i];
 		if (rxbuf->buf == NULL) {
+#if 0
 			mp = ixgbe_getjcl(&rxr->jcl_head, M_NOWAIT,
 			    MT_DATA, M_PKTHDR, rxr->mbuf_sz);
 			if (mp == NULL) {
 				rxr->no_jmbuf.ev_count++;
 				goto update;
 			}
+#else
+			mp = ixgbe_getjcl(M_DONTWAIT);
+			if (mp == NULL) {
+				rxr->no_jmbuf.ev_count++;
+				goto update;
+			}
+#endif
 			if (adapter->max_frame_size <= (MCLBYTES - ETHER_ALIGN))
 				m_adj(mp, ETHER_ALIGN);
 		} else
@@ -1523,6 +1536,7 @@ ixgbe_setup_receive_ring(struct rx_ring *rxr)
 	/* Free current RX buffer structs and their mbufs */
 	ixgbe_free_receive_ring(rxr);
 
+#if 0
 	IXGBE_RX_UNLOCK(rxr);
 	/*
 	 * Now reinitialize our supply of jumbo mbufs.  The number
@@ -1533,6 +1547,7 @@ ixgbe_setup_receive_ring(struct rx_ring *rxr)
 	    adapter->num_jcl, adapter->rx_mbuf_sz);
 
 	IXGBE_RX_LOCK(rxr);
+#endif
 
 	/* Now replenish the mbufs */
 	for (int j = 0; j != rxr->num_desc; ++j) {
@@ -1563,12 +1578,21 @@ ixgbe_setup_receive_ring(struct rx_ring *rxr)
 #endif /* DEV_NETMAP */
 
 		rxbuf->flags = 0;
+#if 0
 		rxbuf->buf = ixgbe_getjcl(&rxr->jcl_head, M_NOWAIT,
 		    MT_DATA, M_PKTHDR, adapter->rx_mbuf_sz);
 		if (rxbuf->buf == NULL) {
 			error = ENOBUFS;
 			goto fail;
 		}
+#else
+		rxbuf->buf = ixgbe_getjcl(M_DONTWAIT);
+		if (rxbuf->buf == NULL) {
+			error = ENOBUFS;
+			goto fail;
+		}
+#endif
+
 		mp = rxbuf->buf;
 		mp->m_pkthdr.len = mp->m_len = rxr->mbuf_sz;
 		/* Get the memory mapping */
@@ -1709,8 +1733,10 @@ ixgbe_free_receive_buffers(struct rx_ring *rxr)
 			}
 		}
 
+#if 0
 		/* NetBSD specific. See ixgbe_netbsd.c */
 		ixgbe_jcl_destroy(adapter, rxr);
+#endif
 
 		if (rxr->rx_buffers != NULL) {
 			free(rxr->rx_buffers, M_DEVBUF);
@@ -1900,11 +1926,18 @@ ixgbe_rxeof(struct ix_queue *que)
 		}
 
 		/* pre-alloc new mbuf */
+#if 0
 		if (!discard_multidesc)
 			newmp = ixgbe_getjcl(&rxr->jcl_head, M_NOWAIT, MT_DATA,
 			    M_PKTHDR, rxr->mbuf_sz);
 		else
 			newmp = NULL;
+#else
+		if (!discard_multidesc)
+			newmp = ixgbe_getjcl(M_DONTWAIT);
+		else
+			newmp = NULL;
+#endif
 		if (newmp == NULL) {
 			rxr->no_jmbuf.ev_count++;
 			/*
@@ -2438,3 +2471,68 @@ ixgbe_free_queues(struct adapter *adapter)
 	}
 	free(adapter->queues, M_DEVBUF);
 } /* ixgbe_free_queues */
+
+#if 0
+int
+ixgbe_get_buf(struct rx_ring *rxr, int i)
+{
+	struct adapter      *adapter = rxr->adapter;
+	struct ixgbe_rx_buf *rxbuf;
+	struct mbuf         *mp;
+	int                 error;
+	union ixgbe_adv_rx_desc *rxdesc;
+
+	rxbuf = &rxr->rx_buffers[i];
+	rxdesc = &rxr->rx_base[i];
+
+	KASSERTMSG(rxbuf->buf == NULL, "%s: slot %d already has an mbuf\n",
+	    device_xname(adapter->dev), i);
+
+	MGETHDR(mp, M_DONTWAIT, MT_DATA);
+	if (mp == NULL)
+		return ENOBUFS;
+
+	MCLGET(mp, M_DONTWAIT);
+	if ((mp->m_flags & M_EXT) == 0) {
+		m_freem(mp);
+		return ENOBUFS;
+	}
+
+	mp->m_len = mp->m_pkthdr.len = mp->m_ext.ext_size;
+	m_adj(mp, ETHER_ALIGN);
+	
+	error = bus_dmamap_load_mbuf(rxr->ptag->dt_dmat, rxbuf->pmap, mp,
+	    BUS_DMA_NOWAIT);
+	if (error) {
+		/* XXX inc errcnt */
+		m_freem(mp);
+		return error;
+	}
+	rxbuf->buf = mp;
+	bus_dmamap_sync(rxr->ptag->dt_dmat, rxbuf->pmap,
+	    0, mp->m_pkthdr.len, BUS_DMASYNC_PREREAD);
+	rxbuf->addr = rxr->rx_base[i].read.pkt_addr =
+	    htole64(rxbuf->pmap->dm_segs[0].ds_addr);
+
+	return 0;
+}
+#else
+struct mbuf *
+ixgbe_getjcl(int flags)
+{
+	struct mbuf *m;
+
+	MGETHDR(m, flags, MT_DATA);
+
+	if (m == NULL)
+		return NULL;
+
+	MCLGET(m, flags);
+	if ((m->m_flags & M_EXT) == 0) {
+		m_freem(m);
+		return NULL;
+	}
+
+	return m;
+}
+#endif

@@ -195,7 +195,9 @@ struct ixgbe_osdep
 	bus_space_handle_t mem_bus_space_handle;
 	bus_size_t         mem_size;
 	bus_dma_tag_t      dmat;
+#if 0
 	u16                last_rx_mbuf_sz;
+#endif
 	pci_intr_handle_t  *intrs;
 	int		   nintrs;
 	void               *ihs[IXG_MAX_NINTR];

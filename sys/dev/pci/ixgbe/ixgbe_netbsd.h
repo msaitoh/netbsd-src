@@ -76,6 +76,7 @@ struct ixgbe_dma_tag {
 
 typedef struct ixgbe_dma_tag ixgbe_dma_tag_t;
 
+#if 0
 struct ixgbe_extmem_head;
 typedef struct ixgbe_extmem_head ixgbe_extmem_head_t;
 
@@ -95,16 +96,19 @@ struct ixgbe_extmem_head {
 	kmutex_t			eh_mtx;
 	bool				eh_initialized;
 };
+#endif
 
-int ixgbe_dma_tag_create(bus_dma_tag_t, bus_size_t, bus_size_t, bus_size_t, int,
-    bus_size_t, int, ixgbe_dma_tag_t **);
+int ixgbe_dma_tag_create(bus_dma_tag_t, bus_size_t, bus_size_t, bus_size_t,
+    int, bus_size_t, int, ixgbe_dma_tag_t **);
 void ixgbe_dma_tag_destroy(ixgbe_dma_tag_t *);
 int ixgbe_dmamap_create(ixgbe_dma_tag_t *, int, bus_dmamap_t *);
 void ixgbe_dmamap_destroy(ixgbe_dma_tag_t *, bus_dmamap_t);
 void ixgbe_dmamap_sync(ixgbe_dma_tag_t *, bus_dmamap_t, int);
 void ixgbe_dmamap_unload(ixgbe_dma_tag_t *, bus_dmamap_t);
 
+#if 0
 struct mbuf *ixgbe_getjcl(ixgbe_extmem_head_t *, int, int, int, size_t);
+#endif
 void ixgbe_pci_enable_busmaster(pci_chipset_tag_t, pcitag_t);
 
 u_int atomic_load_acq_uint(volatile u_int *);

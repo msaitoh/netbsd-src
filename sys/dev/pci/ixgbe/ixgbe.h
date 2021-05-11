@@ -419,9 +419,13 @@ struct rx_ring {
 #endif
 	struct ixgbe_rx_buf	*rx_buffers;
 	ixgbe_dma_tag_t		*ptag;
+#if 0
 	u16			last_rx_mbuf_sz;
+#endif
 	u32			last_num_rx_desc;
+#if 0
 	ixgbe_extmem_head_t	jcl_head;
+#endif
 
 	u64			bytes; /* Used for AIM calc */
 	u64			packets;
@@ -780,9 +784,11 @@ bool ixgbe_rxeof(struct ix_queue *);
 
 /* For NetBSD */
 const struct sysctlnode *ixgbe_sysctl_instance(struct adapter *);
+#if 0
 void ixgbe_jcl_reinit(struct adapter *, bus_dma_tag_t, struct rx_ring *,
     int, size_t);
 void ixgbe_jcl_destroy(struct adapter *,  struct rx_ring *);
+#endif
 
 #include "ixgbe_bypass.h"
 #include "ixgbe_fdir.h"
