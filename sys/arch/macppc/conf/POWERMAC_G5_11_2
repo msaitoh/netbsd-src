@@ -150,6 +150,8 @@ bge*	at pci? dev ? function ?	# gmac ethernet
 brgphy*	at mii? phy ?			# Broadcom BCM5400 PHYs
 ukphy*	at mii? phy ?			# generic unknown PHYs
 
+ixg*	at pci? dev ? function ?	# Intel 8259x 10 gigabit
+
 # PCI USB controllers
 ohci*	at pci? dev ? function ?	# USB Open Host Controller
 ehci*	at pci? dev ? function ?	# USB Enhanced Host Controller
