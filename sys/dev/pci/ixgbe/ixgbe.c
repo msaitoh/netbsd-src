@@ -986,7 +986,9 @@ ixgbe_attach(device_t parent, device_t dev, void *aux)
 	} else
 		adapter->num_rx_desc = ixgbe_rxd;
 
+#if 0
 	adapter->num_jcl = adapter->num_rx_desc * IXGBE_JCLNUM_MULTI;
+#endif
 
 	/* Allocate our TX/RX Queues */
 	if (ixgbe_allocate_queues(adapter)) {
@@ -3377,12 +3379,14 @@ ixgbe_add_device_sysctls(struct adapter *adapter)
 	    NULL, 0, &adapter->num_rx_desc, 0, CTL_CREATE, CTL_EOL) != 0)
 		aprint_error_dev(dev, "could not create sysctl\n");
 
+#if 0
 	if (sysctl_createv(log, 0, &rnode, &cnode,
 	    CTLFLAG_READONLY, CTLTYPE_INT, "num_jcl_per_queue",
 	    SYSCTL_DESCR("Number of jumbo buffers per queue"),
 	    NULL, 0, &adapter->num_jcl, 0, CTL_CREATE,
 	    CTL_EOL) != 0)
 		aprint_error_dev(dev, "could not create sysctl\n");
+#endif
 
 	if (sysctl_createv(log, 0, &rnode, &cnode,
 	    CTLFLAG_READONLY, CTLTYPE_INT,
