@@ -107,6 +107,7 @@ __KERNEL_RCSID(0, "$NetBSD: if_wm.c,v 1.645.2.10 2020/11/16 18:21:45 martin Exp 
 #include <sys/pcq.h>
 #include <sys/sysctl.h>
 #include <sys/workqueue.h>
+#include <sys/atomic.h>
 
 #include <sys/rndsource.h>
 
@@ -666,12 +667,19 @@ do {									\
 } while (/*CONSTCOND*/0)
 
 #ifdef WM_EVENT_COUNTERS
+#ifdef __HAVE_ATOMIC64_LOADSTORE
 #define	WM_EVCNT_INCR(ev)						\
 	atomic_store_relaxed(&((ev)->ev_count),				\
 	    atomic_load_relaxed(&(ev)->ev_count) + 1)
 #define	WM_EVCNT_ADD(ev, val)						\
 	atomic_store_relaxed(&((ev)->ev_count),				\
 	    atomic_load_relaxed(&(ev)->ev_count) + (val))
+#else
+#define	WM_EVCNT_INCR(ev)						\
+	((ev)->ev_count)++
+#define	WM_EVCNT_ADD(ev, val)						\
+	(ev)->ev_count += (val)
+#endif
 
 #define WM_Q_EVCNT_INCR(qname, evname)			\
 	WM_EVCNT_INCR(&(qname)->qname##_ev_##evname)
