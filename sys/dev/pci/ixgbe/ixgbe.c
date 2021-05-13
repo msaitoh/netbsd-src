@@ -6154,6 +6154,24 @@ ixgbe_print_debug_info(struct adapter *adapter)
 	device_printf(dev, "EIAC:\t%08x\n", IXGBE_READ_REG(hw, IXGBE_EIAC));
 } /* ixgbe_print_debug_info */
 
+static void
+ixgbe_print_desc(struct adapter *adapter, int qidx)
+{
+	struct rx_ring *rxr = &adapter->rx_rings[qidx];
+	union ixgbe_adv_rx_desc	*cur;
+	u32		staterr;
+	int i;
+
+	ixgbe_dmamap_sync(rxr->rxdma.dma_tag, rxr->rxdma.dma_map,
+	    BUS_DMASYNC_POSTREAD | BUS_DMASYNC_POSTWRITE);
+
+	for (i = 0; i < rxr->num_desc; i++) {
+		cur = &rxr->rx_base[i];
+		staterr = le32toh(cur->wb.upper.status_error);
+		printf("[%d] = %08x\n", i, staterr);
+	}
+}
+
 /************************************************************************
  * ixgbe_sysctl_debug
  ************************************************************************/
@@ -6175,6 +6193,8 @@ ixgbe_sysctl_debug(SYSCTLFN_ARGS)
 
 	if (result == 1)
 		ixgbe_print_debug_info(adapter);
+	if ((result >= 10) && (result < (10 + adapter->num_queues)))
+		ixgbe_print_desc(adapter, result - 10);
 
 	return 0;
 } /* ixgbe_sysctl_debug */
