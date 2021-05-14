@@ -315,6 +315,23 @@ again:
 	reset_deassert(phandle, "mgmt");
 	reset_deassert(phandle, "pipe");
 
+	/* FTS count */
+	printf("LM_PLC1 = %08x\n", HREAD4(sc, PCIE_LM_PLC1));
+	HWRITE4(sc, PCIE_LM_PLC1,
+	    HREAD4(sc, PCIE_LM_PLC1) | PCIE_LM_PLC1_FTS_MASK);
+	printf("LM_PLC1(2) = %08x\n", HREAD4(sc, PCIE_LM_PLC1));
+
+	/* Common clock */
+	printf("LCSR = %08x\n", HREAD4(sc, PCIE_RC_CONFIG_LCSR));
+	HWRITE4(sc, PCIE_RC_CONFIG_LCSR,
+	    HREAD4(sc, PCIE_RC_CONFIG_LCSR) | PCIE_LCSR_COMCLKCFG);
+
+	/* 128 RCB */
+	printf("LCSR = %08x\n", HREAD4(sc, PCIE_RC_CONFIG_LCSR));
+	HWRITE4(sc, PCIE_RC_CONFIG_LCSR,
+	    HREAD4(sc, PCIE_RC_CONFIG_LCSR) | PCIE_LCSR_RCB);
+	printf("LCSR(2) = %08x\n", HREAD4(sc, PCIE_RC_CONFIG_LCSR));
+
 	fdtbus_gpio_write(ep_gpio, 1);
 	delay(20000);	/* 20 ms according to PCI-e BS "Conventional Reset" */
 
