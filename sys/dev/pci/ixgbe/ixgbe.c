@@ -6166,9 +6166,18 @@ ixgbe_print_desc(struct adapter *adapter, int qidx)
 	    BUS_DMASYNC_POSTREAD | BUS_DMASYNC_POSTWRITE);
 
 	for (i = 0; i < rxr->num_desc; i++) {
+		struct ixgbe_rx_buf *rxbuf = &rxr->rx_buffers[i];
+		struct mbuf *m = rxbuf->pmap->_dm_origbuf;
 		cur = &rxr->rx_base[i];
 		staterr = le32toh(cur->wb.upper.status_error);
-		printf("[%d] = %08x\n", i, staterr);
+		printf("[%d] staterr: %08x\tbuf: %p\tfmp: %p\tmapsize: %zu",
+		    i, staterr, rxbuf->buf, rxbuf->fmp, rxbuf->pmap->dm_mapsize);
+		if (m != NULL) {
+			printf("\tm_len: %u", m->m_len);
+			if (m->m_flags & M_PKTHDR)
+				printf("\tm_pkthdr.len: %u", m->m_pkthdr.len);
+		}
+		printf("\n");
 	}
 }
 
