@@ -241,6 +241,9 @@ rkpcie_attach(device_t parent, device_t self, void *aux)
 	aprint_naive("\n");
 	aprint_normal(": RK3399 PCIe\n");
 
+	fdtbus_clock_assign(phandle);
+	clock_enable_all(phandle);
+
 	struct fdtbus_regulator *regulator;
 	regulator = fdtbus_regulator_acquire(phandle, "vpcie3v3-supply");
 	if (regulator != NULL) {
@@ -248,9 +251,6 @@ rkpcie_attach(device_t parent, device_t self, void *aux)
 		fdtbus_regulator_release(regulator);
 	}
 		
-	fdtbus_clock_assign(phandle);
-	clock_enable_all(phandle);
-
 	ep_gpio = fdtbus_gpio_acquire(phandle, "ep-gpios", GPIO_PIN_OUTPUT);
 
 	if (of_getprop_uint32(phandle, "max-link-speed", &max_link_speed) != 0)
