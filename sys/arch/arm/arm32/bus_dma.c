@@ -972,9 +972,12 @@ _dump_mbuf(bus_dma_tag_t t, bus_dmamap_t map, bus_size_t offset,
 	printf("DUMP!:\n");
 	printf("offset = %zu, len = %zu, ds_len = %zu\n",
 	    offset, len, ds->ds_len);
-	printf("m_len = %u\n", m->m_len);
-	printf("m_pkthdr.len = %u\n", m->m_pkthdr.len);
-	printf("m->m_next = %p\n", m->m_next);
+	if (m != NULL) {
+		printf("m_next = %p\n", m->m_next);
+		printf("m_len = %u\n", m->m_len);
+		if (m->m_flags & M_PKTHDR)
+			printf("m_pkthdr.len = %u\n", m->m_pkthdr.len);
+	}
 }
 
 static inline void
