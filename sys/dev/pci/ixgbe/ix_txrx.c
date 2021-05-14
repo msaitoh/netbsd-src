@@ -546,6 +546,7 @@ retry:
 	 * hardware that this frame is available to transmit.
 	 */
 	++txr->total_packets.ev_count;
+//	IXGBE_WRITE_BARRIER(&adapter->hw);
 	IXGBE_WRITE_REG(&adapter->hw, txr->tail, i);
 
 	net_stat_ref_t nsr = IF_STAT_GETREF(ifp);
@@ -1489,6 +1490,8 @@ fail:
 static void
 ixgbe_free_receive_ring(struct rx_ring *rxr)
 {
+
+	printf("RX discard");
 	for (int i = 0; i < rxr->num_desc; i++) {
 		ixgbe_rx_discard(rxr, i);
 	}
@@ -1534,6 +1537,7 @@ ixgbe_setup_receive_ring(struct rx_ring *rxr)
 	rxr->mbuf_sz = adapter->rx_mbuf_sz;
 
 	/* Free current RX buffer structs and their mbufs */
+	printf("%s: goto free_receive_ring()\n", __func__);
 	ixgbe_free_receive_ring(rxr);
 
 #if 0
@@ -1664,9 +1668,11 @@ ixgbe_setup_receive_structures(struct adapter *adapter)
 	int            j;
 
 	INIT_DEBUGOUT("ixgbe_setup_receive_structures");
-	for (j = 0; j < adapter->num_queues; j++, rxr++)
+	for (j = 0; j < adapter->num_queues; j++, rxr++) {
+		printf("goto setup_receive_ring([%d])\n", j);
 		if (ixgbe_setup_receive_ring(rxr))
 			goto fail;
+	}
 
 	return (0);
 fail:
@@ -1803,6 +1809,7 @@ ixgbe_rx_discard(struct rx_ring *rxr, int i)
 
 	rbuf = &rxr->rx_buffers[i];
 
+	printf("[%d]", i);
 	/*
 	 * With advanced descriptors the writeback clobbers the buffer addrs,
 	 * so its easier to just free the existing mbufs and take the normal
@@ -2001,7 +2008,7 @@ ixgbe_rxeof(struct ix_queue *que)
 		 * buffer struct and pass this along from one
 		 * descriptor to the next, until we get EOP.
 		 */
-		mp->m_len = len;
+//		mp->m_len = len;
 		/*
 		 * See if there is a stored head
 		 * that determines what we are
@@ -2010,6 +2017,7 @@ ixgbe_rxeof(struct ix_queue *que)
 		if (sendmp != NULL) {  /* secondary frag */
 			rbuf->buf = newmp;
 			rbuf->fmp = NULL;
+			mp->m_len = len;
 			mp->m_flags &= ~M_PKTHDR;
 			sendmp->m_pkthdr.len += mp->m_len;
 		} else {
@@ -2028,6 +2036,8 @@ ixgbe_rxeof(struct ix_queue *que)
 					sendmp->m_len = len;
 					rxr->rx_copies.ev_count++;
 					rbuf->flags |= IXGBE_RX_COPY;
+					printf("(a) sendmp->m_pkthdr.len = %d, m_len = %d\n", sendmp->m_pkthdr.len,
+					    sendmp->m_len);
 
 					m_freem(newmp);
 				}
@@ -2035,14 +2045,21 @@ ixgbe_rxeof(struct ix_queue *que)
 			if (sendmp == NULL) {
 				rbuf->buf = newmp;
 				rbuf->fmp = NULL;
+				mp->m_len = len;
 				sendmp = mp;
+				printf("(b) sendmp->m_pkthdr.len = %d, m_len = %d\n", sendmp->m_pkthdr.len,
+				    sendmp->m_len);
 			}
 
+			printf("(c) sendmp->m_pkthdr.len = %d, m_len = %d\n", sendmp->m_pkthdr.len,
+			    sendmp->m_len);
 			/* first desc of a non-ps chain */
 			sendmp->m_flags |= M_PKTHDR;
-			sendmp->m_pkthdr.len = mp->m_len;
+			sendmp->m_pkthdr.len = len;
 		}
 		++processed;
+		printf("(d) sendmp->m_pkthdr.len = %d, m_len = %d\n", sendmp->m_pkthdr.len,
+			sendmp->m_len);
 
 		/* Pass the head pointer on */
 		if (eop == 0) {
