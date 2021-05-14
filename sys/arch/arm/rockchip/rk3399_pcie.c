@@ -276,6 +276,7 @@ again:
 	}
 
 	reset_assert(phandle, "core");
+	delay(10000);
 	reset_assert(phandle, "mgmt");
 	reset_assert(phandle, "mgmt-sticky");
 	reset_assert(phandle, "pipe");
