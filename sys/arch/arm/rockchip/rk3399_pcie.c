@@ -319,7 +319,8 @@ again:
 	/* Start link training. */
 	HWRITE4(sc, PCIE_CLIENT_BASIC_STRAP_CONF, PCBSC_LINK_TRAIN_EN);
 
-	for (timo = 500; timo > 0; timo--) {
+#define LINKTRAIN_TIMEOUT_MS 2000
+	for (timo = LINKTRAIN_TIMEOUT_MS; timo > 0; timo--) {
 		status = HREAD4(sc, PCIE_CLIENT_BASIC_STATUS1);
 		if (PCBS1_LINK_ST(status) == PCBS1_LS_DL_DONE)
 			break;
@@ -333,11 +334,12 @@ again:
 			goto again;
 		}
 		return;
-	}
+	} else
+		device_printf(self, "link training %d msecs\n", LINKTRAIN_TIMEOUT_MS - timo);
 
 	if (max_link_speed == 2) {
 		HWRITE4(sc, PCIE_RC_CONFIG_LCSR, HREAD4(sc, PCIE_RC_CONFIG_LCSR) | PCIE_LCSR_RETRAIN);
-		for (timo = 500; timo > 0; timo--) {
+		for (timo = LINKTRAIN_TIMEOUT_MS; timo > 0; timo--) {
 			status = HREAD4(sc, PCIE_LM_CORE_CTRL);
 			if ((status & PCIE_CORE_PL_CONF_SPEED_MASK) == PCIE_CORE_PL_CONF_SPEED_5G)
 				break;
@@ -347,7 +349,8 @@ again:
 			device_printf(self, "Gen2 link training timeout\n");
 			--max_link_speed;
 			goto again;
-		}
+		} else
+			device_printf(self, "link training %d msecs\n", LINKTRAIN_TIMEOUT_MS - timo);
 	}
 	delay(80000);	/* wait 100 ms before CSR access. already waited 20. */
 
