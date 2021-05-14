@@ -294,7 +294,8 @@ again:
 
 	/* Switch into Root Complex mode. */
 	HWRITE4(sc, PCIE_CLIENT_BASIC_STRAP_CONF,
-	    PCBSC_MS_ROOTPORT | PCBSC_CONF_EN | PCBSC_LC(num_lanes));
+	    PCBSC_MS_ROOTPORT | PCBSC_CONF_EN | PCBSC_LC(num_lanes)
+		| PCBSC_LINK_TRAIN_EN);
 
 	if (phy[3] && fdtbus_phy_enable(phy[3], true) != 0) {
 		aprint_error(": couldn't enable phy3\n");
