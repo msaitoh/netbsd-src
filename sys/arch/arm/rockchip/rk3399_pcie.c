@@ -245,6 +245,11 @@ rkpcie_attach(device_t parent, device_t self, void *aux)
 	clock_enable_all(phandle);
 
 	struct fdtbus_regulator *regulator;
+	regulator = fdtbus_regulator_acquire(phandle, "vpcie12-supply");
+	if (regulator != NULL) {
+		fdtbus_regulator_enable(regulator);
+		fdtbus_regulator_release(regulator);
+	}
 	regulator = fdtbus_regulator_acquire(phandle, "vpcie3v3-supply");
 	if (regulator != NULL) {
 		fdtbus_regulator_enable(regulator);
