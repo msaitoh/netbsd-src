@@ -255,6 +255,16 @@ rkpcie_attach(device_t parent, device_t self, void *aux)
 		fdtbus_regulator_enable(regulator);
 		fdtbus_regulator_release(regulator);
 	}
+	regulator = fdtbus_regulator_acquire(phandle, "vpcie1v8-supply");
+	if (regulator != NULL) {
+		fdtbus_regulator_enable(regulator);
+		fdtbus_regulator_release(regulator);
+	}
+	regulator = fdtbus_regulator_acquire(phandle, "vpcie0v9-supply");
+	if (regulator != NULL) {
+		fdtbus_regulator_enable(regulator);
+		fdtbus_regulator_release(regulator);
+	}
 		
 	ep_gpio = fdtbus_gpio_acquire(phandle, "ep-gpios", GPIO_PIN_OUTPUT);
 
