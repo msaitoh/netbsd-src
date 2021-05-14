@@ -265,6 +265,7 @@ rkpcie_attach(device_t parent, device_t self, void *aux)
 		fdtbus_regulator_enable(regulator);
 		fdtbus_regulator_release(regulator);
 	}
+	delay(1000);
 		
 	ep_gpio = fdtbus_gpio_acquire(phandle, "ep-gpios", GPIO_PIN_OUTPUT);
 
