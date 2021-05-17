@@ -6167,16 +6167,21 @@ ixgbe_print_desc(struct adapter *adapter, int qidx)
 
 	for (i = 0; i < rxr->num_desc; i++) {
 		struct ixgbe_rx_buf *rxbuf = &rxr->rx_buffers[i];
+#if defined(__arm__)
 		struct mbuf *m = rxbuf->pmap->_dm_origbuf;
+#endif
 		cur = &rxr->rx_base[i];
 		staterr = le32toh(cur->wb.upper.status_error);
 		printf("[%d] staterr: %08x\tbuf: %p\tfmp: %p\tmapsize: %zu",
 		    i, staterr, rxbuf->buf, rxbuf->fmp, rxbuf->pmap->dm_mapsize);
+
+#if defined(__arm__)
 		if (m != NULL) {
 			printf("\tm_len: %u", m->m_len);
 			if (m->m_flags & M_PKTHDR)
 				printf("\tm_pkthdr.len: %u", m->m_pkthdr.len);
 		}
+#endif
 		printf("\n");
 	}
 }
