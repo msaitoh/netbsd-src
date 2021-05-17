@@ -179,7 +179,8 @@ options 	WSDISPLAY_COMPAT_USL		# wsconscfg VT handling
 # realtime clock compatible to OSF/1
 #options 	CLOCK_COMPAT_OSF1
 
-config		netbsd	root on ? type ?
+#config		netbsd	root on ? type ?
+config		netbsd	root on ld0a type ?
 #config		netbsd	root on sd0 type ffs
 #config		netbsd	root on ? type nfs
 
@@ -325,7 +326,8 @@ xhci*	at	pci? dev ? function ?		# eXtensible Host Controller
 pceb*	at	pci? dev ? function ?		# Intel PCI-EISA Bridges
 pciide* at	pci? dev ? function ? flags 0x0000	# GENERIC pciide driver
 acardide* at	pci? dev ? function ?		# Acard IDE controllers
-aceride* at	pci? dev ? function ?		# Acer Lab IDE controllers
+#aceride* at	pci? dev ? function ?		# Acer Lab IDE controllers
+aceride* at	pci? dev ? function ? flags 0x0002	# Acer Lab IDE controllers
 artsata* at	pci? dev ? function ?		# Intel i31244 SATA controller
 cmdide* at	pci? dev ? function ?		# CMD tech IDE controllers
 cypide* at	pci? dev ? function ?		# Cypress IDE controllers
@@ -362,6 +364,11 @@ vr*	at	pci? dev ? function ?		# VIA Rhine Fast Ethernet
 wi*	at	pci? dev ? function ?		# Lucent/Intersil WaveLAN/IEEE
 wm*	at	pci? dev ? function ?		# Intel 8254x Ethernet
 yds*	at	pci? dev ? function ?		# Yamaha DS-1 PCI Audio
+
+ixg*	at pci? dev ? function ?	# Intel 8259x 10 gigabit
+twa*	at pci? dev ? function ?	# 3ware Escalade 9xxx RAID controllers
+ld*	at twa? unit ?
+
 
 opl*	at	cmpci? flags 1
 opl*	at	eso?
