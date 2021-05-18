@@ -1,4 +1,4 @@
-/* $NetBSD: ix_txrx.c,v 1.72 2021/05/11 01:30:30 rin Exp $ */
+/* $NetBSD: ix_txrx.c,v 1.75 2021/05/18 05:29:15 msaitoh Exp $ */
 
 /******************************************************************************
 
@@ -64,7 +64,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: ix_txrx.c,v 1.72 2021/05/11 01:30:30 rin Exp $");
+__KERNEL_RCSID(0, "$NetBSD: ix_txrx.c,v 1.75 2021/05/18 05:29:15 msaitoh Exp $");
 
 #include "opt_inet.h"
 #include "opt_inet6.h"
@@ -485,6 +485,7 @@ retry:
 		return (error);
 	}
 
+#ifdef IXGBE_FDIR
 	/* Do the flow director magic */
 	if ((adapter->feat_en & IXGBE_FEATURE_FDIR) &&
 	    (txr->atr_sample) && (!adapter->fdir_reinit)) {
@@ -494,6 +495,7 @@ retry:
 			txr->atr_count = 0;
 		}
 	}
+#endif
 
 	olinfo_status |= IXGBE_ADVTXD_CC;
 	i = txr->next_avail_desc;
@@ -1554,8 +1556,16 @@ ixgbe_setup_receive_ring(struct rx_ring *rxr)
 		/* Get the memory mapping */
 		error = bus_dmamap_load_mbuf(rxr->ptag->dt_dmat, rxbuf->pmap,
 		    mp, BUS_DMA_NOWAIT);
-		if (error != 0)
+		if (error != 0) {
+			/*
+			 * Clear this entry for later cleanup in
+			 * ixgbe_discard() which is called via
+			 * ixgbe_free_receive_ring().
+			 */
+			m_freem(mp);
+			rxbuf->buf = NULL;
                         goto fail;
+		}
 		bus_dmamap_sync(rxr->ptag->dt_dmat, rxbuf->pmap,
 		    0, adapter->rx_mbuf_sz, BUS_DMASYNC_PREREAD);
 		/* Update the descriptor and the cached value */
@@ -1947,7 +1957,6 @@ ixgbe_rxeof(struct ix_queue *que)
 		 * buffer struct and pass this along from one
 		 * descriptor to the next, until we get EOP.
 		 */
-		mp->m_len = len;
 		/*
 		 * See if there is a stored head
 		 * that determines what we are
@@ -1956,6 +1965,7 @@ ixgbe_rxeof(struct ix_queue *que)
 		if (sendmp != NULL) {  /* secondary frag */
 			rbuf->buf = newmp;
 			rbuf->fmp = NULL;
+			mp->m_len = len;
 			mp->m_flags &= ~M_PKTHDR;
 			sendmp->m_pkthdr.len += mp->m_len;
 		} else {
@@ -1981,12 +1991,13 @@ ixgbe_rxeof(struct ix_queue *que)
 			if (sendmp == NULL) {
 				rbuf->buf = newmp;
 				rbuf->fmp = NULL;
+				mp->m_len = len;
 				sendmp = mp;
 			}
 
 			/* first desc of a non-ps chain */
 			sendmp->m_flags |= M_PKTHDR;
-			sendmp->m_pkthdr.len = mp->m_len;
+			sendmp->m_pkthdr.len = len;
 		}
 		++processed;
 
