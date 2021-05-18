@@ -2208,7 +2208,7 @@ ixgbe_dma_malloc(struct adapter *adapter, const bus_size_t size,
 	}
 
 	r = bus_dmamem_map(dma->dma_tag->dt_dmat, &dma->dma_seg, rsegs,
-	    size, &dma->dma_vaddr, BUS_DMA_NOWAIT);
+	    size, &dma->dma_vaddr, BUS_DMA_NOWAIT | BUS_DMA_COHERENT);
 	if (r != 0) {
 		aprint_error_dev(dev, "%s: bus_dmamem_map failed; error %d\n",
 		    __func__, r);
