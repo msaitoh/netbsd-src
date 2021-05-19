@@ -419,7 +419,6 @@ struct rx_ring {
 #endif
 	struct ixgbe_rx_buf	*rx_buffers;
 	ixgbe_dma_tag_t		*ptag;
-	u32			last_num_rx_desc;
 
 	u64			bytes; /* Used for AIM calc */
 	u64			packets;
