@@ -83,7 +83,8 @@ rk_cru_composite_get_rate(struct rk_cru_softc *sc,
 		return (u_int)((uint64_t)prate * num / den);
 	} else {
 		const uint32_t val = CRU_READ(sc, composite->muxdiv_reg);
-		const u_int div = __SHIFTOUT(val, composite->div_mask) + 1;
+		const u_int div = (composite->div_mask != 0)
+		    ? __SHIFTOUT(val, composite->div_mask) + 1 : 1;
 
 		return prate / div;
 	}
