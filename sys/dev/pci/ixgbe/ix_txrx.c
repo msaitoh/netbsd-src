@@ -1,4 +1,4 @@
-/* $NetBSD: ix_txrx.c,v 1.76 2021/05/20 01:02:42 ryo Exp $ */
+/* $NetBSD: ix_txrx.c,v 1.78 2021/05/20 22:36:08 ryo Exp $ */
 
 /******************************************************************************
 
@@ -64,7 +64,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: ix_txrx.c,v 1.76 2021/05/20 01:02:42 ryo Exp $");
+__KERNEL_RCSID(0, "$NetBSD: ix_txrx.c,v 1.78 2021/05/20 22:36:08 ryo Exp $");
 
 #include "opt_inet.h"
 #include "opt_inet6.h"
@@ -501,7 +501,7 @@ retry:
 	i = txr->next_avail_desc;
 	for (j = 0; j < map->dm_nsegs; j++) {
 		bus_size_t seglen;
-		bus_addr_t segaddr;
+		uint64_t segaddr;
 
 		txbuf = &txr->tx_buffers[i];
 		txd = &txr->tx_base[i];
@@ -1125,7 +1125,7 @@ ixgbe_txeof(struct tx_ring *txr)
 		 *   or the slot has the DD bit set.
 		 */
 		if (kring->nr_kflags < kring->nkr_num_slots &&
-		    txd[kring->nr_kflags].wb.status & IXGBE_TXD_STAT_DD) {
+		    le32toh(txd[kring->nr_kflags].wb.status) & IXGBE_TXD_STAT_DD) {
 			netmap_tx_irq(ifp, txr->me);
 		}
 		return false;
@@ -1150,7 +1150,7 @@ ixgbe_txeof(struct tx_ring *txr)
 		if (eop == NULL) /* No work */
 			break;
 
-		if ((eop->wb.status & IXGBE_TXD_STAT_DD) == 0)
+		if ((le32toh(eop->wb.status) & IXGBE_TXD_STAT_DD) == 0)
 			break;	/* I/O not complete */
 
 		if (buf->m_head) {
