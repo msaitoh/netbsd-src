@@ -41,7 +41,6 @@ __KERNEL_RCSID(0, "$NetBSD: ixv.c,v 1.163 2021/07/07 08:58:19 msaitoh Exp $");
 #include "opt_inet.h"
 #include "opt_inet6.h"
 #include "opt_net_mpsafe.h"
-#include "opt_ixgbe.h"
 #endif
 
 #include "ixgbe.h"
@@ -520,8 +519,6 @@ ixv_attach(device_t parent, device_t dev, void *aux)
 	/* Set default high limit of copying mbuf in rxeof */
 	adapter->rx_copy_len = IXGBE_RX_COPY_LEN_MAX;
 
-	adapter->num_jcl = adapter->num_rx_desc * IXGBE_JCLNUM_MULTI;
-
 	/* Setup MSI-X */
 	error = ixv_configure_interrupts(adapter);
 	if (error)
@@ -750,14 +747,8 @@ ixv_init_locked(struct adapter *adapter)
 	/* Setup Multicast table */
 	ixv_set_rxfilter(adapter);
 
-	/*
-	 * Determine the correct mbuf pool
-	 * for doing jumbo/headersplit
-	 */
-	if (adapter->max_frame_size <= MCLBYTES)
-		adapter->rx_mbuf_sz = MCLBYTES;
-	else
-		adapter->rx_mbuf_sz = MJUMPAGESIZE;
+	/* Use 2k clusters, even for jumbo frames */
+	adapter->rx_mbuf_sz = MCLBYTES;
 
 	/* Prepare receive descriptors and buffers */
 	error = ixgbe_setup_receive_structures(adapter);
@@ -2569,13 +2560,6 @@ ixv_add_device_sysctls(struct adapter *adapter)
 	    "rx_copy_len", SYSCTL_DESCR("RX Copy Length"),
 	    ixv_sysctl_rx_copy_len, 0,
 	    (void *)adapter, 0, CTL_CREATE, CTL_EOL) != 0)
-		aprint_error_dev(dev, "could not create sysctl\n");
-
-	if (sysctl_createv(log, 0, &rnode, &cnode,
-	    CTLFLAG_READONLY, CTLTYPE_INT, "num_jcl_per_queue",
-	    SYSCTL_DESCR("Number of jumbo buffers per queue"),
-	    NULL, 0, &adapter->num_jcl, 0, CTL_CREATE,
-	    CTL_EOL) != 0)
 		aprint_error_dev(dev, "could not create sysctl\n");
 
 	if (sysctl_createv(log, 0, &rnode, &cnode,
