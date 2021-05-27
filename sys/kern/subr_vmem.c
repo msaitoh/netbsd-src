@@ -1143,12 +1143,14 @@ vmem_xalloc(vmem_t *vm, const vmem_size_t size0, vmem_size_t align,
 	btnew = bt_alloc(vm, flags);
 	if (btnew == NULL) {
 		VMEM_UNLOCK(vm);
+		printf("%s: ENOMEM 0\n", __func__);
 		return ENOMEM;
 	}
 	btnew2 = bt_alloc(vm, flags); /* XXX not necessary if no restrictions */
 	if (btnew2 == NULL) {
 		bt_free(vm, btnew);
 		VMEM_UNLOCK(vm);
+		printf("%s: ENOMEM 1\n", __func__);
 		return ENOMEM;
 	}
 
@@ -1223,6 +1225,9 @@ retry:
 		 * satisfy restrictions?
 		 */
 
+		printf("%s: align = %zu, vm_quantum_mask = %zu, phase = %zu, "
+		    "nclolors = %zu\n", __func__, align, vm->vm_quantum_mask,
+		    phase, nocross);
 		goto fail;
 	}
 	/* XXX eeek, minaddr & maxaddr not respected */
@@ -1236,10 +1241,12 @@ retry:
 		VMEM_CONDVAR_WAIT(vm);
 		goto retry;
 	}
+	printf("%s: vmem_import() failed and !VM_SLEEP\n", __func__);
 fail:
 	bt_free(vm, btnew);
 	bt_free(vm, btnew2);
 	VMEM_UNLOCK(vm);
+	printf("%s: ENOMEM 2\n", __func__);
 	return ENOMEM;
 
 gotit:
