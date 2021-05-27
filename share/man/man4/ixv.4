@@ -43,26 +43,6 @@ newer chips support.
 It can be used on a
 .Nx
 guest that the host supports SR-IOV.
-.Sh OPTIONS
-The
-.Nm
-driver doesn't use the common
-.Xr MCLGET 9
-interface and use the driver specific cluster allocation mechanism.
-If it's exhausted, the
-.Xr evcnt 9
-counter "ixgX qY Rx no jumbo mbuf" is incremented.
-If this is observed,
-the number can be changed by the following config parameter:
-.Bl -tag -width IXGBE_JCLNUM_MULTI -offset 3n
-.It Dv IXGBE_JCLNUM_MULTI
-The number of RX jumbo buffers (clusters) per queue is calculated by
-.Dv IXGBE_JCLNUM_MULTI
-* (number of rx descriptors).
-The total number of clusters per queue is available with the
-.Li hw.ixgN.num_jcl_per_queue
-.Xr sysctl 7 .
-.El
 .Sh SEE ALSO
 .Xr arp 4 ,
 .Xr ixg 4 ,
