@@ -148,8 +148,21 @@ __C(SGMAP_TYPE,_load_buffer)(bus_dma_tag_t t, bus_dmamap_t map, void *buf,
 			    VMEM_ADDR_MAX,	/* maxaddr */
 			    vmflags,
 			    &sgva);
-	if (error)
+	if (error) {
+		printf("%s: vmem_xalloc(%p, %zu, %zu, %d, %zu, %x, %lx, "
+		    "0x%08x, %p) returned %d\n", __func__,
+		    sgmap->aps_arena,
+		    sgvalen,
+		    alignment,
+		    0,
+		    boundary,
+		    VMEM_ADDR_MIN,
+		    VMEM_ADDR_MAX,
+		    vmflags,
+		    &sgva,
+		    error);
 		return (error);
+	}
 
 	pteidx = sgva >> SGMAP_ADDR_PTEIDX_SHIFT;
 	pte = &page_table[pteidx * SGMAP_PTE_SPACING];

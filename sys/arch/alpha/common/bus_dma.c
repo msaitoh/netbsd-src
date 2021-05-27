@@ -352,6 +352,9 @@ _bus_dmamap_load_mbuf_direct(bus_dma_tag_t t, bus_dmamap_t map,
 			error = _bus_dmamap_load_buffer_direct(t, map,
 			    m->m_data, m->m_len, vmspace_kernel(), flags,
 			    &lastaddr, &seg, first);
+			if (error != 0)
+				printf("%s: _bus_dmamap_load_buffer_direct() "
+				    "returned %d\n", __func__, error);
 		}
 		first = 0;
 	}
@@ -366,6 +369,9 @@ _bus_dmamap_load_mbuf_direct(bus_dma_tag_t t, bus_dmamap_t map,
 		 */
 		DMA_COUNT(load_mbuf_next_window);
 		error = bus_dmamap_load_mbuf(t->_next_window, map, m0, flags);
+		if (error != 0)
+			printf("%s: bus_dmamap_load_mbuf() "
+			    "returned %d\n", __func__, error);
 	}
 	return (error);
 }
