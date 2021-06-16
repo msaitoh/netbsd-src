@@ -1359,6 +1359,8 @@ ixgbe_refresh_mbufs(struct rx_ring *rxr, int limit)
 			mp = rxbuf->buf;
 
 		mp->m_pkthdr.len = mp->m_len = rxr->mbuf_sz;
+		if (rxr->mbuf_sz == 0)
+			panic("%s: mbuf_sz = 0", __func__);
 
 		/* If we're dealing with an mbuf that was copied rather
 		 * than replaced, there's no need to go through busdma.
@@ -1554,6 +1556,8 @@ ixgbe_setup_receive_ring(struct rx_ring *rxr)
 		}
 		mp = rxbuf->buf;
 		mp->m_pkthdr.len = mp->m_len = rxr->mbuf_sz;
+		if (rxr->mbuf_sz == 0)
+			panic("%s: mbuf_sz = 0", __func__);
 		/* Get the memory mapping */
 		error = bus_dmamap_load_mbuf(rxr->ptag->dt_dmat, rxbuf->pmap,
 		    mp, BUS_DMA_NOWAIT);
@@ -1999,6 +2003,8 @@ ixgbe_rxeof(struct ix_queue *que)
 			/* first desc of a non-ps chain */
 			sendmp->m_flags |= M_PKTHDR;
 			sendmp->m_pkthdr.len = len;
+			if (len == 0)
+				panic("%s: len = 0", __func__);
 		}
 		++processed;
 
