@@ -88,6 +88,8 @@ __KERNEL_RCSID(0, "$NetBSD: uipc_mbuf.c,v 1.243 2021/03/04 01:37:42 msaitoh Exp 
 
 #include <net/if.h>
 
+#define DEBUG 1
+
 pool_cache_t mb_cache;	/* mbuf cache */
 static pool_cache_t mcl_cache;	/* mbuf cluster cache */
 
@@ -2398,3 +2400,5 @@ m_tag_copy_chain(struct mbuf *to, struct mbuf *from)
 	}
 	return 1;
 }
+
+#undef DEBUG
