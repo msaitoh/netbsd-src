@@ -1,4 +1,4 @@
-# $NetBSD: t_integration.sh,v 1.52 2021/06/16 10:21:51 rillig Exp $
+# $NetBSD: t_integration.sh,v 1.57 2021/06/20 18:09:48 rillig Exp $
 #
 # Copyright (c) 2008, 2010 The NetBSD Foundation, Inc.
 # All rights reserved.
@@ -99,6 +99,7 @@ test_case()
 
 
 test_case all_messages
+test_case c99_init_designator
 test_case d_alignof
 test_case d_bltinoffsetof
 test_case d_c99_anon_struct
@@ -166,6 +167,7 @@ test_case d_type_question_colon
 test_case d_typefun
 test_case d_typename_as_var
 test_case d_zero_sized_arrays
+test_case decl_struct_member
 test_case emit
 test_case expr_range
 test_case feat_stacktrace
@@ -174,7 +176,15 @@ test_case gcc_attribute_aligned
 test_case gcc_bit_field_types
 test_case gcc_init_compound_literal
 test_case gcc_typeof_after_statement
+test_case lex_char
+test_case lex_comment
+test_case lex_floating
+test_case lex_integer
+test_case lex_string
+test_case lex_wide_char
+test_case lex_wide_string
 test_case op_colon
+test_case stmt_for
 
 all_messages_body()
 {

@@ -1,4 +1,4 @@
-/* $NetBSD: lex.c,v 1.37 2021/06/15 20:46:45 rillig Exp $ */
+/* $NetBSD: lex.c,v 1.46 2021/06/20 20:32:42 rillig Exp $ */
 
 /*
  * Copyright (c) 1996 Christopher G. Demetriou.  All Rights Reserved.
@@ -38,7 +38,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: lex.c,v 1.37 2021/06/15 20:46:45 rillig Exp $");
+__RCSID("$NetBSD: lex.c,v 1.46 2021/06/20 20:32:42 rillig Exp $");
 #endif
 
 #include <ctype.h>
@@ -369,7 +369,12 @@ inpc(void)
 {
 	int	c;
 
-	if ((c = lex_input()) != EOF && (c &= CHAR_MASK) == '\n')
+	if ((c = lex_input()) == EOF)
+		return c;
+	c &= CHAR_MASK;
+	if (c == '\0')
+		return EOF;	/* lex returns 0 on EOF. */
+	if (c == '\n')
 		lex_next_line();
 	return c;
 }
@@ -667,7 +672,7 @@ lex_integer_constant(const char *yytext, size_t yyleng, int base)
 
 	yylval.y_val = xcalloc(1, sizeof(*yylval.y_val));
 	yylval.y_val->v_tspec = typ;
-	yylval.y_val->v_ansiu = ansiu;
+	yylval.y_val->v_unsigned_since_c90 = ansiu;
 	yylval.y_val->v_quad = (int64_t)uq;
 
 	return T_CON;
@@ -826,18 +831,17 @@ lex_character_constant(void)
 	if (c == -2) {
 		/* unterminated character constant */
 		error(253);
-	} else {
+	} else if (n > sizeof(int) || (n > 1 && (pflag || hflag))) {
 		/* XXX: should rather be sizeof(TARG_INT) */
-		if (n > sizeof(int) || (n > 1 && (pflag || hflag))) {
-			/* too many characters in character constant */
-			error(71);
-		} else if (n > 1) {
-			/* multi-character character constant */
-			warning(294);
-		} else if (n == 0) {
-			/* empty character constant */
-			error(73);
-		}
+
+		/* too many characters in character constant */
+		error(71);
+	} else if (n > 1) {
+		/* multi-character character constant */
+		warning(294);
+	} else if (n == 0) {
+		/* empty character constant */
+		error(73);
 	}
 	if (n == 1) {
 		cv = (char)val;
@@ -858,17 +862,17 @@ int
 lex_wide_character_constant(void)
 {
 	static	char buf[MB_LEN_MAX + 1];
-	size_t	i, imax;
+	size_t	n, nmax;
 	int c;
 	wchar_t	wc;
 
-	imax = MB_CUR_MAX;
+	nmax = MB_CUR_MAX;
 
-	i = 0;
+	n = 0;
 	while ((c = get_escaped_char('\'')) >= 0) {
-		if (i < imax)
-			buf[i] = (char)c;
-		i++;
+		if (n < nmax)
+			buf[n] = (char)c;
+		n++;
 	}
 
 	wc = 0;
@@ -876,21 +880,19 @@ lex_wide_character_constant(void)
 	if (c == -2) {
 		/* unterminated character constant */
 		error(253);
-	} else if (c == 0) {
+	} else if (n == 0) {
 		/* empty character constant */
 		error(73);
+	} else if (n > nmax) {
+		n = nmax;
+		/* too many characters in character constant */
+		error(71);
 	} else {
-		if (i > imax) {
-			i = imax;
-			/* too many characters in character constant */
-			error(71);
-		} else {
-			buf[i] = '\0';
-			(void)mbtowc(NULL, NULL, 0);
-			if (mbtowc(&wc, buf, imax) < 0)
-				/* invalid multibyte character */
-				error(291);
-		}
+		buf[n] = '\0';
+		(void)mbtowc(NULL, NULL, 0);
+		if (mbtowc(&wc, buf, nmax) < 0)
+			/* invalid multibyte character */
+			error(291);
 	}
 
 	yylval.y_val = xcalloc(1, sizeof(*yylval.y_val));
@@ -932,6 +934,10 @@ get_escaped_char(int delim)
 			return -2;
 		}
 		return c;
+	case 0:
+		/* syntax error '%s' */
+		error(249, "EOF or null byte in literal");
+		return -2;
 	case EOF:
 		return -2;
 	case '\\':

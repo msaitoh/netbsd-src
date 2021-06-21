@@ -1,4 +1,4 @@
-/*	$NetBSD: externs1.h,v 1.109 2021/06/15 20:46:45 rillig Exp $	*/
+/*	$NetBSD: externs1.h,v 1.111 2021/06/20 20:59:08 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -338,7 +338,7 @@ extern	int	lex_input(void);
 /*
  * print.c
  */
-extern	char	*print_tnode(char *, size_t, const tnode_t *);
+const char	*scl_name(scl_t);
 
 /*
  * ckbool.c
