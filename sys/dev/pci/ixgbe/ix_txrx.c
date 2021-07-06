@@ -1976,7 +1976,8 @@ ixgbe_rxeof(struct ix_queue *que)
 			 * is cache aligned into a new mbuf, and
 			 * leave the old mbuf+cluster for re-use.
 			 */
-			if (eop && len <= IXGBE_RX_COPY_LEN) {
+			KASSERT(rx_copy_len <= IXGBE_RX_COPY_LEN);
+			if (eop && len <= rx_copy_len) {
 				sendmp = m_gethdr(M_NOWAIT, MT_DATA);
 				if (sendmp != NULL) {
 					sendmp->m_data += IXGBE_RX_COPY_ALIGN;

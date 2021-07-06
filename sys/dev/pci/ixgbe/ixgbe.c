@@ -405,6 +405,8 @@ static int ixgbe_enable_rss = 1;
 SYSCTL_INT(_hw_ix, OID_AUTO, enable_rss, CTLFLAG_RDTUN, &ixgbe_enable_rss, 0,
     "Enable Receive-Side Scaling (RSS)");
 
+uint64_t rx_copy_len = IXGBE_RX_COPY_LEN;
+
 #if 0
 static int (*ixgbe_start_locked)(struct ifnet *, struct tx_ring *);
 static int (*ixgbe_ring_empty)(struct ifnet *, pcq_t *);
@@ -1248,6 +1250,8 @@ ixgbe_attach(device_t parent, device_t dev, void *aux)
 	snprintb(buf, sizeof(buf), IXGBE_FEATURE_FLAGS, adapter->feat_en);
 	aprint_verbose_dev(dev, "feature ena %s\n", buf);
 
+	aprint_verbose_dev(dev, "IXGBE_RX_COPY_LEN = %lu (%lu)\n",
+	    IXGBE_RX_COPY_LEN, IXGBE_RX_COPY_LEN - ETHER_HDR_LEN);
 	if (pmf_device_register(dev, ixgbe_suspend, ixgbe_resume))
 		pmf_class_network_register(dev, adapter->ifp);
 	else
@@ -3367,6 +3371,12 @@ ixgbe_add_device_sysctls(struct adapter *adapter)
 	    != 0)
 		aprint_error_dev(dev, "could not create sysctl\n");
 
+	if (sysctl_createv(log, 0, &rnode, &cnode,
+	    CTLFLAG_READWRITE, CTLTYPE_QUAD,
+	    "rx_copy_len", SYSCTL_DESCR("RX Copy Length"),
+	    NULL, 0, &rx_copy_len, 0, CTL_CREATE, CTL_EOL)
+	    != 0)
+		aprint_error_dev(dev, "could not create sysctl\n");
 	if (sysctl_createv(log, 0, &rnode, &cnode,
 	    CTLFLAG_READONLY, CTLTYPE_INT,
 	    "num_rx_desc", SYSCTL_DESCR("Number of rx descriptors"),

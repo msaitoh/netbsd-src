@@ -234,4 +234,5 @@ extern void ixgbe_write_barrier(struct ixgbe_hw *);
 #define IXGBE_WRITE_BARRIER(a) \
     ixgbe_write_barrier(a)
 
+extern unsigned long rx_copy_len;
 #endif /* _IXGBE_OSDEP_H_ */
