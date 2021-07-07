@@ -185,7 +185,7 @@
  */
 #define	MPKTHSIZE		(offsetof(struct _mbuf_dummy, m_pktdat))
 #define IXGBE_RX_COPY_HDR_PADDED  ((((MPKTHSIZE - 1) / 32) + 1) * 32)
-#define IXGBE_RX_COPY_LEN         (MSIZE - IXGBE_RX_COPY_HDR_PADDED)
+#define IXGBE_RX_COPY_LEN_MAX     (MSIZE - IXGBE_RX_COPY_HDR_PADDED)
 #define IXGBE_RX_COPY_ALIGN       (IXGBE_RX_COPY_HDR_PADDED - MPKTHSIZE)
 
 /* Keep older OS drivers building... */
@@ -568,6 +568,7 @@ struct adapter {
 	u64			active_queues;
 	u32			num_rx_desc;
 	u32			rx_process_limit;
+	u32			rx_copy_len;
 	int			num_jcl;
 
 	/* Multicast array memory */

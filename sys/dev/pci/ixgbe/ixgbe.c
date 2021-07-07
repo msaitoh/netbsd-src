@@ -259,6 +259,7 @@ static int	ixgbe_sysctl_tdt_handler(SYSCTLFN_PROTO);
 static int	ixgbe_sysctl_tdh_handler(SYSCTLFN_PROTO);
 static int	ixgbe_sysctl_eee_state(SYSCTLFN_PROTO);
 static int	ixgbe_sysctl_debug(SYSCTLFN_PROTO);
+static int	ixgbe_sysctl_rx_copy_len(SYSCTLFN_PROTO);
 static int	ixgbe_sysctl_wol_enable(SYSCTLFN_PROTO);
 static int	ixgbe_sysctl_wufc(SYSCTLFN_PROTO);
 
@@ -404,8 +405,6 @@ SYSCTL_INT(_hw_ix, OID_AUTO, enable_legacy_tx, CTLFLAG_RDTUN,
 static int ixgbe_enable_rss = 1;
 SYSCTL_INT(_hw_ix, OID_AUTO, enable_rss, CTLFLAG_RDTUN, &ixgbe_enable_rss, 0,
     "Enable Receive-Side Scaling (RSS)");
-
-uint64_t rx_copy_len = IXGBE_RX_COPY_LEN;
 
 #if 0
 static int (*ixgbe_start_locked)(struct ifnet *, struct tx_ring *);
@@ -988,6 +987,9 @@ ixgbe_attach(device_t parent, device_t dev, void *aux)
 	} else
 		adapter->num_rx_desc = ixgbe_rxd;
 
+	/* Set default high limit of copying mbuf in rxeof */
+	adapter->rx_copy_len = IXGBE_RX_COPY_LEN_MAX;
+
 	adapter->num_jcl = adapter->num_rx_desc * IXGBE_JCLNUM_MULTI;
 
 	/* Allocate our TX/RX Queues */
@@ -1250,8 +1252,6 @@ ixgbe_attach(device_t parent, device_t dev, void *aux)
 	snprintb(buf, sizeof(buf), IXGBE_FEATURE_FLAGS, adapter->feat_en);
 	aprint_verbose_dev(dev, "feature ena %s\n", buf);
 
-	aprint_verbose_dev(dev, "IXGBE_RX_COPY_LEN = %lu (%lu)\n",
-	    IXGBE_RX_COPY_LEN, IXGBE_RX_COPY_LEN - ETHER_HDR_LEN);
 	if (pmf_device_register(dev, ixgbe_suspend, ixgbe_resume))
 		pmf_class_network_register(dev, adapter->ifp);
 	else
@@ -3372,10 +3372,10 @@ ixgbe_add_device_sysctls(struct adapter *adapter)
 		aprint_error_dev(dev, "could not create sysctl\n");
 
 	if (sysctl_createv(log, 0, &rnode, &cnode,
-	    CTLFLAG_READWRITE, CTLTYPE_QUAD,
+	    CTLFLAG_READWRITE, CTLTYPE_INT,
 	    "rx_copy_len", SYSCTL_DESCR("RX Copy Length"),
-	    NULL, 0, &rx_copy_len, 0, CTL_CREATE, CTL_EOL)
-	    != 0)
+	    ixgbe_sysctl_rx_copy_len, 0,
+	    (void *)adapter, 0, CTL_CREATE, CTL_EOL) != 0)
 		aprint_error_dev(dev, "could not create sysctl\n");
 	if (sysctl_createv(log, 0, &rnode, &cnode,
 	    CTLFLAG_READONLY, CTLTYPE_INT,
@@ -6182,6 +6182,30 @@ ixgbe_sysctl_debug(SYSCTLFN_ARGS)
 
 	return 0;
 } /* ixgbe_sysctl_debug */
+
+/************************************************************************
+ * ixgbe_sysctl_rx_copy_len
+ ************************************************************************/
+static int
+ixgbe_sysctl_rx_copy_len(SYSCTLFN_ARGS)
+{
+	struct sysctlnode node = *rnode;
+	struct adapter *adapter = (struct adapter *)node.sysctl_data;
+	int	       error, result = 0;
+
+	node.sysctl_data = &result;
+	error = sysctl_lookup(SYSCTLFN_CALL(&node));
+
+	if (error || newp == NULL)
+		return error;
+
+	if ((result < 0) || (result > IXGBE_RX_COPY_LEN_MAX))
+		return EINVAL;
+
+	adapter->rx_copy_len = result;
+
+	return 0;
+} /* ixgbe_sysctl_rx_copy_len */
 
 /************************************************************************
  * ixgbe_init_device_features
