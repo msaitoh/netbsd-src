@@ -3377,6 +3377,7 @@ ixgbe_add_device_sysctls(struct adapter *adapter)
 	    ixgbe_sysctl_rx_copy_len, 0,
 	    (void *)adapter, 0, CTL_CREATE, CTL_EOL) != 0)
 		aprint_error_dev(dev, "could not create sysctl\n");
+
 	if (sysctl_createv(log, 0, &rnode, &cnode,
 	    CTLFLAG_READONLY, CTLTYPE_INT,
 	    "num_rx_desc", SYSCTL_DESCR("Number of rx descriptors"),
@@ -6191,7 +6192,8 @@ ixgbe_sysctl_rx_copy_len(SYSCTLFN_ARGS)
 {
 	struct sysctlnode node = *rnode;
 	struct adapter *adapter = (struct adapter *)node.sysctl_data;
-	int	       error, result = 0;
+	int error;
+	int result = adapter->rx_copy_len;
 
 	node.sysctl_data = &result;
 	error = sysctl_lookup(SYSCTLFN_CALL(&node));
