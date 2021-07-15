@@ -1,7 +1,13 @@
-/*	$NetBSD: msg_023.c,v 1.2 2021/02/21 09:07:58 rillig Exp $	*/
+/*	$NetBSD: msg_023.c,v 1.4 2021/07/11 19:30:56 rillig Exp $	*/
 # 3 "msg_023.c"
 
-// Test for message: undefined label %s [23]
+// Test for message: undefined label '%s' [23]
 
-TODO: "Add example code that triggers the above message." /* expect: 249 */
-TODO: "Add example code that almost triggers the above message."
+void
+test(void)
+{
+	goto defined_label;
+defined_label:
+	/* expect+1: warning: undefined label 'undefined_label' [23] */
+	goto undefined_label;
+}

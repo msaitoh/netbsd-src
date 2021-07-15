@@ -1,4 +1,4 @@
-/* $NetBSD: t_fmemopen.c,v 1.4 2013/10/19 17:45:00 christos Exp $ */
+/* $NetBSD: t_fmemopen.c,v 1.6 2021/07/10 13:22:01 martin Exp $ */
 
 /*-
  * Copyright (c)2010 Takehiko NOZAKI,
@@ -964,7 +964,9 @@ ATF_TC_BODY(test19, tc)
 
 /* don't accept non nul character at end of buffer */
 			ATF_CHECK(fputc(0x1, fp) == EOF);
-			ATF_CHECK(ftello(fp) == (off_t)t->n);
+			ATF_CHECK_MSG(ftello(fp) == (off_t)t->n,
+				"%jd != %jd", (intmax_t)ftello(fp),
+				(intmax_t)t->n);
 			ATF_CHECK(feof(fp) == 0);
 
 /* accept nul character at end of buffer */

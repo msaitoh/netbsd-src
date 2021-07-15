@@ -1,7 +1,6 @@
-#	$NetBSD: mesa-which.mk,v 1.1 2019/03/10 02:29:52 mrg Exp $
+#	$NetBSD: mesa-which.mk,v 1.3 2021/07/11 20:52:06 mrg Exp $
 
-OLD_PREFIX=
+OLD_SUFFIX=
 .if ${EXTERNAL_MESALIB_DIR} == "MesaLib.old"
-OLD_PREFIX=.old
-EXTRA_DRI_DIRS=dri7
+OLD_SUFFIX=.old
 .endif

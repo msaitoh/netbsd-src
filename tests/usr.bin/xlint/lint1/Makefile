@@ -1,13 +1,19 @@
-# $NetBSD: Makefile,v 1.80 2021/07/06 17:33:07 rillig Exp $
+# $NetBSD: Makefile,v 1.89 2021/07/14 20:39:13 rillig Exp $
 
 NOMAN=		# defined
 MAX_MESSAGE=	345		# see lint1/err.c
 
 .include <bsd.own.mk>
 
+ARCHSUBDIR!=	cd ${NETBSDSRCDIR}/usr.bin/xlint/lint1 && ${MAKE} -v ARCHSUBDIR
+
 TESTSDIR=	${TESTSBASE}/usr.bin/xlint/lint1
 
 TESTS_SH=	t_integration
+TESTS_SH_SRC_t_integration=	archsubdir.sh t_integration.sh
+
+archsubdir.sh:
+	@echo archsubdir=${ARCHSUBDIR} >${.TARGET}
 
 FILESDIR=	${TESTSDIR}
 FILES+=		c11_generic_expression.c
@@ -108,6 +114,10 @@ FILES+=		d_type_question_colon.c
 FILES+=		d_typefun.c
 FILES+=		d_typename_as_var.c
 FILES+=		d_zero_sized_arrays.c
+FILES+=		decl.c
+FILES+=		decl.exp
+FILES+=		decl_arg.c
+FILES+=		decl_arg.exp
 FILES+=		decl_struct_member.c
 FILES+=		decl_struct_member.exp
 FILES+=		emit.c
@@ -126,7 +136,6 @@ FILES+=		gcc_attribute_enum.exp
 FILES+=		gcc_attribute_func.c
 FILES+=		gcc_attribute_func.exp
 FILES+=		gcc_attribute_label.c
-FILES+=		gcc_attribute_label.exp
 FILES+=		gcc_attribute_stmt.c
 FILES+=		gcc_attribute_stmt.exp
 FILES+=		gcc_attribute_type.c
@@ -137,8 +146,14 @@ FILES+=		gcc_bit_field_types.c
 FILES+=		gcc_bit_field_types.exp
 FILES+=		gcc_init_compound_literal.c
 FILES+=		gcc_init_compound_literal.exp
+FILES+=		gcc_stmt_asm.c
+FILES+=		gcc_stmt_asm.exp
 FILES+=		gcc_typeof_after_statement.c
 FILES+=		gcc_typeof_after_statement.exp
+FILES+=		init.c
+FILES+=		init.exp
+FILES+=		init_c90.c
+FILES+=		init_c90.exp
 FILES+=		lex_char.c
 FILES+=		lex_char.exp
 FILES+=		lex_char_uchar.c
@@ -148,6 +163,8 @@ FILES+=		lex_floating.c
 FILES+=		lex_floating.exp
 FILES+=		lex_integer.c
 FILES+=		lex_integer.exp
+FILES+=		lex_integer_binary.c
+FILES+=		lex_integer_binary.exp
 FILES+=		lex_integer_ilp32.c
 FILES+=		lex_integer_ilp32.exp
 FILES+=		lex_string.c
@@ -157,16 +174,26 @@ FILES+=		lex_wide_char.exp
 FILES+=		lex_wide_string.c
 FILES+=		lex_wide_string.exp
 FILES+=		${:U0 ${:U:${:Urange=${MAX_MESSAGE}}}:C,^.$,0&,:C,^..$,0&,:@i@msg_${i}.c msg_${i}.exp@:Nmsg_176.exp}
+FILES+=		msg_001_c90.c
+FILES+=		msg_001_c90.exp
+FILES+=		msg_000_c90.c
+FILES+=		msg_000_c90.exp
 FILES+=		msg_230_uchar.c
 FILES+=		msg_230_uchar.exp
 FILES+=		msg_259_ilp32.c
 FILES+=		msg_259_ilp32.exp
+FILES+=		msg_272_c90.c
+FILES+=		msg_272_c90.exp
 FILES+=		op_colon.c
 FILES+=		op_colon.exp
 FILES+=		op_shl_lp64.c
 FILES+=		op_shl_lp64.exp
 FILES+=		stmt_for.c
 FILES+=		stmt_for.exp
+FILES+=		stmt_goto.c
+FILES+=		stmt_goto.exp
+FILES+=		stmt_if.c
+FILES+=		stmt_if.exp
 
 # Note: only works for adding tests.
 # To remove a test, the $$mi file must be edited manually.
@@ -183,6 +210,6 @@ sync-mi: .PHONY
 	cvs diff "$$mi" || true
 
 accept: .PHONY
-	@sh ./accept.sh ''
+	@archsubdir=${ARCHSUBDIR:Q} sh ./accept.sh ''
 
 .include <bsd.test.mk>

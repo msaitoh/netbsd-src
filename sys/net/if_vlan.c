@@ -1,4 +1,4 @@
-/*	$NetBSD: if_vlan.c,v 1.157 2021/07/06 02:39:46 yamaguchi Exp $	*/
+/*	$NetBSD: if_vlan.c,v 1.160 2021/07/15 04:05:47 yamaguchi Exp $	*/
 
 /*
  * Copyright (c) 2000, 2001 The NetBSD Foundation, Inc.
@@ -78,7 +78,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_vlan.c,v 1.157 2021/07/06 02:39:46 yamaguchi Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_vlan.c,v 1.160 2021/07/15 04:05:47 yamaguchi Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_inet.h"
@@ -701,8 +701,6 @@ vlan_unconfig_locked(struct ifvlan *ifv, struct ifvlan_linkmib *nmib)
 	KERNEL_UNLOCK_UNLESS_NET_MPSAFE();
 #endif
 
-	if ((ifp->if_flags & IFF_PROMISC) != 0)
-		vlan_safe_ifpromisc_locked(ifp, 0);
 	if_down_locked(ifp);
 	ifp->if_capabilities = 0;
 	mutex_enter(&ifv->ifv_lock);
@@ -1323,6 +1321,7 @@ vlan_start(struct ifnet *ifp)
 	struct mbuf *m;
 	struct ifvlan_linkmib *mib;
 	struct psref psref;
+	struct ether_header *eh;
 	int error;
 
 	mib = vlan_getref_linkmib(ifv, &psref);
@@ -1343,6 +1342,21 @@ vlan_start(struct ifnet *ifp)
 		IFQ_DEQUEUE(&ifp->if_snd, m);
 		if (m == NULL)
 			break;
+
+		if (m->m_len < sizeof(*eh)) {
+			m = m_pullup(m, sizeof(*eh));
+			if (m == NULL) {
+				if_statinc(ifp, if_oerrors);
+				continue;
+			}
+		}
+
+		eh = mtod(m, struct ether_header *);
+		if (ntohs(eh->ether_type) == ETHERTYPE_VLAN) {
+			m_freem(m);
+			if_statinc(ifp, if_noproto);
+			continue;
+		}
 
 #ifdef ALTQ
 		/*
@@ -1467,9 +1481,25 @@ vlan_transmit(struct ifnet *ifp, struct mbuf *m)
 	struct ethercom *ec;
 	struct ifvlan_linkmib *mib;
 	struct psref psref;
+	struct ether_header *eh;
 	int error;
 	size_t pktlen = m->m_pkthdr.len;
 	bool mcast = (m->m_flags & M_MCAST) != 0;
+
+	if (m->m_len < sizeof(*eh)) {
+		m = m_pullup(m, sizeof(*eh));
+		if (m == NULL) {
+			if_statinc(ifp, if_oerrors);
+			return ENOBUFS;
+		}
+	}
+
+	eh = mtod(m, struct ether_header *);
+	if (ntohs(eh->ether_type) == ETHERTYPE_VLAN) {
+		m_freem(m);
+		if_statinc(ifp, if_noproto);
+		return EPROTONOSUPPORT;
+	}
 
 	mib = vlan_getref_linkmib(ifv, &psref);
 	if (mib == NULL) {
@@ -1622,6 +1652,14 @@ vlan_input(struct ifnet *ifp, struct mbuf *m)
 			    "dropping packet.\n", ifp->if_xname);
 			return;
 		}
+
+		if (m_makewritable(&m, 0,
+		    sizeof(struct ether_vlan_header), M_DONTWAIT)) {
+			m_freem(m);
+			if_statinc(ifp, if_ierrors);
+			return;
+		}
+
 		evl = mtod(m, struct ether_vlan_header *);
 		KASSERT(ntohs(evl->evl_encap_proto) == ETHERTYPE_VLAN);
 

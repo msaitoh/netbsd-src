@@ -1,4 +1,4 @@
-/* $NetBSD: lint1.h,v 1.112 2021/07/06 04:44:20 rillig Exp $ */
+/* $NetBSD: lint1.h,v 1.114 2021/07/10 17:35:54 rillig Exp $ */
 
 /*
  * Copyright (c) 1996 Christopher G. Demetriou.  All Rights Reserved.
@@ -244,7 +244,7 @@ typedef	struct sym {
 	pos_t	s_set_pos;	/* position of first initialization */
 	pos_t	s_use_pos;	/* position of first use */
 	symt_t	s_kind;		/* type of symbol */
-	void   *s_keyword;
+	const struct kwtab *s_keyword;
 	bool	s_bitfield : 1;
 	bool	s_set : 1;	/* variable set, label defined */
 	bool	s_used : 1;	/* variable/label used */
@@ -357,7 +357,7 @@ typedef	struct dinfo {
 	tspec_t	d_sign_mod;	/* SIGNED or UNSIGN */
 	tspec_t	d_rank_mod;	/* SHORT, LONG or QUAD */
 	scl_t	d_scl;		/* storage class */
-	type_t	*d_type;	/* after deftyp() pointer to the type used
+	type_t	*d_type;	/* after end_type() pointer to the type used
 				   for all declarators */
 	sym_t	*d_redeclared_symbol;
 	int	d_offset;	/* offset of next structure member */

@@ -1,4 +1,4 @@
-/*	$NetBSD: externs1.h,v 1.115 2021/07/06 04:44:20 rillig Exp $	*/
+/*	$NetBSD: externs1.h,v 1.117 2021/07/14 17:07:24 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -155,8 +155,8 @@ extern	void	add_attr_used(void);
 extern	void	begin_declaration_level(scl_t);
 extern	void	end_declaration_level(void);
 extern	void	setasm(void);
-extern	void	clrtyp(void);
-extern	void	deftyp(void);
+extern	void	begin_type(void);
+extern	void	end_type(void);
 extern	int	length(const type_t *, const char *);
 extern	int	alignment_in_bits(const type_t *);
 extern	sym_t	*lnklst(sym_t *, sym_t *);
@@ -212,6 +212,7 @@ extern	tnode_t	*build_generic_selection(const tnode_t *,
 		    struct generic_association *);
 
 extern	tnode_t	*build(op_t, tnode_t *, tnode_t *);
+extern	tnode_t	*build_member_access(tnode_t *, op_t, sbuf_t *);
 extern	tnode_t	*cconv(tnode_t *);
 extern	bool	is_typeok_bool_operand(const tnode_t *);
 extern	bool	typeok(op_t, int, const tnode_t *, const tnode_t *);

@@ -1,5 +1,5 @@
 #! /bin/sh
-#	$NetBSD: msg_xlat.sh,v 1.3 2021/06/29 08:02:50 cjep Exp $
+#	$NetBSD: msg_xlat.sh,v 1.5 2021/07/12 19:03:20 kre Exp $
 
 #-
 # Copyright (c) 2003 The NetBSD Foundation, Inc.
@@ -210,7 +210,7 @@ while
 do
 	eval msg=\${MSGTEXT_$msgnum}
 	if [ -z "$msg" ]; then continue; fi
-	printf '%s\0' $msg
+	printf '%s\0' "$msg"
 done
 
 exit $rval

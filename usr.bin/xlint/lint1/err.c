@@ -1,4 +1,4 @@
-/*	$NetBSD: err.c,v 1.126 2021/07/05 19:53:43 rillig Exp $	*/
+/*	$NetBSD: err.c,v 1.129 2021/07/13 22:01:34 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -37,7 +37,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: err.c,v 1.126 2021/07/05 19:53:43 rillig Exp $");
+__RCSID("$NetBSD: err.c,v 1.129 2021/07/13 22:01:34 rillig Exp $");
 #endif
 
 #include <sys/types.h>
@@ -77,7 +77,7 @@ const char *const msgs[] = {
 	"negative array dimension (%d)",			      /* 20 */
 	"redeclaration of formal parameter %s",			      /* 21 */
 	"incomplete or misplaced function definition",		      /* 22 */
-	"undefined label %s",					      /* 23 */
+	"undefined label '%s'",					      /* 23 */
 	"cannot initialize function: %s",			      /* 24 */
 	"cannot initialize typedef: %s",			      /* 25 */
 	"cannot initialize extern declaration: %s",		      /* 26 */
@@ -85,7 +85,7 @@ const char *const msgs[] = {
 	"redefinition of %s",					      /* 28 */
 	"previously declared extern, becomes static: %s",	      /* 29 */
 	"redeclaration of %s; ANSI C requires static",		      /* 30 */
-	"argument '%s' has type '%s'",				      /* 31 */
+	"'%s' has incomplete type '%s'",			      /* 31 */
 	"argument type defaults to 'int': %s",			      /* 32 */
 	"duplicate member name: %s",				      /* 33 */
 	"nonportable bit-field type '%s'",			      /* 34 */
@@ -286,7 +286,7 @@ const char *const msgs[] = {
 	"converting '%s' to '%s' is questionable",		      /* 229 */
 	"nonportable character comparison, op %s",		      /* 230 */
 	"argument '%s' unused in function '%s'",		      /* 231 */
-	"label %s unused in function %s",			      /* 232 */
+	"label '%s' unused in function '%s'",			      /* 232 */
 	"struct %s never defined",				      /* 233 */
 	"union %s never defined",				      /* 234 */
 	"enum %s never defined",				      /* 235 */
@@ -569,6 +569,7 @@ internal_error(const char *file, int line, const char *msg, ...)
 	const	char *fn;
 
 	fn = lbasename(curr_pos.p_file);
+	fflush(stdout);
 	(void)fprintf(stderr, "lint: internal error in %s:%d near %s:%d: ",
 	    file, line, fn, curr_pos.p_line);
 	va_start(ap, msg);
@@ -585,6 +586,7 @@ assert_failed(const char *file, int line, const char *func, const char *cond)
 	const	char *fn;
 
 	fn = lbasename(curr_pos.p_file);
+	fflush(stdout);
 	(void)fprintf(stderr,
 	    "lint: assertion \"%s\" failed in %s at %s:%d near %s:%d\n",
 	    cond, func, file, line, fn, curr_pos.p_line);

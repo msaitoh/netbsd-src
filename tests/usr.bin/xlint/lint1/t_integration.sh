@@ -1,4 +1,4 @@
-# $NetBSD: t_integration.sh,v 1.66 2021/06/29 13:58:13 rillig Exp $
+# $NetBSD: t_integration.sh,v 1.68 2021/07/13 18:50:16 rillig Exp $
 #
 # Copyright (c) 2008, 2010 The NetBSD Foundation, Inc.
 # All rights reserved.
@@ -26,8 +26,7 @@
 #
 
 lint1=/usr/libexec/lint1
-
-: "${machine_arch:="$(sysctl -n hw.machine_arch)"}"
+: "${archsubdir:=archsubdir_must_be_set}"
 
 
 configure_test_case()
@@ -37,7 +36,7 @@ configure_test_case()
 	# shellcheck disable=SC2016
 	awk='
 		BEGIN {
-			# see usr.bin/xlint/arch/.../targparam.h
+			# see usr.bin/xlint/arch/*/targparam.h
 			platform["aarch64"]	= "schar lp64  long ldbl-128"
 			platform["alpha"]	= "schar lp64  long ldbl-64"
 			platform["arm"]		= "uchar ilp32 long ldbl-64"
@@ -65,22 +64,20 @@ configure_test_case()
 
 		function platform_has(prop) {
 			if (!match(prop, /^(schar|uchar|ilp32|lp64|int|long|ldbl-64|ldbl-96|ldbl-128)$/)) {
-				printf("bad property '\''%s'\''\n", prop) > "/dev/stderr";
-				exit(1);
+				printf("bad property '\''%s'\''\n", prop) > "/dev/stderr"
+				exit(1)
 			}
-			if (platform[machine_arch] == "") {
-				printf("bad machine_arch '\''%s'\''\n", machine_arch) > "/dev/stderr";
-				exit(1);
+			if (platform[archsubdir] == "") {
+				printf("bad archsubdir '\''%s'\''\n", archsubdir) > "/dev/stderr"
+				exit(1)
 			}
-			return match(" " platform[machine_arch] " ", " " prop " ")
+			return match(" " platform[archsubdir] " ", " " prop " ")
 		}
 
 		BEGIN {
-			machine_arch = "'"$machine_arch"'"
+			archsubdir = "'"$archsubdir"'"
 			flags = "-g -S -w"
-			seen_only_on_arch = 0
-			match_only_on_arch = 0
-			skip = 0
+			skip = "no"
 		}
 		$1 == "/*" && $2 ~ /^lint1-/ && $NF == "*/" {
 			if ($2 == "lint1-flags:" || $2 == "lint1-extra-flags:") {
@@ -89,29 +86,21 @@ configure_test_case()
 				for (i = 3; i < NF; i++)
 					flags = flags " " $i
 			}
-			if ($2 == "lint1-only-if-arch") {
-				seen_only_on_arch = 1
-				if ($3 == machine_arch)
-					match_only_on_arch = 1
-			}
-			if ($2 == "lint1-skip-if-arch" && $3 == machine_arch)
-				skip = 1
 			if ($2 == "lint1-only-if" && !platform_has($3))
-				skip = 1
+				skip = "yes"
 			if ($2 == "lint1-skip-if" && platform_has($3))
-				skip = 1
+				skip = "yes"
 		}
 
 		END {
-			if (seen_only_on_arch && !match_only_on_arch)
-				skip = 1
-
 			printf("flags='\''%s'\''\n", flags)
-			printf("skip=%s\n", skip ? "yes" : "no")
+			printf("skip=%s\n", skip)
 		}
 	'
 
-	eval "$(awk "$awk" "$1")"
+	local config
+	config="$(awk "$awk" "$1")" || exit 1
+	eval "$config"
 }
 
 # shellcheck disable=SC2155
@@ -129,11 +118,10 @@ check_lint1()
 		wrk_ln='/dev/null'
 	fi
 
-	configure_test_case "$src"
+	configure_test_case "$src"	# sets 'skip' and 'flags'
 
 	if [ "$skip" = "yes" ]; then
-		atf_check -o 'ignore' echo 'skipped'
-		return
+		atf_skip "unsuitable platform"
 	fi
 
 	if [ -f "$exp" ]; then
