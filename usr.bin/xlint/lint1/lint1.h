@@ -1,4 +1,4 @@
-/* $NetBSD: lint1.h,v 1.114 2021/07/10 17:35:54 rillig Exp $ */
+/* $NetBSD: lint1.h,v 1.121 2021/08/01 08:03:43 rillig Exp $ */
 
 /*
  * Copyright (c) 1996 Christopher G. Demetriou.  All Rights Reserved.
@@ -192,6 +192,7 @@ struct lint1_type {
 };
 
 #define	t_dim	t_u._t_dim
+/* TODO: rename t_str to t_sou, to avoid confusing it with strings. */
 #define	t_str	t_u._t_str
 #define	t_enum	t_u._t_enum
 #define	t_args	t_u._t_args
@@ -209,11 +210,11 @@ typedef	enum {
 } symt_t;
 
 /*
- * storage classes
+ * storage classes and related things
  */
 typedef enum {
 	NOSCL,
-	EXTERN,		/* external symbols (indep. of decl_t) */
+	EXTERN,		/* external symbols (independent of decl_t) */
 	STATIC,		/* static symbols (local and global) */
 	AUTO,		/* automatic symbols (except register) */
 	REG,		/* register */
@@ -264,6 +265,7 @@ typedef	struct sym {
 	type_t	*s_type;
 	val_t	s_value;	/* value (if enum or bool constant) */
 	union {
+		/* XXX: what is the difference to s_type->t_str? */
 		struct_or_union	*_s_st;
 		enumeration	*_s_et;
 		tspec_t	_s_tsp;	/* type (only for keywords) */
@@ -291,7 +293,6 @@ typedef	struct sym {
 typedef	struct sbuf {
 	const	char *sb_name;		/* name of symbol */
 	size_t	sb_len;			/* length (without '\0') */
-	int	sb_hash;		/* hash value */
 	sym_t	*sb_sym;		/* symbol table entry */
 	struct	sbuf *sb_next;		/* for freelist */
 } sbuf_t;
@@ -360,15 +361,15 @@ typedef	struct dinfo {
 	type_t	*d_type;	/* after end_type() pointer to the type used
 				   for all declarators */
 	sym_t	*d_redeclared_symbol;
-	int	d_offset;	/* offset of next structure member */
-	int	d_sou_align_in_bits; /* alignment required for current
+	u_int	d_offset;	/* offset of next structure member */
+	u_int	d_sou_align_in_bits; /* alignment required for current
 				 * structure */
 	scl_t	d_ctx;		/* context of declaration */
 	bool	d_const : 1;	/* const in declaration specifiers */
 	bool	d_volatile : 1;	/* volatile in declaration specifiers */
 	bool	d_inline : 1;	/* inline in declaration specifiers */
-	bool	d_mscl : 1;	/* multiple storage classes */
-	bool	d_terr : 1;	/* invalid type combination */
+	bool	d_multiple_storage_classes : 1; /* reported in end_type */
+	bool	d_invalid_type_combination : 1;
 	bool	d_nonempty_decl : 1; /* if at least one tag is declared
 				 * ... in the current function decl. */
 	bool	d_vararg : 1;
@@ -444,8 +445,8 @@ typedef struct control_statement {
 	pos_t	c_for_expr3_pos;	/* position of end of loop expr */
 	pos_t	c_for_expr3_csrc_pos;	/* same for csrc_pos */
 
-	struct	control_statement *c_surrounding;
-} cstk_t;
+	struct control_statement *c_surrounding;
+} control_statement;
 
 typedef struct {
 	size_t lo;			/* inclusive */
@@ -554,6 +555,13 @@ is_nonzero(const tnode_t *tn)
 static inline uint64_t
 bit(unsigned i)
 {
+	/*
+	 * TODO: Add proper support for INT128.
+	 * This involves changing val_t to 128 bits.
+	 */
+	if (i >= 64)
+		return 0;	/* XXX: not correct for INT128 and UINT128 */
+
 	lint_assert(i < 64);
 	return (uint64_t)1 << i;
 }

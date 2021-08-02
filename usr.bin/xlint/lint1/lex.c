@@ -1,4 +1,4 @@
-/* $NetBSD: lex.c,v 1.55 2021/07/11 19:24:41 rillig Exp $ */
+/* $NetBSD: lex.c,v 1.62 2021/08/01 08:03:43 rillig Exp $ */
 
 /*
  * Copyright (c) 1996 Christopher G. Demetriou.  All Rights Reserved.
@@ -38,7 +38,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: lex.c,v 1.55 2021/07/11 19:24:41 rillig Exp $");
+__RCSID("$NetBSD: lex.c,v 1.62 2021/08/01 08:03:43 rillig Exp $");
 #endif
 
 #include <ctype.h>
@@ -82,9 +82,7 @@ lex_next_line(void)
 {
 	curr_pos.p_line++;
 	curr_pos.p_uniq = 0;
-#ifdef DEBUG
-	printf("parsing %s:%d\n", curr_pos.p_file, curr_pos.p_line);
-#endif
+	debug_step("parsing %s:%d", curr_pos.p_file, curr_pos.p_line);
 	if (curr_pos.p_file == csrc_pos.p_file) {
 		csrc_pos.p_line++;
 		csrc_pos.p_uniq = 0;
@@ -134,34 +132,26 @@ static	struct	kwtab {
 	bool	kw_attr : 1;	/* GCC attribute, keyword */
 	u_int	kw_deco : 3;	/* 1 = name, 2 = __name, 4 = __name__ */
 } kwtab[] = {
-#ifdef INT128_SIZE
-	kwdef_type(	"__int128_t",	INT128,			0,1,0,0,1),
-	kwdef_type(	"__uint128_t",	UINT128,		0,1,0,0,1),
-#endif
-	kwdef_tqual(	"__thread",	THREAD,			0,0,1,0,1),
+	kwdef_gcc_attr(	"alias",	T_AT_ALIAS),
 	kwdef_keyword(	"_Alignas",	T_ALIGNAS),
 	kwdef_keyword(	"_Alignof",	T_ALIGNOF),
-	kwdef_type(	"_Bool",	BOOL,			0,1,0,0,1),
-	kwdef_type(	"_Complex",	COMPLEX,		0,1,0,0,1),
-	kwdef_token(	"_Generic",	T_GENERIC,		0,1,0,0,1),
-	kwdef_token(	"_Noreturn",	T_NORETURN,		0,1,0,0,1),
-	kwdef_tqual(	"_Thread_local", THREAD,		0,1,0,0,1),
-	kwdef_gcc_attr(	"alias",	T_AT_ALIAS),
 	kwdef_gcc_attr(	"aligned",	T_AT_ALIGNED),
-	kwdef_token(	"alignof",	T_ALIGNOF,		0,0,0,0,4),
+	kwdef_token(	"__alignof__",	T_ALIGNOF,		0,0,0,0,1),
 	kwdef_gcc_attr(	"alloc_size",	T_AT_ALLOC_SIZE),
 	kwdef_gcc_attr(	"always_inline",T_AT_ALWAYS_INLINE),
 	kwdef_token(	"asm",		T_ASM,			0,0,1,0,7),
 	kwdef_token(	"attribute",	T_ATTRIBUTE,		0,0,1,0,6),
 	kwdef_sclass(	"auto",		AUTO,			0,0,0,0,1),
+	kwdef_type(	"_Bool",	BOOL,			0,1,0,0,1),
 	kwdef_gcc_attr(	"bounded",	T_AT_BOUNDED),
 	kwdef_keyword(	"break",	T_BREAK),
 	kwdef_gcc_attr(	"buffer",	T_AT_BUFFER),
-	kwdef_token(	"builtin_offsetof", T_BUILTIN_OFFSETOF,	0,0,1,0,2),
+	kwdef_token(	"__builtin_offsetof", T_BUILTIN_OFFSETOF, 0,0,1,0,1),
 	kwdef_keyword(	"case",		T_CASE),
 	kwdef_type(	"char",		CHAR,			0,0,0,0,1),
 	kwdef_gcc_attr(	"cold",		T_AT_COLD),
 	kwdef_gcc_attr(	"common",	T_AT_COMMON),
+	kwdef_type(	"_Complex",	COMPLEX,		0,1,0,0,1),
 	kwdef_tqual(	"const",	CONST,			1,0,0,0,7),
 	kwdef_gcc_attr(	"constructor",	T_AT_CONSTRUCTOR),
 	kwdef_keyword(	"continue",	T_CONTINUE),
@@ -172,21 +162,25 @@ static	struct	kwtab {
 	kwdef_type(	"double",	DOUBLE,			0,0,0,0,1),
 	kwdef_keyword(	"else",		T_ELSE),
 	kwdef_keyword(	"enum",		T_ENUM),
-	kwdef_token(	"extension",	T_EXTENSION,		0,0,1,0,4),
+	kwdef_token(	"__extension__",T_EXTENSION,		0,0,1,0,1),
 	kwdef_sclass(	"extern",	EXTERN,			0,0,0,0,1),
 	kwdef_gcc_attr(	"fallthrough",	T_AT_FALLTHROUGH),
 	kwdef_type(	"float",	FLOAT,			0,0,0,0,1),
 	kwdef_keyword(	"for",		T_FOR),
 	kwdef_gcc_attr(	"format",	T_AT_FORMAT),
 	kwdef_gcc_attr(	"format_arg",	T_AT_FORMAT_ARG),
+	kwdef_token(	"_Generic",	T_GENERIC,		0,1,0,0,1),
 	kwdef_gcc_attr(	"gnu_inline",	T_AT_GNU_INLINE),
 	kwdef_gcc_attr(	"gnu_printf",	T_AT_FORMAT_GNU_PRINTF),
 	kwdef_keyword(	"goto",		T_GOTO),
 	kwdef_gcc_attr(	"hot",		T_AT_HOT),
 	kwdef_keyword(	"if",		T_IF),
-	kwdef_token(	"imag",		T_IMAG,			0,0,1,0,4),
+	kwdef_token(	"__imag__",	T_IMAG,			0,0,1,0,1),
 	kwdef_sclass(	"inline",	INLINE,			0,1,0,0,7),
 	kwdef_type(	"int",		INT,			0,0,0,0,1),
+#ifdef INT128_SIZE
+	kwdef_type(	"__int128_t",	INT128,			0,1,0,0,1),
+#endif
 	kwdef_type(	"long",		LONG,			0,0,0,0,1),
 	kwdef_gcc_attr(	"malloc",	T_AT_MALLOC),
 	kwdef_gcc_attr(	"may_alias",	T_AT_MAY_ALIAS),
@@ -197,15 +191,16 @@ static	struct	kwtab {
 	kwdef_gcc_attr(	"noinline",	T_AT_NOINLINE),
 	kwdef_gcc_attr(	"nonnull",	T_AT_NONNULL),
 	kwdef_gcc_attr(	"nonstring",	T_AT_NONSTRING),
+	kwdef_token(	"_Noreturn",	T_NORETURN,		0,1,0,0,1),
 	kwdef_gcc_attr(	"noreturn",	T_AT_NORETURN),
 	kwdef_gcc_attr(	"nothrow",	T_AT_NOTHROW),
 	kwdef_gcc_attr(	"optimize",	T_AT_OPTIMIZE),
 	kwdef_gcc_attr(	"packed",	T_AT_PACKED),
-	kwdef_token(	"packed",	T_PACKED,		0,0,0,0,2),
+	kwdef_token(	"__packed",	T_PACKED,		0,0,0,0,1),
 	kwdef_gcc_attr(	"pcs",		T_AT_PCS),
 	kwdef_gcc_attr(	"printf",	T_AT_FORMAT_PRINTF),
 	kwdef_gcc_attr(	"pure",		T_AT_PURE),
-	kwdef_token(	"real",		T_REAL,			0,0,1,0,4),
+	kwdef_token(	"__real__",	T_REAL,			0,0,1,0,1),
 	kwdef_sclass(	"register",	REG,			0,0,0,0,1),
 	kwdef_tqual(	"restrict",	RESTRICT,		0,1,0,0,5),
 	kwdef_keyword(	"return",	T_RETURN),
@@ -222,12 +217,17 @@ static	struct	kwtab {
 	kwdef_gcc_attr(	"string",	T_AT_STRING),
 	kwdef("struct",	T_STRUCT_OR_UNION, 0,	STRUCT,	0,	0,0,0,0,1),
 	kwdef_keyword(	"switch",	T_SWITCH),
-	kwdef_token(	"symbolrename",	T_SYMBOLRENAME,		0,0,0,0,2),
+	kwdef_token(	"__symbolrename",	T_SYMBOLRENAME,	0,0,0,0,1),
 	kwdef_gcc_attr(	"syslog",	T_AT_FORMAT_SYSLOG),
-	kwdef_gcc_attr(	"transparent_union", T_AT_TUNION),
+	kwdef_tqual(	"__thread",	THREAD,			0,0,1,0,1),
+	kwdef_tqual(	"_Thread_local", THREAD,		0,1,0,0,1),
 	kwdef_gcc_attr(	"tls_model",	T_AT_TLS_MODEL),
+	kwdef_gcc_attr(	"transparent_union", T_AT_TUNION),
 	kwdef_sclass(	"typedef",	TYPEDEF,		0,0,0,0,1),
 	kwdef_token(	"typeof",	T_TYPEOF,		0,0,1,0,7),
+#ifdef INT128_SIZE
+	kwdef_type(	"__uint128_t",	UINT128,		0,1,0,0,1),
+#endif
 	kwdef("union",	T_STRUCT_OR_UNION, 0,	UNION,	0,	0,0,0,0,1),
 	kwdef_type(	"unsigned",	UNSIGN,			0,0,0,0,1),
 	kwdef_gcc_attr(	"unused",	T_AT_UNUSED),
@@ -259,10 +259,31 @@ symt_t	symtyp;
 
 
 static void
+symtab_add(sym_t *sym)
+{
+	size_t h;
+
+	h = hash(sym->s_name);
+	if ((sym->s_link = symtab[h]) != NULL)
+		symtab[h]->s_rlink = &sym->s_link;
+	sym->s_rlink = &symtab[h];
+	symtab[h] = sym;
+}
+
+static void
+symtab_remove(sym_t *sym)
+{
+
+	if ((*sym->s_rlink = sym->s_link) != NULL)
+		sym->s_link->s_rlink = sym->s_rlink;
+	sym->s_link = NULL;
+}
+
+
+static void
 add_keyword(const struct kwtab *kw, u_int deco)
 {
 	sym_t *sym;
-	size_t h;
 	char buf[256];
 	const char *name;
 
@@ -298,11 +319,8 @@ add_keyword(const struct kwtab *kw, u_int deco)
 	} else if (kw->kw_token == T_QUAL) {
 		sym->s_tqual = kw->kw_tqual;
 	}
-	h = hash(sym->s_name);
-	if ((sym->s_link = symtab[h]) != NULL)
-		symtab[h]->s_rlink = &sym->s_link;
-	sym->s_rlink = &symtab[h];
-	symtab[h] = sym;
+
+	symtab_add(sym);
 }
 
 /*
@@ -420,7 +438,6 @@ lex_name(const char *yytext, size_t yyleng)
 	sb = allocsb();
 	sb->sb_name = yytext;
 	sb->sb_len = yyleng;
-	sb->sb_hash = hash(yytext);
 	if ((sym = search(sb)) != NULL && sym->s_keyword != NULL) {
 		freesb(sb);
 		return keyw(sym);
@@ -448,17 +465,22 @@ lex_name(const char *yytext, size_t yyleng)
 static sym_t *
 search(sbuf_t *sb)
 {
-	sym_t	*sym;
+	int h;
+	sym_t *sym;
+	const struct kwtab *kw;
 
-	for (sym = symtab[sb->sb_hash]; sym != NULL; sym = sym->s_link) {
-		if (strcmp(sym->s_name, sb->sb_name) == 0) {
-			if (sym->s_keyword != NULL) {
-				const struct kwtab *kw = sym->s_keyword;
-				if (!kw->kw_attr || attron)
-					return sym;
-			} else if (!attron && sym->s_kind == symtyp)
-				return sym;
-		}
+	h = hash(sb->sb_name);
+	for (sym = symtab[h]; sym != NULL; sym = sym->s_link) {
+		if (strcmp(sym->s_name, sb->sb_name) != 0)
+			continue;
+		kw = sym->s_keyword;
+
+		if (kw != NULL && !kw->kw_attr)
+			return sym;
+		if (kw != NULL && attron)
+			return sym;
+		if (kw == NULL && !attron && sym->s_kind == symtyp)
+			return sym;
 	}
 
 	return NULL;
@@ -1377,15 +1399,15 @@ lex_wide_string(void)
 }
 
 /*
- * As noted above the scanner does not create new symbol table entries
+ * As noted above, the scanner does not create new symbol table entries
  * for symbols it cannot find in the symbol table. This is to avoid
  * putting undeclared symbols into the symbol table if a syntax error
  * occurs.
  *
- * getsym() is called as soon as it is probably ok to put the symbol to the
+ * getsym() is called as soon as it is probably ok to put the symbol in the
  * symbol table. It is still possible that symbols are put in the symbol
  * table that are not completely declared due to syntax errors. To avoid too
- * many problems in this case, symbols get type int in getsym().
+ * many problems in this case, symbols get type 'int' in getsym().
  *
  * XXX calls to getsym() should be delayed until decl1*() is called.
  */
@@ -1443,10 +1465,7 @@ getsym(sbuf_t *sb)
 
 	symtyp = FVFT;
 
-	if ((sym->s_link = symtab[sb->sb_hash]) != NULL)
-		symtab[sb->sb_hash]->s_rlink = &sym->s_link;
-	sym->s_rlink = &symtab[sb->sb_hash];
-	symtab[sb->sb_hash] = sym;
+	symtab_add(sym);
 
 	*di->d_ldlsym = sym;
 	di->d_ldlsym = &sym->s_dlnxt;
@@ -1463,13 +1482,11 @@ sym_t *
 mktempsym(type_t *t)
 {
 	static int n = 0;
-	int h;
 	char *s = getlblk(block_level, 64);
 	sym_t *sym = getblk(sizeof(*sym));
 	scl_t scl;
 
 	(void)snprintf(s, 64, "%.8d_tmp", n++);
-	h = hash(s);
 
 	scl = dcs->d_scl;
 	if (scl == NOSCL)
@@ -1483,10 +1500,7 @@ mktempsym(type_t *t)
 	sym->s_used = true;
 	sym->s_set = true;
 
-	if ((sym->s_link = symtab[h]) != NULL)
-		symtab[h]->s_rlink = &sym->s_link;
-	sym->s_rlink = &symtab[h];
-	symtab[h] = sym;
+	symtab_add(sym);
 
 	*dcs->d_ldlsym = sym;
 	dcs->d_ldlsym = &sym->s_dlnxt;
@@ -1494,19 +1508,17 @@ mktempsym(type_t *t)
 	return sym;
 }
 
-/*
- * Remove a symbol forever from the symbol table. s_block_level
- * is set to -1 to avoid that the symbol will later be put
- * back to the symbol table.
- */
+/* Remove a symbol forever from the symbol table. */
 void
 rmsym(sym_t *sym)
 {
 
-	if ((*sym->s_rlink = sym->s_link) != NULL)
-		sym->s_link->s_rlink = sym->s_rlink;
+	debug_step("rmsym '%s' %d '%s'",
+	    sym->s_name, (int)sym->s_kind, type_name(sym->s_type));
+	symtab_remove(sym);
+
+	/* avoid that the symbol will later be put back to the symbol table */
 	sym->s_block_level = -1;
-	sym->s_link = NULL;
 }
 
 /*
@@ -1520,9 +1532,10 @@ rmsyms(sym_t *syms)
 
 	for (sym = syms; sym != NULL; sym = sym->s_dlnxt) {
 		if (sym->s_block_level != -1) {
-			if ((*sym->s_rlink = sym->s_link) != NULL)
-				sym->s_link->s_rlink = sym->s_rlink;
-			sym->s_link = NULL;
+			debug_step("rmsyms '%s' %d '%s'",
+			    sym->s_name, (int)sym->s_kind,
+			    type_name(sym->s_type));
+			symtab_remove(sym);
 			sym->s_rlink = NULL;
 		}
 	}
@@ -1534,13 +1547,10 @@ rmsyms(sym_t *syms)
 void
 inssym(int bl, sym_t *sym)
 {
-	int	h;
 
-	h = hash(sym->s_name);
-	if ((sym->s_link = symtab[h]) != NULL)
-		symtab[h]->s_rlink = &sym->s_link;
-	sym->s_rlink = &symtab[h];
-	symtab[h] = sym;
+	debug_step("inssym '%s' %d '%s'",
+	    sym->s_name, sym->s_kind, type_name(sym->s_type));
+	symtab_add(sym);
 	sym->s_block_level = bl;
 	lint_assert(sym->s_link == NULL ||
 		    sym->s_block_level >= sym->s_link->s_block_level);
@@ -1562,10 +1572,8 @@ cleanup(void)
 	for (i = 0; i < HSHSIZ1; i++) {
 		for (sym = symtab[i]; sym != NULL; sym = nsym) {
 			nsym = sym->s_link;
-			if (sym->s_block_level >= 1) {
-				if ((*sym->s_rlink = nsym) != NULL)
-					nsym->s_rlink = sym->s_rlink;
-			}
+			if (sym->s_block_level >= 1)
+				symtab_remove(sym);
 		}
 	}
 
@@ -1579,10 +1587,10 @@ cleanup(void)
 sym_t *
 pushdown(const sym_t *sym)
 {
-	int	h;
 	sym_t	*nsym;
 
-	h = hash(sym->s_name);
+	debug_step("pushdown '%s' %d '%s'",
+	    sym->s_name, (int)sym->s_kind, type_name(sym->s_type));
 	nsym = getblk(sizeof(*nsym));
 	lint_assert(sym->s_block_level <= block_level);
 	nsym->s_name = sym->s_name;
@@ -1590,10 +1598,7 @@ pushdown(const sym_t *sym)
 	nsym->s_kind = sym->s_kind;
 	nsym->s_block_level = block_level;
 
-	if ((nsym->s_link = symtab[h]) != NULL)
-		symtab[h]->s_rlink = &nsym->s_link;
-	nsym->s_rlink = &symtab[h];
-	symtab[h] = nsym;
+	symtab_add(nsym);
 
 	*dcs->d_ldlsym = nsym;
 	dcs->d_ldlsym = &nsym->s_dlnxt;

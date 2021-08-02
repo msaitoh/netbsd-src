@@ -1,4 +1,4 @@
-/*	$NetBSD: decl.c,v 1.5 2021/07/14 20:39:13 rillig Exp $	*/
+/*	$NetBSD: decl.c,v 1.12 2021/07/25 22:03:42 rillig Exp $	*/
 # 3 "decl.c"
 
 /*
@@ -122,5 +122,51 @@ unused(void)
 /* LINTED */
 static void
 unused_linted(void)
+{
+}
+
+/* covers 'type_qualifier_list: type_qualifier_list type_qualifier' */
+int *const volatile cover_type_qualifier_list;
+
+_Bool bool;
+char plain_char;
+signed char signed_char;
+unsigned char unsigned_char;
+short signed_short;
+unsigned short unsigned_short;
+int signed_int;
+unsigned int unsigned_int;
+long signed_long;
+unsigned long unsigned_long;
+struct {
+	int member;
+} unnamed_struct;
+
+/*
+ * Before decl.c 1.201 from 2021-07-15, lint crashed with an internal error
+ * in end_type.
+ */
+unsigned long sizes =
+    sizeof(const typeof(bool)) +
+    sizeof(const typeof(plain_char)) +
+    sizeof(const typeof(signed_char)) +
+    sizeof(const typeof(unsigned_char)) +
+    sizeof(const typeof(signed_short)) +
+    sizeof(const typeof(unsigned_short)) +
+    sizeof(const typeof(signed_int)) +
+    sizeof(const typeof(unsigned_int)) +
+    sizeof(const typeof(signed_long)) +
+    sizeof(const typeof(unsigned_long)) +
+    sizeof(const typeof(unnamed_struct));
+
+/* expect+1: syntax error 'int' [249] */
+thread int thread_int;
+__thread int thread_int;
+/* expect+1: syntax error 'int' [249] */
+__thread__ int thread_int;
+
+/* expect+2: warning: static function cover_func_declarator unused [236] */
+static
+cover_func_declarator(void)
 {
 }

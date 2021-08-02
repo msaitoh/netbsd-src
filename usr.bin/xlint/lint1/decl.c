@@ -1,4 +1,4 @@
-/* $NetBSD: decl.c,v 1.199 2021/07/13 22:01:34 rillig Exp $ */
+/* $NetBSD: decl.c,v 1.217 2021/08/01 18:37:29 rillig Exp $ */
 
 /*
  * Copyright (c) 1996 Christopher G. Demetriou.  All Rights Reserved.
@@ -38,7 +38,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: decl.c,v 1.199 2021/07/13 22:01:34 rillig Exp $");
+__RCSID("$NetBSD: decl.c,v 1.217 2021/08/01 18:37:29 rillig Exp $");
 #endif
 
 #include <sys/param.h>
@@ -64,8 +64,7 @@ dinfo_t	*dcs;
 
 static	type_t	*tdeferr(type_t *, tspec_t);
 static	void	settdsym(type_t *, sym_t *);
-static	tspec_t	merge_type_specifiers(tspec_t, tspec_t);
-static	void	align(int, int);
+static	void	align(u_int, u_int);
 static	sym_t	*newtag(sym_t *, scl_t, bool, bool);
 static	bool	eqargs(const type_t *, const type_t *, bool *);
 static	bool	mnoarg(const type_t *, bool *);
@@ -86,6 +85,10 @@ static	void	check_global_variable_size(const sym_t *);
  * initializes all global vars used in declarations
  */
 void
+#ifdef __sh3__
+/* XXX port-sh3/56311 */
+__attribute__((optimize("O0")))
+#endif
 initdecl(void)
 {
 	int i;
@@ -102,6 +105,14 @@ initdecl(void)
 	typetab = xcalloc(NTSPEC, sizeof(*typetab));
 	for (i = 0; i < NTSPEC; i++)
 		typetab[i].t_tspec = NOTSPEC;
+
+	/*
+	 * The following two are not real types. They are only used by the
+	 * parser to handle the keywords "signed" and "unsigned".
+	 */
+	typetab[SIGNED].t_tspec = SIGNED;
+	typetab[UNSIGN].t_tspec = UNSIGN;
+
 	typetab[BOOL].t_tspec = BOOL;
 	typetab[CHAR].t_tspec = CHAR;
 	typetab[SCHAR].t_tspec = SCHAR;
@@ -114,20 +125,33 @@ initdecl(void)
 	typetab[ULONG].t_tspec = ULONG;
 	typetab[QUAD].t_tspec = QUAD;
 	typetab[UQUAD].t_tspec = UQUAD;
+#ifdef INT128_SIZE
+	typetab[INT128].t_tspec = INT128;
+	typetab[UINT128].t_tspec = UINT128;
+#endif
 	typetab[FLOAT].t_tspec = FLOAT;
 	typetab[DOUBLE].t_tspec = DOUBLE;
 	typetab[LDOUBLE].t_tspec = LDOUBLE;
+	typetab[VOID].t_tspec = VOID;
+	/* struct, union, enum, ptr, array and func are not shared. */
+	typetab[COMPLEX].t_tspec = COMPLEX;
 	typetab[FCOMPLEX].t_tspec = FCOMPLEX;
 	typetab[DCOMPLEX].t_tspec = DCOMPLEX;
 	typetab[LCOMPLEX].t_tspec = LCOMPLEX;
-	typetab[COMPLEX].t_tspec = COMPLEX;
-	typetab[VOID].t_tspec = VOID;
-	/*
-	 * Next two are not real types. They are only used by the parser
-	 * to return keywords "signed" and "unsigned"
-	 */
-	typetab[SIGNED].t_tspec = SIGNED;
-	typetab[UNSIGN].t_tspec = UNSIGN;
+}
+
+/* Return the name of the "storage class" in the wider sense. */
+const char *
+scl_name(scl_t scl)
+{
+	static const char *const names[] = {
+	    "none", "extern", "static", "auto", "register", "typedef",
+	    "struct", "union", "enum", "member of struct", "member of union",
+	    "compile-time constant", "abstract", "argument",
+	    "prototype argument", "inline"
+	};
+
+	return names[scl];
 }
 
 /*
@@ -166,6 +190,27 @@ expr_dup_type(const type_t *tp)
 
 	ntp = expr_zalloc(sizeof(*ntp));
 	*ntp = *tp;
+	return ntp;
+}
+
+/*
+ * Return the unqualified version of the type.  The returned type is freed at
+ * the end of the current expression.
+ *
+ * See C99 6.2.5p25.
+ */
+type_t *
+expr_unqualified_type(const type_t *tp)
+{
+	type_t *ntp;
+
+	ntp = expr_zalloc(sizeof(*ntp));
+	*ntp = *tp;
+	ntp->t_const = false;
+	ntp->t_volatile = false;
+
+	/* TODO: deep-copy struct/union members; see msg_115.c */
+
 	return ntp;
 }
 
@@ -233,11 +278,7 @@ add_storage_class(scl_t sc)
 	if (dcs->d_scl == NOSCL) {
 		dcs->d_scl = sc;
 	} else {
-		/*
-		 * multiple storage classes. An error will be reported in
-		 * end_type().
-		 */
-		dcs->d_mscl = true;
+		dcs->d_multiple_storage_classes = true;
 	}
 }
 
@@ -255,9 +296,8 @@ void
 add_type(type_t *tp)
 {
 	tspec_t	t;
-#ifdef DEBUG
-	printf("%s: %s\n", __func__, type_name(tp));
-#endif
+
+	debug_step("%s: %s", __func__, type_name(tp));
 	if (tp->t_typedef) {
 		/*
 		 * something like "typedef int a; int a b;"
@@ -281,11 +321,7 @@ add_type(type_t *tp)
 		 */
 		if (dcs->d_type != NULL || dcs->d_abstract_type != NOTSPEC ||
 		    dcs->d_rank_mod != NOTSPEC || dcs->d_sign_mod != NOTSPEC) {
-			/*
-			 * remember that an error must be reported in
-			 * end_type().
-			 */
-			dcs->d_terr = true;
+			dcs->d_invalid_type_combination = true;
 			dcs->d_abstract_type = NOTSPEC;
 			dcs->d_sign_mod = NOTSPEC;
 			dcs->d_rank_mod = NOTSPEC;
@@ -299,7 +335,7 @@ add_type(type_t *tp)
 		 * something like "struct a int"
 		 * struct/union/enum with anything else is not allowed
 		 */
-		dcs->d_terr = true;
+		dcs->d_invalid_type_combination = true;
 		return;
 	}
 
@@ -338,11 +374,8 @@ add_type(type_t *tp)
 		 * dcs->d_sign_mod
 		 */
 		if (dcs->d_sign_mod != NOTSPEC)
-			/*
-			 * more than one "signed" and/or "unsigned"; print
-			 * an error in end_type()
-			 */
-			dcs->d_terr = true;
+			/* more than one "signed" and/or "unsigned" */
+			dcs->d_invalid_type_combination = true;
 		dcs->d_sign_mod = t;
 	} else if (t == SHORT || t == LONG || t == QUAD) {
 		/*
@@ -350,18 +383,17 @@ add_type(type_t *tp)
 		 * dcs->d_rank_mod
 		 */
 		if (dcs->d_rank_mod != NOTSPEC)
-			/* more than one, print error in end_type() */
-			dcs->d_terr = true;
+			dcs->d_invalid_type_combination = true;
 		dcs->d_rank_mod = t;
 	} else if (t == FLOAT || t == DOUBLE) {
 		if (dcs->d_rank_mod == NOTSPEC || dcs->d_rank_mod == LONG) {
 			if (dcs->d_complex_mod != NOTSPEC
 			    || (t == FLOAT && dcs->d_rank_mod == LONG))
-				dcs->d_terr = true;
+				dcs->d_invalid_type_combination = true;
 			dcs->d_complex_mod = t;
 		} else {
 			if (dcs->d_abstract_type != NOTSPEC)
-				dcs->d_terr = true;
+				dcs->d_invalid_type_combination = true;
 			dcs->d_abstract_type = t;
 		}
 	} else if (t == PTR) {
@@ -372,10 +404,26 @@ add_type(type_t *tp)
 		 * or "_Complex" in dcs->d_abstract_type
 		 */
 		if (dcs->d_abstract_type != NOTSPEC)
-			/* more than one, print error in end_type() */
-			dcs->d_terr = true;
+			dcs->d_invalid_type_combination = true;
 		dcs->d_abstract_type = t;
 	}
+}
+
+/* Merge the signedness into the abstract type. */
+static tspec_t
+merge_signedness(tspec_t t, tspec_t s)
+{
+
+	if (s == SIGNED)
+		return t == CHAR ? SCHAR : t;
+	if (s != UNSIGN)
+		return t;
+	return t == CHAR ? UCHAR
+	    : t == SHORT ? USHORT
+	    : t == INT ? UINT
+	    : t == LONG ? ULONG
+	    : t == QUAD ? UQUAD
+	    : t;
 }
 
 /*
@@ -397,7 +445,7 @@ tdeferr(type_t *td, tspec_t t)
 			if (!tflag)
 				/* modifying typedef with '%s'; only ... */
 				warning(5, ttab[t].tt_name);
-			td = dup_type(gettyp(merge_type_specifiers(t2, t)));
+			td = dup_type(gettyp(merge_signedness(t2, t)));
 			td->t_typedef = true;
 			return td;
 		}
@@ -471,7 +519,7 @@ tdeferr(type_t *td, tspec_t t)
 
 	/* Anything other is not accepted. */
 
-	dcs->d_terr = true;
+	dcs->d_invalid_type_combination = true;
 	return td;
 }
 
@@ -601,8 +649,7 @@ begin_declaration_level(scl_t sc)
 	dcs = di;
 	di->d_ctx = sc;
 	di->d_ldlsym = &di->d_dlsyms;
-	if (dflag)
-		(void)printf("%s(%p %s)\n", __func__, dcs, scl_name(sc));
+	debug_step("%s(%p %s)", __func__, dcs, scl_name(sc));
 }
 
 /*
@@ -613,9 +660,7 @@ end_declaration_level(void)
 {
 	dinfo_t	*di;
 
-	if (dflag)
-		(void)printf("%s(%p %s)\n",
-		    __func__, dcs, scl_name(dcs->d_ctx));
+	debug_step("%s(%p %s)", __func__, dcs, scl_name(dcs->d_ctx));
 
 	lint_assert(dcs->d_next != NULL);
 	di = dcs;
@@ -718,8 +763,8 @@ begin_type(void)
 	dcs->d_const = false;
 	dcs->d_volatile = false;
 	dcs->d_inline = false;
-	dcs->d_mscl = false;
-	dcs->d_terr = false;
+	dcs->d_multiple_storage_classes = false;
+	dcs->d_invalid_type_combination = false;
 	dcs->d_nonempty_decl = false;
 	dcs->d_notyp = false;
 }
@@ -743,13 +788,12 @@ dcs_adjust_storage_class(void)
 }
 
 /*
- * Create a type structure from the information gathered in
- * the declaration stack.
- * Complain about storage classes which are not possible in current
- * context.
+ * Merge the declaration specifiers from dcs into dcs->d_type.
+ *
+ * See C99 6.7.2 "Type specifiers".
  */
-void
-end_type(void)
+static void
+dcs_merge_declaration_specifiers(void)
 {
 	tspec_t	t, s, l, c;
 	type_t	*tp;
@@ -760,9 +804,7 @@ end_type(void)
 	l = dcs->d_rank_mod;	/* SHORT, LONG or QUAD */
 	tp = dcs->d_type;
 
-#ifdef DEBUG
-	printf("%s: %s\n", __func__, type_name(tp));
-#endif
+	debug_step("%s: %s", __func__, type_name(tp));
 	if (t == NOTSPEC && s == NOTSPEC && l == NOTSPEC && c == NOTSPEC &&
 	    tp == NULL)
 		dcs->d_notyp = true;
@@ -774,74 +816,63 @@ end_type(void)
 		lint_assert(t == NOTSPEC);
 		lint_assert(s == NOTSPEC);
 		lint_assert(l == NOTSPEC);
+		return;
 	}
 
-	if (tp == NULL) {
-		switch (t) {
-		case BOOL:
-			break;
-		case NOTSPEC:
-			t = INT;
-			/* FALLTHROUGH */
-		case INT:
-			if (s == NOTSPEC)
-				s = SIGNED;
-			break;
-		case CHAR:
-			if (l != NOTSPEC) {
-				dcs->d_terr = true;
-				l = NOTSPEC;
-			}
-			break;
-		case FLOAT:
-			if (l == LONG) {
-				l = NOTSPEC;
-				t = DOUBLE;
-				if (!tflag)
-					/* use 'double' instead of 'long ... */
-					warning(6);
-			}
-			break;
-		case DOUBLE:
-			if (l == LONG) {
-		case LDOUBLE:
-				l = NOTSPEC;
-				t = LDOUBLE;
-				if (tflag)
-					/* 'long double' is illegal in ... */
-					warning(266);
-			}
-			break;
-		case DCOMPLEX:
-			if (l == LONG) {
-				l = NOTSPEC;
-				t = LCOMPLEX;
-				if (tflag)
-					/* 'long double' is illegal in ... */
-					warning(266);
-			}
-			break;
-		case VOID:
-		case FCOMPLEX:
-		case LCOMPLEX:
-			break;
-		default:
-			INTERNAL_ERROR("end_type(%s)", tspec_name(t));
-		}
-		if (t != INT && t != CHAR && (s != NOTSPEC || l != NOTSPEC)) {
-			dcs->d_terr = true;
-			l = s = NOTSPEC;
-		}
-		if (l != NOTSPEC)
-			t = l;
-		dcs->d_type = gettyp(merge_type_specifiers(t, s));
+	if (t == NOTSPEC)
+		t = INT;
+	if (s == NOTSPEC && t == INT)
+		s = SIGNED;
+	if (l != NOTSPEC && t == CHAR) {
+		dcs->d_invalid_type_combination = true;
+		l = NOTSPEC;
+	}
+	if (l == LONG && t == FLOAT) {
+		l = NOTSPEC;
+		t = DOUBLE;
+		if (!tflag)
+			/* use 'double' instead of 'long float' */
+			warning(6);
+	}
+	if ((l == LONG && t == DOUBLE) || t == LDOUBLE) {
+		l = NOTSPEC;
+		t = LDOUBLE;
+	}
+	if (t == LDOUBLE && tflag) {
+		/* 'long double' is illegal in traditional C */
+		warning(266);
+	}
+	if (l == LONG && t == DCOMPLEX) {
+		l = NOTSPEC;
+		t = LCOMPLEX;
 	}
 
-	if (dcs->d_mscl) {
+	if (t != INT && t != CHAR && (s != NOTSPEC || l != NOTSPEC)) {
+		dcs->d_invalid_type_combination = true;
+		l = s = NOTSPEC;
+	}
+	if (l != NOTSPEC)
+		t = l;
+	dcs->d_type = gettyp(merge_signedness(t, s));
+}
+
+/*
+ * Create a type structure from the information gathered in
+ * the declaration stack.
+ * Complain about storage classes which are not possible in current
+ * context.
+ */
+void
+end_type(void)
+{
+
+	dcs_merge_declaration_specifiers();
+
+	if (dcs->d_multiple_storage_classes) {
 		/* only one storage class allowed */
 		error(7);
 	}
-	if (dcs->d_terr) {
+	if (dcs->d_invalid_type_combination) {
 		/* illegal type combination */
 		error(4);
 	}
@@ -864,29 +895,6 @@ end_type(void)
 		dcs->d_type->t_const |= dcs->d_const;
 		dcs->d_type->t_volatile |= dcs->d_volatile;
 	}
-}
-
-/*
- * Merge type specifiers (char, ..., long long, signed, unsigned).
- */
-static tspec_t
-merge_type_specifiers(tspec_t t, tspec_t s)
-{
-
-	if (s != SIGNED && s != UNSIGN)
-		return t;
-
-	if (t == CHAR)
-		return s == SIGNED ? SCHAR : UCHAR;
-	if (t == SHORT)
-		return s == SIGNED ? SHORT : USHORT;
-	if (t == INT)
-		return s == SIGNED ? INT : UINT;
-	if (t == LONG)
-		return s == SIGNED ? LONG : ULONG;
-	if (t == QUAD)
-		return s == SIGNED ? QUAD : UQUAD;
-	return t;
 }
 
 /*
@@ -1169,7 +1177,7 @@ declarator_1_struct_union(sym_t *dsym)
 	type_t	*tp;
 	tspec_t	t;
 	int	sz;
-	int	o = 0;	/* Appease GCC */
+	u_int	o = 0;	/* Appease GCC */
 
 	lint_assert(dsym->s_scl == MOS || dsym->s_scl == MOU);
 
@@ -1246,9 +1254,9 @@ declarator_1_struct_union(sym_t *dsym)
  * al contains the required alignment, len the length of a bit-field.
  */
 static void
-align(int al, int len)
+align(u_int al, u_int len)
 {
-	int	no;
+	u_int no;
 
 	/*
 	 * The alignment of the current element becomes the alignment of
@@ -3004,17 +3012,11 @@ check_usage(dinfo_t *di)
 	mklwarn = lwarn;
 	lwarn = LWARN_ALL;
 
-#ifdef DEBUG
-	printf("%s, %d: >temp lwarn = %d\n", curr_pos.p_file, curr_pos.p_line,
-	    lwarn);
-#endif
+	debug_step("begin lwarn %d", lwarn);
 	for (sym = di->d_dlsyms; sym != NULL; sym = sym->s_dlnxt)
 		check_usage_sym(di->d_asm, sym);
 	lwarn = mklwarn;
-#ifdef DEBUG
-	printf("%s, %d: <temp lwarn = %d\n", curr_pos.p_file, curr_pos.p_line,
-	    lwarn);
-#endif
+	debug_step("end lwarn %d", lwarn);
 }
 
 /*

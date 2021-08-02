@@ -1,4 +1,4 @@
-/*	$NetBSD: err.c,v 1.129 2021/07/13 22:01:34 rillig Exp $	*/
+/*	$NetBSD: err.c,v 1.132 2021/07/31 19:07:52 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -37,7 +37,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: err.c,v 1.129 2021/07/13 22:01:34 rillig Exp $");
+__RCSID("$NetBSD: err.c,v 1.132 2021/07/31 19:07:52 rillig Exp $");
 #endif
 
 #include <sys/types.h>
@@ -120,7 +120,7 @@ const char *const msgs[] = {
 	"prototype does not match old-style definition",	      /* 63 */
 	"()-less function definition",				      /* 64 */
 	"%s has no named members",				      /* 65 */
-	"syntax requires ';' after last struct/union member",	      /* 66 */
+	"",							      /* 66 */
 	"cannot return incomplete type",			      /* 67 */
 	"typedef already qualified with '%s'",			      /* 68 */
 	"inappropriate qualifiers with 'void'",			      /* 69 */
@@ -201,7 +201,7 @@ const char *const msgs[] = {
 	"cannot take size/alignment of function",		      /* 144 */
 	"cannot take size/alignment of bit-field",		      /* 145 */
 	"cannot take size/alignment of void",			      /* 146 */
-	"invalid cast expression",				      /* 147 */
+	"invalid cast from '%s' to '%s'",			      /* 147 */
 	"improper cast of void expression",			      /* 148 */
 	"illegal function (type %s)",				      /* 149 */
 	"argument mismatch: %d arg%s passed, %d expected",	      /* 150 */
@@ -511,9 +511,7 @@ vwarning_at(int msgid, const pos_t *pos, va_list ap)
 	if (ERR_ISSET(msgid, &msgset))
 		return;
 
-#ifdef DEBUG
-	printf("%s: lwarn=%d msgid=%d\n", __func__, lwarn, msgid);
-#endif
+	debug_step("%s: lwarn=%d msgid=%d", __func__, lwarn, msgid);
 	if (lwarn == LWARN_NONE || lwarn == msgid)
 		/* this warning is suppressed by a LINTED comment */
 		return;

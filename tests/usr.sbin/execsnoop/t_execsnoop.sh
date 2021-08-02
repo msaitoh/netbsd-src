@@ -1,4 +1,4 @@
-# $NetBSD: t_execsnoop.sh,v 1.3 2020/07/11 09:55:26 jruoho Exp $
+# $NetBSD: t_execsnoop.sh,v 1.11 2021/07/29 14:58:35 gson Exp $
 #
 # Copyright (c) 2020 The NetBSD Foundation, Inc.
 # All rights reserved.
@@ -27,7 +27,8 @@
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 #
-tmp="/tmp/execsnoop"
+stdout="execsnoop.out"
+stderr="execsnoop.stderr"
 
 atf_test_case basic cleanup
 basic_head() {
@@ -37,10 +38,16 @@ basic_head() {
 }
 
 basic_body() {
+	if
+		! modstat dtrace_syscall | grep dtrace_syscall &&
+		! modstat -A
+	then
+		atf_skip "dtrace_syscall module not loaded and can't be autoloaded"
+	fi
 
 	n=10
-	atf_check -s exit:0 -o ignore -e empty -x "execsnoop > $tmp &"
-	sleep 1
+	atf_check -s exit:0 -o ignore -e empty -x "execsnoop >$stdout 2>$stderr &"
+	sleep 5
 
 	while [ $n -gt 0 ]; do
 		whoami
@@ -48,10 +55,10 @@ basic_body() {
 	done
 
 	sleep 5
-	pkill -9 execsnoop
-	sleep 1
 
-	if [ ! $(cat $tmp | grep "whoami" | wc -l) -eq 10 ]; then
+	cat $stderr >&2
+
+	if [ ! $(cat $stdout | grep "whoami" | wc -l) -eq 10 ]; then
 		atf_fail "execsnoop does not work"
 	fi
 
@@ -59,10 +66,6 @@ basic_body() {
 }
 
 basic_cleanup() {
-
-	if [ -f $tmp ]; then
-		rm $tmp
-	fi
 }
 
 atf_init_test_cases() {

@@ -1,4 +1,4 @@
-/*	$NetBSD: var.c,v 1.938 2021/06/21 18:25:20 rillig Exp $	*/
+/*	$NetBSD: var.c,v 1.945 2021/07/31 09:30:17 rillig Exp $	*/
 
 /*
  * Copyright (c) 1988, 1989, 1990, 1993
@@ -140,7 +140,7 @@
 #include "metachar.h"
 
 /*	"@(#)var.c	8.3 (Berkeley) 3/19/94" */
-MAKE_RCSID("$NetBSD: var.c,v 1.938 2021/06/21 18:25:20 rillig Exp $");
+MAKE_RCSID("$NetBSD: var.c,v 1.945 2021/07/31 09:30:17 rillig Exp $");
 
 /*
  * Variables are defined using one of the VAR=value assignments.  Their
@@ -2045,7 +2045,7 @@ typedef struct Expr {
  *	  Chain 2 ends at the ':' between ${IND1} and ${IND2}.
  *	  Chain 3 starts with all modifiers from ${IND2}.
  *	  Chain 3 ends at the ':' after ${IND2}.
- *	Chain 1 continues with the the 2 modifiers ':O' and ':u'.
+ *	Chain 1 continues with the 2 modifiers ':O' and ':u'.
  *	Chain 1 ends at the final '}' of the expression.
  *
  * After such a chain ends, its properties no longer have any effect.
@@ -3272,6 +3272,52 @@ bad_modifier:
 	return AMR_BAD;
 }
 
+#ifndef NUM_TYPE
+# define NUM_TYPE long long
+#endif
+
+static NUM_TYPE
+num_val(const char *s)
+{
+	NUM_TYPE val;
+	char *ep;
+
+	val = strtoll(s, &ep, 0);
+	if (ep != s) {
+		switch (*ep) {
+		case 'K':
+		case 'k':
+			val <<= 10;
+			break;
+		case 'M':
+		case 'm':
+			val <<= 20;
+			break;
+		case 'G':
+		case 'g':
+			val <<= 30;
+			break;
+		}
+	}
+	return val;
+}
+
+static int
+num_cmp_asc(const void *sa, const void *sb)
+{
+	NUM_TYPE a, b;
+
+	a = num_val(*(const char *const *)sa);
+	b = num_val(*(const char *const *)sb);
+	return (a > b) ? 1 : (b > a) ? -1 : 0;
+}
+
+static int
+num_cmp_desc(const void *sa, const void *sb)
+{
+	return num_cmp_asc(sb, sa);
+}
+
 static int
 str_cmp_asc(const void *a, const void *b)
 {
@@ -3281,7 +3327,7 @@ str_cmp_asc(const void *a, const void *b)
 static int
 str_cmp_desc(const void *a, const void *b)
 {
-	return strcmp(*(const char *const *)b, *(const char *const *)a);
+	return str_cmp_asc(b, a);
 }
 
 static void
@@ -3297,37 +3343,59 @@ ShuffleStrings(char **strs, size_t n)
 	}
 }
 
-/* :O (order ascending) or :Or (order descending) or :Ox (shuffle) */
+/*
+ * :O		order ascending
+ * :Or		order descending
+ * :Ox		shuffle
+ * :On		numeric ascending
+ * :Onr, :Orn	numeric descending
+ */
 static ApplyModifierResult
 ApplyModifier_Order(const char **pp, ModChain *ch)
 {
-	const char *mod = (*pp)++;	/* skip past the 'O' in any case */
+	const char *mod = *pp;
 	Words words;
-	enum SortMode {
-		ASC, DESC, SHUFFLE
-	} mode;
+	int (*cmp)(const void *, const void *) = NULL;
 
-	if (IsDelimiter(mod[1], ch)) {
-		mode = ASC;
-	} else if ((mod[1] == 'r' || mod[1] == 'x') &&
-	    IsDelimiter(mod[2], ch)) {
+	if (IsDelimiter(mod[1], ch) || mod[1] == '\0') {
+		cmp = str_cmp_asc;
 		(*pp)++;
-		mode = mod[1] == 'r' ? DESC : SHUFFLE;
-	} else
-		return AMR_BAD;
+	} else if (IsDelimiter(mod[2], ch) || mod[2] == '\0') {
+		if (mod[1] == 'n')
+			cmp = num_cmp_asc;
+		else if (mod[1] == 'r')
+			cmp = str_cmp_desc;
+		else if (mod[1] == 'x')
+			cmp = NULL;
+		else
+			goto bad;
+		*pp += 2;
+	} else if (IsDelimiter(mod[3], ch) || mod[3] == '\0') {
+		if ((mod[1] == 'n' && mod[2] == 'r') ||
+		    (mod[1] == 'r' && mod[2] == 'n'))
+			cmp = num_cmp_desc;
+		else
+			goto bad;
+		*pp += 3;
+	} else {
+		goto bad;
+	}
 
 	if (!ModChain_ShouldEval(ch))
 		return AMR_OK;
 
 	words = Str_Words(ch->expr->value.str, false);
-	if (mode == SHUFFLE)
+	if (cmp == NULL)
 		ShuffleStrings(words.words, words.len);
 	else
-		qsort(words.words, words.len, sizeof words.words[0],
-		    mode == ASC ? str_cmp_asc : str_cmp_desc);
+		qsort(words.words, words.len, sizeof(words.words[0]), cmp);
 	Expr_SetValueOwn(ch->expr, Words_JoinFree(words));
 
 	return AMR_OK;
+
+bad:
+	(*pp)++;
+	return AMR_BAD;
 }
 
 /* :? then : else */
@@ -3951,6 +4019,8 @@ ApplyModifiers(
     char endc		/* ')' or '}'; or '\0' for indirect modifiers */
 )
 {
+	/* LINTED 115 *//* warning: left operand of '=' must be modifiable lvalue */
+	/* That's a bug in lint; see tests/usr.bin/xlint/lint1/msg_115.c. */
 	ModChain ch = ModChain_Literal(expr, startc, endc, ' ', false);
 	const char *p;
 	const char *mod;

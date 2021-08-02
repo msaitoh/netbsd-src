@@ -1,4 +1,4 @@
-# $NetBSD: ec2_init,v 1.2 2020/09/09 13:25:48 jmcneill Exp $
+# $NetBSD: rc.conf.emuimage,v 1.1 2021/07/24 16:13:44 jmcneill Exp $
 
 is_ec2() {
 	val=NO
@@ -13,10 +13,24 @@ is_ec2() {
 			*amazon*)
 				val=YES
 				;;
+			# OpenStack is not EC2 but it does have a metadata service.
+			*openstack*)
+				val=YES
+				;;
 			esac
 		fi
 	done
 	printf $val
 }
 
+resize_disklabel=YES
+resize_root=YES
+resize_root_flags="-p"
+resize_root_postcmd="/sbin/reboot -n"
+dhcpcd=YES
+sshd=YES
 ec2_init=$(is_ec2)
+
+if checkyesno ec2_init; then
+	dhcpcd_flags="$dhcpcd_flags -w"
+fi

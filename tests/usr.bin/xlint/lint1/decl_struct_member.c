@@ -1,4 +1,4 @@
-/*	$NetBSD: decl_struct_member.c,v 1.6 2021/07/14 20:39:13 rillig Exp $	*/
+/*	$NetBSD: decl_struct_member.c,v 1.10 2021/07/21 21:17:57 rillig Exp $	*/
 # 3 "decl_struct_member.c"
 
 struct multi_attributes {
@@ -8,7 +8,7 @@ struct multi_attributes {
 	int deprecated;
 };
 
-struct cover_begin_type_noclass_declspecs {
+struct cover_begin_type_specifier_qualifier_list {
 	int m1;
 	__attribute__((deprecated)) int m2;
 	const int m3;
@@ -24,10 +24,19 @@ struct cover_begin_type_typespec {
 	number m2;
 };
 
-struct cover_begin_type_noclass_declmods {
+struct cover_begin_type_qualifier_list {
 	const m1;
 	const volatile m2;
 };
+
+/* cover struct_or_union_specifier: struct_or_union error */
+/* expect+1: error: syntax error 'goto' [249] */
+struct goto {
+	/* expect+1: error: illegal type combination [4] */
+	int member;
+	/* expect+1: error: syntax error '}' [249] */
+};
+/* expect-1: warning: empty declaration [0] */
 
 /*
  * Before cgram.y 1.228 from 2021-06-19, lint ran into an assertion failure:
@@ -38,12 +47,21 @@ struct {
 	char;			/* expect: syntax error 'unnamed member' */
 };
 
+struct cover_notype_struct_declarators {
+	const a, b;
+};
+
+struct cover_notype_struct_declarator_bit_field {
+	const a: 3, : 0, b: 4;
+	const : 0;
+};
+
 /*
  * Before decl.c 1.188 from 2021-06-20, lint ran into a segmentation fault.
  */
 struct {
 	char a(_)0		/* expect: syntax error '0' */
-}				/* expect: ';' after last */
+}
 /*
  * FIXME: adding a semicolon here triggers another assertion:
  *

@@ -1,4 +1,4 @@
-#	$NetBSD: 3RDPARTY,v 1.1807 2021/07/11 21:28:17 mrg Exp $
+#	$NetBSD: 3RDPARTY,v 1.1809 2021/07/29 13:42:38 wiz Exp $
 #
 # This file contains a list of the software that has been integrated into
 # NetBSD where we are not the primary maintainer.
@@ -450,7 +450,7 @@ There is a flex2netbsd script to help newer imports.
 
 Package:	gcc
 Version:	9.3.0/10.3.0
-Current Vers:	9.3.0/10.3.0/11.1.0
+Current Vers:	9.3.0/10.3.0/11.2.0
 Maintainer:	FSF
 Archive Site:	ftp://ftp.gnu.org/gnu/gcc/
 Home Page:	http://www.gnu.org/software/gcc/
@@ -498,11 +498,11 @@ When updating GDB, it is imperative to test that:
 
 Package:	binutils
 Version:	2.34
-Current Vers:	2.36.1
+Current Vers:	2.37
 Maintainer:	FSF
 Archive Site:	ftp://ftp.gnu.org/gnu/binutils/
 Home Page:	http://www.gnu.org/software/binutils/
-Date:		2021-03-15
+Date:		2021-07-19
 Mailing List:	bug-gnu-utils@gnu.org
 Responsible:	thorpej, mrg
 License:	GPLv3, LGPLv3, GPLv2, LGPLv2, BSD

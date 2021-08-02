@@ -1,12 +1,12 @@
-#	$NetBSD: Makefile,v 1.79 2021/07/10 09:14:38 rillig Exp $
+#	$NetBSD: Makefile,v 1.82 2021/07/31 18:16:42 rillig Exp $
 
 .include <bsd.own.mk>
 
 PROG=		lint1
 SRCS=		cgram.y \
-		ckbool.c ckctype.c ckgetopt.c \
+		ckbool.c ckctype.c ckgetopt.c debug.c \
 		decl.c emit.c emit1.c err.c func.c init.c inittyp.c lex.c \
-		main1.c mem.c mem1.c oper.c print.c scan.l tree.c tyname.c
+		main1.c mem.c mem1.c oper.c scan.l tree.c tyname.c
 
 MAN=		lint.7
 YHEADER=
@@ -22,7 +22,7 @@ LOBJS.${PROG}+=		${SRCS:M*.l:.l=.ln}
 
 CPPFLAGS+=	-DIS_LINT1
 CPPFLAGS+=	-I${.CURDIR}
-CPPFLAGS+=	${DEBUG:D-DDEBUG}
+CPPFLAGS+=	${DEBUG:D-DDEBUG -DYYDEBUG}
 
 COPTS.err.c+=	${${ACTIVE_CC} == "clang":? -Wno-format-nonliteral :}
 

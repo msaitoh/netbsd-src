@@ -1,4 +1,4 @@
-/* $NetBSD: pmap.c,v 1.297 2021/07/10 20:22:37 thorpej Exp $ */
+/* $NetBSD: pmap.c,v 1.300 2021/07/31 14:51:25 thorpej Exp $ */
 
 /*-
  * Copyright (c) 1998, 1999, 2000, 2001, 2007, 2008, 2020
@@ -135,7 +135,7 @@
 
 #include <sys/cdefs.h>			/* RCS ID & Copyright macro defns */
 
-__KERNEL_RCSID(0, "$NetBSD: pmap.c,v 1.297 2021/07/10 20:22:37 thorpej Exp $");
+__KERNEL_RCSID(0, "$NetBSD: pmap.c,v 1.300 2021/07/31 14:51:25 thorpej Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -1027,7 +1027,7 @@ pmap_tlb_shootnow(const struct pmap_tlb_context * const tlbctx)
 	 * interrupts and disable preemption.  It is critically important
 	 * that IPIs not be blocked in this routine.
 	 */
-	KASSERT((alpha_pal_rdps() & ALPHA_PSL_IPL_MASK) < ALPHA_PSL_IPL_CLOCK);
+	KASSERT(alpha_pal_rdps() < ALPHA_PSL_IPL_CLOCK);
 	mutex_spin_enter(&tlb_lock);
 	tlb_evcnt.ev_count++;
 
@@ -1121,7 +1121,7 @@ pmap_tlb_shootnow(const struct pmap_tlb_context * const tlbctx)
 				    tlb_pending);
 				printf("TLB CONTEXT = %p\n", tlb_context);
 				printf("TLB LOCAL IPL = %lu\n",
-				    alpha_pal_rdps() & ALPHA_PSL_IPL_MASK);
+				    alpha_pal_rdps());
 				panic("pmap_tlb_shootnow");
 			}
 		}
@@ -2578,18 +2578,19 @@ pmap_extract(pmap_t pmap, vaddr_t va, paddr_t *pap)
 	 * handles K0SEG.
 	 */
 	if (__predict_true(pmap == pmap_kernel())) {
-		if (__predict_true(vtophys_internal(va, pap))) {
 #ifdef DEBUG
-			if (pmapdebug & PDB_FOLLOW)
+		bool address_is_valid = vtophys_internal(va, pap);
+		if (pmapdebug & PDB_FOLLOW) {
+			if (address_is_valid) {
 				printf("0x%lx (kernel vtophys)\n", *pap);
-#endif
-			return true;
+			} else {
+				printf("failed (kernel vtophys)\n");
+			}
 		}
-#ifdef DEBUG
-		if (pmapdebug & PDB_FOLLOW)
-			printf("failed (kernel vtophys)\n");
+		return address_is_valid;
+#else
+		return vtophys_internal(va, pap);
 #endif
-		return false;
 	}
 
 	pt_entry_t * const lev1map = pmap_lev1map(pmap);

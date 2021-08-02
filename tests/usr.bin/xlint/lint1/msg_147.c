@@ -1,7 +1,15 @@
-/*	$NetBSD: msg_147.c,v 1.2 2021/02/21 09:07:58 rillig Exp $	*/
+/*	$NetBSD: msg_147.c,v 1.4 2021/07/25 10:39:10 rillig Exp $	*/
 # 3 "msg_147.c"
 
-// Test for message: invalid cast expression [147]
+// Test for message: invalid cast from '%s' to '%s' [147]
 
-TODO: "Add example code that triggers the above message." /* expect: 249 */
-TODO: "Add example code that almost triggers the above message."
+// The type name 'int(int)' is a 'function(int) returning int'.
+void take(int(int));
+
+/* ARGSUSED */
+void
+call_take(int (*ptr)(int))
+{
+	/* expect+1: error: invalid cast from 'pointer to function(int) returning int' to 'function(int) returning int' [147] */
+	take((int(int))ptr);
+}

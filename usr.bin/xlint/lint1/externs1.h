@@ -1,4 +1,4 @@
-/*	$NetBSD: externs1.h,v 1.117 2021/07/14 17:07:24 rillig Exp $	*/
+/*	$NetBSD: externs1.h,v 1.128 2021/08/01 19:11:54 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -38,7 +38,6 @@ extern	int	aflag;
 extern	bool	bflag;
 extern	bool	cflag;
 extern	bool	c11flag;
-extern	bool	dflag;
 extern	bool	eflag;
 extern	bool	Fflag;
 extern	bool	gflag;
@@ -112,6 +111,34 @@ extern	struct	memory_block *expr_save_memory(void);
 extern	void	expr_restore_memory(struct memory_block *);
 
 /*
+ * debug.c
+ */
+
+#ifdef DEBUG
+void	debug_node(const tnode_t *);
+void	debug_printf(const char *fmt, ...) __printflike(1, 2);
+void	debug_indent(void);
+void	debug_indent_inc(void);
+void	debug_indent_dec(void);
+void	debug_enter(const char *);
+void	debug_step(const char *fmt, ...) __printflike(1, 2);
+void	debug_leave(const char *);
+#define	debug_enter()		(debug_enter)(__func__)
+#define	debug_leave()		(debug_leave)(__func__)
+#else
+#define	debug_noop()		do { } while (false)
+#define	debug_node(tn)		debug_noop()
+#define	debug_printf(...)	debug_noop()
+#define	debug_indent()		debug_noop()
+#define	debug_step(...)		debug_noop()
+#define	debug_indent()		debug_noop()
+#define	debug_indent_inc()	debug_noop()
+#define	debug_indent_dec()	debug_noop()
+#define	debug_enter()		debug_noop()
+#define	debug_leave()		debug_noop()
+#endif
+
+/*
  * err.c
  */
 extern	int	nerr;
@@ -145,6 +172,7 @@ extern	void	initdecl(void);
 extern	type_t	*gettyp(tspec_t);
 extern	type_t	*dup_type(const type_t *);
 extern	type_t	*expr_dup_type(const type_t *);
+extern	type_t	*expr_unqualified_type(const type_t *);
 extern	bool	is_incomplete(const type_t *);
 extern	void	setcomplete(type_t *, bool);
 extern	void	add_storage_class(scl_t);
@@ -197,6 +225,7 @@ extern	void	check_usage_sym(bool, sym_t *);
 extern	void	check_global_symbols(void);
 extern	void	print_previous_declaration(int, const sym_t *);
 extern	int	to_int_constant(tnode_t *, bool);
+extern	const char *scl_name(scl_t);
 
 /*
  * tree.c
@@ -204,14 +233,15 @@ extern	int	to_int_constant(tnode_t *, bool);
 extern	const tnode_t *before_conversion(const tnode_t *);
 extern	type_t	*derive_type(type_t *, tspec_t);
 extern	type_t	*expr_derive_type(type_t *, tspec_t);
-extern	tnode_t	*expr_new_constant(type_t *, val_t *);
-extern	tnode_t	*new_name_node(sym_t *, int);
-extern	tnode_t	*new_string_node(strg_t *);
+extern	tnode_t	*build_constant(type_t *, val_t *);
+extern	tnode_t	*build_name(sym_t *, int);
+extern	tnode_t	*build_string(strg_t *);
 extern	sym_t	*struct_or_union_member(tnode_t *, op_t, sym_t *);
 extern	tnode_t	*build_generic_selection(const tnode_t *,
 		    struct generic_association *);
 
-extern	tnode_t	*build(op_t, tnode_t *, tnode_t *);
+extern	tnode_t	*build_binary(tnode_t *, op_t, tnode_t *);
+extern	tnode_t	*build_unary(op_t, tnode_t *);
 extern	tnode_t	*build_member_access(tnode_t *, op_t, sbuf_t *);
 extern	tnode_t	*cconv(tnode_t *);
 extern	bool	is_typeok_bool_operand(const tnode_t *);
@@ -223,8 +253,8 @@ extern	tnode_t	*build_sizeof(const type_t *);
 extern	tnode_t	*build_offsetof(const type_t *, const sym_t *);
 extern	tnode_t	*build_alignof(const type_t *);
 extern	tnode_t	*cast(tnode_t *, type_t *);
-extern	tnode_t	*new_function_argument_node(tnode_t *, tnode_t *);
-extern	tnode_t	*new_function_call_node(tnode_t *, tnode_t *);
+extern	tnode_t	*build_function_argument(tnode_t *, tnode_t *);
+extern	tnode_t	*build_function_call(tnode_t *, tnode_t *);
 extern	val_t	*constant(tnode_t *, bool);
 extern	void	expr(tnode_t *, bool, bool, bool, bool);
 extern	void	check_expr_misc(const tnode_t *, bool, bool, bool,
@@ -232,11 +262,6 @@ extern	void	check_expr_misc(const tnode_t *, bool, bool, bool,
 extern	bool	constant_addr(const tnode_t *, const sym_t **, ptrdiff_t *);
 extern	strg_t	*cat_strings(strg_t *, strg_t *);
 extern  int64_t type_size_in_bits(const type_t *);
-#ifdef DEBUG
-extern	void	debug_node(const tnode_t *, int);
-#else
-#define debug_node(tn, indent) do { } while (false)
-#endif
 
 /*
  * func.c
@@ -314,7 +339,6 @@ extern	void	add_designator_subscript(range_t);
  * emit.c
  */
 extern	void	outtype(const type_t *);
-extern	const	char *ttos(const type_t *);
 extern	void	outsym(const sym_t *, scl_t, def_t);
 extern	void	outfdef(const sym_t *, const pos_t *, bool, bool,
 		    const sym_t *);
@@ -338,11 +362,6 @@ extern	void	lex_comment(void);
 extern	void	lex_slash_slash_comment(void);
 extern	void	lex_unknown_character(int);
 extern	int	lex_input(void);
-
-/*
- * print.c
- */
-const char	*scl_name(scl_t);
 
 /*
  * ckbool.c

@@ -1,4 +1,4 @@
-/*	$NetBSD: fvwrite.c,v 1.27 2021/07/08 09:06:51 christos Exp $	*/
+/*	$NetBSD: fvwrite.c,v 1.30 2021/07/22 17:08:15 christos Exp $	*/
 
 /*-
  * Copyright (c) 1990, 1993
@@ -37,7 +37,7 @@
 #if 0
 static char sccsid[] = "@(#)fvwrite.c	8.1 (Berkeley) 6/4/93";
 #else
-__RCSID("$NetBSD: fvwrite.c,v 1.27 2021/07/08 09:06:51 christos Exp $");
+__RCSID("$NetBSD: fvwrite.c,v 1.30 2021/07/22 17:08:15 christos Exp $");
 #endif
 #endif /* LIBC_SCCS and not lint */
 
@@ -97,23 +97,15 @@ __sfvwrite(FILE *fp, struct __suio *uio)
 		len = iov->iov_len; \
 		iov++; \
 	}
-#define WRITE(nw) \
-	w = (*fp->_write)(fp->_cookie, p, nw); \
-	if (w <= 0) \
-		goto err
-#define FLUSH(nw) \
-	if (fflush(fp)) { \
-		fp->_p -= nw;	/* rewind unwritten */ \
-		goto err; \
-	}
-
 	if (fp->_flags & __SNBF) {
 		/*
 		 * Unbuffered: write up to BUFSIZ bytes at a time.
 		 */
 		do {
 			GETIOV(;);
-			WRITE(MIN(len, BUFSIZ));
+			w = (*fp->_write)(fp->_cookie, p, MIN(len, BUFSIZ));
+			if (w <= 0)
+				goto err;
 			p += w;
 			len -= w;
 		} while ((uio->uio_resid -= w) != 0);
@@ -164,10 +156,13 @@ __sfvwrite(FILE *fp, struct __suio *uio)
 				COPY(w);
 				/* fp->_w -= w; */ /* unneeded */
 				fp->_p += w;
-				FLUSH(w);
+				if (fflush(fp))
+					goto err;
 			} else if (len >= (size_t)(w = fp->_bf._size)) {
 				/* write directly */
-				WRITE((size_t)w);
+				w = (*fp->_write)(fp->_cookie, p, (size_t)w);
+				if (w <= 0)
+					goto err;
 			} else {
 				/* fill and done */
 				w = len;
@@ -201,9 +196,12 @@ __sfvwrite(FILE *fp, struct __suio *uio)
 				COPY(w);
 				/* fp->_w -= w; */
 				fp->_p += w;
-				FLUSH(w);
+				if (fflush(fp))
+					goto err;
 			} else if (s >= (w = fp->_bf._size)) {
-				WRITE((size_t)w);
+				w = (*fp->_write)(fp->_cookie, p, (size_t)w);
+				if (w <= 0)
+				 	goto err;
 			} else {
 				w = s;
 				COPY(w);
@@ -212,7 +210,8 @@ __sfvwrite(FILE *fp, struct __suio *uio)
 			}
 			if ((nldist -= w) == 0) {
 				/* copied the newline: flush and forget */
-				FLUSH(w);
+				if (fflush(fp))
+					goto err;
 				nlknown = 0;
 			}
 			p += w;

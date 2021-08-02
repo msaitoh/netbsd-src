@@ -1,4 +1,4 @@
-/*	$NetBSD: init.c,v 1.201 2021/07/02 22:46:43 rillig Exp $	*/
+/*	$NetBSD: init.c,v 1.206 2021/07/31 19:07:52 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -38,7 +38,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: init.c,v 1.201 2021/07/02 22:46:43 rillig Exp $");
+__RCSID("$NetBSD: init.c,v 1.206 2021/07/31 19:07:52 rillig Exp $");
 #endif
 
 #include <stdlib.h>
@@ -170,74 +170,6 @@ struct initialization {
 
 	struct initialization *in_enclosing;
 };
-
-
-#ifdef DEBUG
-static int debug_indentation = 0;
-#endif
-
-
-#ifdef DEBUG
-
-static void __printflike(1, 2)
-debug_printf(const char *fmt, ...)
-{
-	va_list va;
-
-	va_start(va, fmt);
-	vfprintf(stdout, fmt, va);
-	va_end(va);
-}
-
-static void
-debug_indent(void)
-{
-
-	debug_printf("%*s", 2 * debug_indentation, "");
-}
-
-static void
-debug_enter(const char *func)
-{
-
-	printf("%*s+ %s\n", 2 * debug_indentation++, "", func);
-}
-
-static void __printflike(1, 2)
-debug_step(const char *fmt, ...)
-{
-	va_list va;
-
-	debug_indent();
-	va_start(va, fmt);
-	vfprintf(stdout, fmt, va);
-	va_end(va);
-	printf("\n");
-}
-#define debug_step0		debug_step
-#define debug_step1		debug_step
-#define debug_step2		debug_step
-
-static void
-debug_leave(const char *func)
-{
-
-	printf("%*s- %s\n", 2 * --debug_indentation, "", func);
-}
-
-#define debug_enter()		(debug_enter)(__func__)
-#define debug_leave()		(debug_leave)(__func__)
-
-#else
-
-#define debug_indent()		do { } while (false)
-#define debug_enter()		do { } while (false)
-#define debug_step0(fmt)	do { } while (false)
-#define debug_step1(fmt, arg0)	do { } while (false)
-#define debug_step2(fmt, arg1, arg2) do { } while (false)
-#define debug_leave()		do { } while (false)
-
-#endif
 
 
 static void *
@@ -400,8 +332,7 @@ check_init_expr(const type_t *tp, sym_t *sym, tnode_t *tn)
 	tspec_t lt, rt;
 	struct memory_block *tmem;
 
-	ltp = expr_dup_type(tp);
-	ltp->t_const = false;
+	ltp = expr_unqualified_type(tp);
 
 	/* Create a temporary node for the left side. */
 	ln = expr_zalloc(sizeof(*ln));
@@ -415,7 +346,7 @@ check_init_expr(const type_t *tp, sym_t *sym, tnode_t *tn)
 	lt = ln->tn_type->t_tspec;
 	rt = tn->tn_type->t_tspec;
 
-	debug_step2("typeok '%s', '%s'",
+	debug_step("typeok '%s', '%s'",
 	    type_name(ln->tn_type), type_name(tn->tn_type));
 	if (!typeok(INIT, 0, ln, tn))
 		return;
@@ -897,13 +828,12 @@ initialization_expr_using_assign(struct initialization *in, tnode_t *rn)
 	if (in->in_sym->s_type->t_tspec == ARRAY)
 		return false;
 
-	debug_step0("handing over to ASSIGN");
+	debug_step("handing over to ASSIGN");
 
-	ln = new_name_node(in->in_sym, 0);
-	ln->tn_type = expr_dup_type(ln->tn_type);
-	ln->tn_type->t_const = false;
+	ln = build_name(in->in_sym, 0);
+	ln->tn_type = expr_unqualified_type(ln->tn_type);
 
-	tn = build(ASSIGN, ln, rn);
+	tn = build_binary(ln, ASSIGN, rn);
 	expr(tn, false, false, false, false);
 
 	return true;
@@ -999,7 +929,7 @@ initialization_expr(struct initialization *in, tnode_t *tn)
 		goto done;
 	}
 
-	debug_step2("expecting '%s', expression has '%s'",
+	debug_step("expecting '%s', expression has '%s'",
 	    type_name(tp), type_name(tn->tn_type));
 	check_init_expr(tp, in->in_sym, tn);
 
@@ -1038,10 +968,8 @@ begin_initialization(sym_t *sym)
 {
 	struct initialization *in;
 
-	debug_step1("begin initialization of '%s'", type_name(sym->s_type));
-#ifdef DEBUG
-	debug_indentation++;
-#endif
+	debug_step("begin initialization of '%s'", type_name(sym->s_type));
+	debug_indent_inc();
 
 	in = initialization_new(sym);
 	in->in_enclosing = init;
@@ -1057,10 +985,8 @@ end_initialization(void)
 	init = in->in_enclosing;
 	initialization_free(in);
 
-#ifdef DEBUG
-	debug_indentation--;
-#endif
-	debug_step0("end initialization");
+	debug_indent_dec();
+	debug_step("end initialization");
 }
 
 void

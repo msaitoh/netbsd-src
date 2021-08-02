@@ -1,4 +1,4 @@
-/* $NetBSD: main.c,v 1.2 2021/05/09 15:40:27 christos Exp $ */
+/* $NetBSD: main.c,v 1.4 2021/07/18 11:45:31 nia Exp $ */
 /*-
  * Copyright (c) 2021 The NetBSD Foundation, Inc.
  * All rights reserved.
@@ -405,6 +405,7 @@ process_device_select(struct aiomixer *aio, unsigned int num_devices)
 	while ((ch = getch()) != ERR) {
 		switch (ch) {
 		case '\n':
+			clear();
 			(void)snprintf(device_path, sizeof(device_path),
 			    "/dev/mixer%d", selected_device);
 			open_device(aio, device_path);
@@ -536,6 +537,7 @@ main(int argc, char **argv)
 
 	if (has_colors()) {
 		start_color();
+		use_default_colors();
 		init_pair(COLOR_CONTROL_SELECTED, COLOR_BLUE, COLOR_BLACK);
 		init_pair(COLOR_LEVELS, COLOR_GREEN, COLOR_BLACK);
 		init_pair(COLOR_SET_SELECTED, COLOR_BLACK, COLOR_GREEN);

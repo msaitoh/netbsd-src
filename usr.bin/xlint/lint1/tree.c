@@ -1,4 +1,4 @@
-/*	$NetBSD: tree.c,v 1.314 2021/07/14 17:07:24 rillig Exp $	*/
+/*	$NetBSD: tree.c,v 1.326 2021/08/01 19:11:54 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -37,7 +37,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: tree.c,v 1.314 2021/07/14 17:07:24 rillig Exp $");
+__RCSID("$NetBSD: tree.c,v 1.326 2021/08/01 19:11:54 rillig Exp $");
 #endif
 
 #include <float.h>
@@ -50,7 +50,7 @@ __RCSID("$NetBSD: tree.c,v 1.314 2021/07/14 17:07:24 rillig Exp $");
 #include "lint1.h"
 #include "cgram.h"
 
-static	tnode_t	*expr_new_integer_constant(tspec_t, int64_t);
+static	tnode_t	*build_integer_constant(tspec_t, int64_t);
 static	void	check_pointer_comparison(op_t,
 					 const tnode_t *, const tnode_t *);
 static	bool	check_assign_types_compatible(op_t, int,
@@ -90,7 +90,6 @@ static	tnode_t	*fold_float(tnode_t *);
 static	tnode_t	*check_function_arguments(type_t *, tnode_t *);
 static	tnode_t	*check_prototype_argument(int, type_t *, tnode_t *);
 static	void	check_null_effect(const tnode_t *);
-static	void	display_expression(const tnode_t *, int);
 static	void	check_array_index(tnode_t *, bool);
 static	void	check_integer_comparison(op_t, tnode_t *, tnode_t *);
 static	void	check_precedence_confusion(tnode_t *);
@@ -102,46 +101,6 @@ op_name(op_t op)
 {
 	return modtab[op].m_name;
 }
-
-#ifdef DEBUG
-void
-debug_node(const tnode_t *tn, int indent)
-{
-	op_t op;
-
-	if (tn == NULL) {
-		printf("%*s" "null\n", indent, "");
-		return;
-	}
-
-	op = tn->tn_op;
-	printf("%*s%s with type '%s'%s%s",
-	    2 * indent, "",
-	    op == CVT && !tn->tn_cast ? "convert" : op_name(op),
-	    type_name(tn->tn_type), tn->tn_lvalue ? ", lvalue" : "",
-	    tn->tn_parenthesized ? ", parenthesized" : "");
-
-	if (op == NAME)
-		printf(" %s\n", tn->tn_sym->s_name);
-	else if (op == CON && is_floating(tn->tn_type->t_tspec))
-		printf(", value %Lg", tn->tn_val->v_ldbl);
-	else if (op == CON && is_uinteger(tn->tn_type->t_tspec))
-		printf(", value %llu\n", (unsigned long long)tn->tn_val->v_quad);
-	else if (op == CON && is_integer(tn->tn_type->t_tspec))
-		printf(", value %lld\n", (long long)tn->tn_val->v_quad);
-	else if (op == CON)
-		printf(", unknown value\n");
-	else if (op == STRING)
-		printf(", length %zu\n", tn->tn_string->st_len);
-	else {
-		printf("\n");
-
-		debug_node(tn->tn_left, indent + 1);
-		if (modtab[op].m_binary || tn->tn_right != NULL)
-			debug_node(tn->tn_right, indent + 1);
-	}
-}
-#endif
 
 /* Build 'pointer to tp', 'array of tp' or 'function returning tp'. */
 type_t *
@@ -174,7 +133,7 @@ expr_derive_type(type_t *tp, tspec_t t)
  * Create a node for a constant.
  */
 tnode_t *
-expr_new_constant(type_t *tp, val_t *v)
+build_constant(type_t *tp, val_t *v)
 {
 	tnode_t	*n;
 
@@ -190,7 +149,7 @@ expr_new_constant(type_t *tp, val_t *v)
 }
 
 static tnode_t *
-expr_new_integer_constant(tspec_t t, int64_t q)
+build_integer_constant(tspec_t t, int64_t q)
 {
 	tnode_t	*n;
 
@@ -245,7 +204,7 @@ is_gcc_builtin(const char *name)
  * follow_token is the token which follows the name.
  */
 tnode_t *
-new_name_node(sym_t *sym, int follow_token)
+build_name(sym_t *sym, int follow_token)
 {
 	tnode_t	*n;
 
@@ -295,7 +254,7 @@ new_name_node(sym_t *sym, int follow_token)
 }
 
 tnode_t *
-new_string_node(strg_t *strg)
+build_string(strg_t *strg)
 {
 	size_t	len;
 	tnode_t	*n;
@@ -509,7 +468,7 @@ build_generic_selection(const tnode_t *expr,
  * rn	if not NULL, right operand
  */
 tnode_t *
-build(op_t op, tnode_t *ln, tnode_t *rn)
+build_binary(tnode_t *ln, op_t op, tnode_t *rn)
 {
 	const mod_t *mp;
 	tnode_t	*ntn;
@@ -688,6 +647,12 @@ build(op_t op, tnode_t *ln, tnode_t *rn)
 }
 
 tnode_t *
+build_unary(op_t op, tnode_t *tn)
+{
+	return build_binary(tn, op, NULL);
+}
+
+tnode_t *
 build_member_access(tnode_t *ln, op_t op, sbuf_t *member)
 {
 	sym_t	*msym;
@@ -700,7 +665,7 @@ build_member_access(tnode_t *ln, op_t op, sbuf_t *member)
 		ln = cconv(ln);
 	}
 	msym = struct_or_union_member(ln, op, getsym(member));
-	return build(op, ln, new_name_node(msym, 0));
+	return build_binary(ln, op, build_name(msym, 0));
 }
 
 /*
@@ -1794,7 +1759,13 @@ balance(op_t op, tnode_t **lnp, tnode_t **rnp)
 	bool	u;
 	type_t	*ntp;
 	static const tspec_t tl[] = {
-		LDOUBLE, DOUBLE, FLOAT, UQUAD, QUAD, ULONG, LONG, UINT, INT,
+		LDOUBLE, DOUBLE, FLOAT,
+#ifdef INT128_SIZE
+		UINT128, INT128,
+#endif
+		UQUAD, QUAD,
+		ULONG, LONG,
+		UINT, INT,
 	};
 
 	lt = (*lnp)->tn_type->t_tspec;
@@ -1810,8 +1781,6 @@ balance(op_t op, tnode_t **lnp, tnode_t **rnp)
 			t = LCOMPLEX;
 		} else if (lt == DCOMPLEX || rt == DCOMPLEX) {
 			t = DCOMPLEX;
-		} else if (lt == COMPLEX || rt == COMPLEX) {
-			t = COMPLEX;
 		} else if (lt == FCOMPLEX || rt == FCOMPLEX) {
 			t = FCOMPLEX;
 		} else if (lt == LDOUBLE || rt == LDOUBLE) {
@@ -2080,6 +2049,8 @@ should_warn_about_pointer_cast(const type_t *nstp, tspec_t nst,
 
 	if (nst == CHAR || nst == UCHAR)
 		return false;	/* for the sake of traditional C code */
+	if (ost == CHAR || ost == UCHAR)
+		return false;	/* for the sake of traditional C code */
 
 	return portable_size_in_bits(nst) != portable_size_in_bits(ost);
 }
@@ -2118,6 +2089,7 @@ check_pointer_conversion(tnode_t *tn, type_t *ntp)
 	}
 
 	if (hflag && alignment_in_bits(nstp) > alignment_in_bits(ostp) &&
+	    ost != CHAR && ost != UCHAR &&
 	    !is_incomplete(ostp)) {
 		/* converting '%s' to '%s' may cause alignment problem */
 		warning(135, type_name(otp), type_name(ntp));
@@ -2537,19 +2509,17 @@ merge_qualifiers(type_t *tp1, const type_t *tp2)
 static bool
 has_constant_member(const type_t *tp)
 {
-	sym_t	*m;
-	tspec_t	t;
+	sym_t *m;
 
-	lint_assert((t = tp->t_tspec) == STRUCT || t == UNION);
+	lint_assert(is_struct_or_union(tp->t_tspec));
 
 	for (m = tp->t_str->sou_first_member; m != NULL; m = m->s_next) {
-		tp = m->s_type;
-		if (tp->t_const)
+		const type_t *mtp = m->s_type;
+		if (mtp->t_const)
 			return true;
-		if ((t = tp->t_tspec) == STRUCT || t == UNION) {
-			if (has_constant_member(m->s_type))
-				return true;
-		}
+		if (is_struct_or_union(mtp->t_tspec) &&
+		    has_constant_member(mtp))
+			return true;
 	}
 	return false;
 }
@@ -2581,7 +2551,7 @@ build_struct_access(op_t op, tnode_t *ln, tnode_t *rn)
 		ln = convert(NOOP, 0, expr_derive_type(gettyp(VOID), PTR), ln);
 	}
 
-	ctn = expr_new_integer_constant(PTRDIFF_TSPEC,
+	ctn = build_integer_constant(PTRDIFF_TSPEC,
 	    rn->tn_sym->s_value.v_quad / CHAR_SIZE);
 
 	ntn = new_tnode(PLUS, expr_derive_type(rn->tn_type, PTR), ln, ctn);
@@ -2613,7 +2583,7 @@ build_prepost_incdec(op_t op, tnode_t *ln)
 	if (ln->tn_type->t_tspec == PTR) {
 		cn = plength(ln->tn_type);
 	} else {
-		cn = expr_new_integer_constant(INT, (int64_t)1);
+		cn = build_integer_constant(INT, (int64_t)1);
 	}
 	ntn = new_tnode(op, ln->tn_type, ln, cn);
 
@@ -2642,15 +2612,15 @@ build_real_imag(op_t op, tnode_t *ln)
 	switch (ln->tn_type->t_tspec) {
 	case LCOMPLEX:
 		/* XXX: integer and LDOUBLE don't match. */
-		cn = expr_new_integer_constant(LDOUBLE, (int64_t)1);
+		cn = build_integer_constant(LDOUBLE, (int64_t)1);
 		break;
 	case DCOMPLEX:
 		/* XXX: integer and DOUBLE don't match. */
-		cn = expr_new_integer_constant(DOUBLE, (int64_t)1);
+		cn = build_integer_constant(DOUBLE, (int64_t)1);
 		break;
 	case FCOMPLEX:
 		/* XXX: integer and FLOAT don't match. */
-		cn = expr_new_integer_constant(FLOAT, (int64_t)1);
+		cn = build_integer_constant(FLOAT, (int64_t)1);
 		break;
 	default:
 		/* __%s__ is illegal for type %s */
@@ -2938,7 +2908,7 @@ plength(type_t *tp)
 	if (elsz == 0)
 		elsz = CHAR_SIZE;
 
-	return expr_new_integer_constant(PTRDIFF_TSPEC,
+	return build_integer_constant(PTRDIFF_TSPEC,
 	    (int64_t)(elem * elsz / CHAR_SIZE));
 }
 
@@ -3088,7 +3058,7 @@ fold(tnode_t *tn)
 
 	v->v_quad = convert_integer(q, t, -1);
 
-	cn = expr_new_constant(tn->tn_type, v);
+	cn = build_constant(tn->tn_type, v);
 	if (tn->tn_left->tn_system_dependent)
 		cn->tn_system_dependent = true;
 	if (modtab[tn->tn_op].m_binary && tn->tn_right->tn_system_dependent)
@@ -3131,7 +3101,7 @@ fold_test(tnode_t *tn)
 		lint_assert(/*CONSTCOND*/false);
 	}
 
-	return expr_new_constant(tn->tn_type, v);
+	return build_constant(tn->tn_type, v);
 }
 
 /*
@@ -3228,7 +3198,7 @@ fold_float(tnode_t *tn)
 	    fpe = 0;
 	}
 
-	return expr_new_constant(tn->tn_type, v);
+	return build_constant(tn->tn_type, v);
 }
 
 
@@ -3239,7 +3209,7 @@ tnode_t *
 build_sizeof(const type_t *tp)
 {
 	int64_t size_in_bytes = type_size_in_bits(tp) / CHAR_SIZE;
-	tnode_t *tn = expr_new_integer_constant(SIZEOF_TSPEC, size_in_bytes);
+	tnode_t *tn = build_integer_constant(SIZEOF_TSPEC, size_in_bytes);
 	tn->tn_system_dependent = true;
 	return tn;
 }
@@ -3257,7 +3227,7 @@ build_offsetof(const type_t *tp, const sym_t *sym)
 
 	// XXX: wrong size, no checking for sym fixme
 	int64_t offset_in_bytes = type_size_in_bits(tp) / CHAR_SIZE;
-	tnode_t *tn = expr_new_integer_constant(SIZEOF_TSPEC, offset_in_bytes);
+	tnode_t *tn = build_integer_constant(SIZEOF_TSPEC, offset_in_bytes);
 	tn->tn_system_dependent = true;
 	return tn;
 }
@@ -3359,7 +3329,7 @@ build_alignof(const type_t *tp)
 		break;
 	}
 
-	return expr_new_integer_constant(SIZEOF_TSPEC,
+	return build_integer_constant(SIZEOF_TSPEC,
 	    (int64_t)alignment_in_bits(tp) / CHAR_SIZE);
 }
 
@@ -3414,15 +3384,10 @@ cast(tnode_t *tn, type_t *tp)
 		error(329, type_name(tn->tn_type), type_name(tp));
 		return NULL;
 	} else if (nt == STRUCT || nt == ARRAY || nt == FUNC) {
-		if (!Sflag || nt == ARRAY || nt == FUNC) {
-			/* invalid cast expression */
-			error(147);
-			return NULL;
-		}
+		if (!Sflag || nt == ARRAY || nt == FUNC)
+			goto invalid_cast;
 	} else if (ot == STRUCT || ot == UNION) {
-		/* invalid cast expression */
-		error(147);
-		return NULL;
+		goto invalid_cast;
 	} else if (ot == VOID) {
 		/* improper cast of void expression */
 		error(148);
@@ -3439,26 +3404,28 @@ cast(tnode_t *tn, type_t *tp)
 				/* cast discards 'const' from type '%s' */
 				warning(275, type_name(tn->tn_type));
 		}
-	} else {
-		/* invalid cast expression */
-		error(147);
-		return NULL;
-	}
+	} else
+		goto invalid_cast;
 
 	tn = convert(CVT, 0, tp, tn);
 	tn->tn_cast = true;
 
 	return tn;
+
+invalid_cast:
+	/* invalid cast from '%s' to '%s' */
+	error(147, type_name(tn->tn_type), type_name(tp));
+	return NULL;
 }
 
 /*
  * Create the node for a function argument.
  * All necessary conversions and type checks are done in
- * new_function_call_node because new_function_argument_node has no
+ * build_function_call because build_function_argument has no
  * information about expected argument types.
  */
 tnode_t *
-new_function_argument_node(tnode_t *args, tnode_t *arg)
+build_function_argument(tnode_t *args, tnode_t *arg)
 {
 	tnode_t	*ntn;
 
@@ -3468,7 +3435,7 @@ new_function_argument_node(tnode_t *args, tnode_t *arg)
 	 * will not change.
 	 */
 	if (arg == NULL)
-		arg = expr_new_integer_constant(INT, 0);
+		arg = build_integer_constant(INT, 0);
 
 	ntn = new_tnode(PUSH, arg->tn_type, arg, args);
 
@@ -3480,7 +3447,7 @@ new_function_argument_node(tnode_t *args, tnode_t *arg)
  * function arguments and insert conversions, if necessary.
  */
 tnode_t *
-new_function_call_node(tnode_t *func, tnode_t *args)
+build_function_call(tnode_t *func, tnode_t *args)
 {
 	tnode_t	*ntn;
 	op_t	fcop;
@@ -3605,8 +3572,7 @@ check_prototype_argument(
 	bool	dowarn;
 
 	ln = xcalloc(1, sizeof(*ln));
-	ln->tn_type = expr_dup_type(tp);
-	ln->tn_type->t_const = false;
+	ln->tn_type = expr_unqualified_type(tp);
 	ln->tn_lvalue = true;
 	if (typeok(FARG, n, ln, tn)) {
 		if (!eqtype(tp, tn->tn_type,
@@ -3636,8 +3602,7 @@ constant(tnode_t *tn, bool required)
 
 	if (tn == NULL) {
 		lint_assert(nerr != 0);
-		if (dflag)
-			printf("constant node is null; returning 1 instead\n");
+		debug_step("constant node is null; returning 1 instead");
 		v->v_tspec = INT;
 		v->v_quad = 1;
 		return v;
@@ -3679,9 +3644,9 @@ is_constcond_false(const tnode_t *tn, tspec_t t)
 }
 
 /*
- * Perform some tests on expressions which can't be done in build() and
- * functions called by build(). These tests must be done here because
- * we need some information about the context in which the operations
+ * Perform some tests on expressions which can't be done in build_binary()
+ * and functions called by build_binary(). These tests must be done here
+ * because we need some information about the context in which the operations
  * are performed.
  * After all tests are performed and dofreeblk is true, expr() frees the
  * memory which is used for the expression.
@@ -3720,8 +3685,7 @@ expr(tnode_t *tn, bool vctx, bool tctx, bool dofreeblk, bool is_do_while)
 		if (tn->tn_op != COMMA && !vctx && !tctx)
 			check_null_effect(tn);
 	}
-	if (dflag)
-		display_expression(tn, 0);
+	debug_node(tn);
 
 	/* free the tree memory */
 	if (dofreeblk)
@@ -3762,66 +3726,6 @@ check_null_effect(const tnode_t *tn)
 	if (hflag && !has_side_effect(tn)) {
 		/* expression has null effect */
 		warning(129);
-	}
-}
-
-/*
- * Dump an expression to stdout
- * only used for debugging
- */
-static void
-display_expression(const tnode_t *tn, int offs)
-{
-	uint64_t uq;
-
-	if (tn == NULL) {
-		(void)printf("%*s%s\n", offs, "", "NULL");
-		return;
-	}
-	(void)printf("%*sop %s  ", offs, "", op_name(tn->tn_op));
-
-	if (tn->tn_op == NAME) {
-		(void)printf("%s: %s ",
-		    tn->tn_sym->s_name,
-		    storage_class_name(tn->tn_sym->s_scl));
-	} else if (tn->tn_op == CON && is_floating(tn->tn_type->t_tspec)) {
-		(void)printf("%#g ", (double)tn->tn_val->v_ldbl);
-	} else if (tn->tn_op == CON && is_integer(tn->tn_type->t_tspec)) {
-		uq = tn->tn_val->v_quad;
-		(void)printf("0x %08lx %08lx ",
-		    (long)(uq >> 32) & 0xffffffffl,
-		    (long)uq & 0xffffffffl);
-	} else if (tn->tn_op == CON && tn->tn_type->t_tspec == BOOL) {
-		(void)printf("%s ",
-		    tn->tn_val->v_quad != 0 ? "true" : "false");
-	} else if (tn->tn_op == CON) {
-		lint_assert(tn->tn_type->t_tspec == PTR);
-		(void)printf("0x%0*lx ", (int)(sizeof(void *) * CHAR_BIT / 4),
-			     (u_long)tn->tn_val->v_quad);
-	} else if (tn->tn_op == STRING) {
-		if (tn->tn_string->st_tspec == CHAR) {
-			(void)printf("\"%s\"", tn->tn_string->st_cp);
-		} else {
-			char	*s;
-			size_t	n;
-			n = MB_CUR_MAX * (tn->tn_string->st_len + 1);
-			s = xmalloc(n);
-			(void)wcstombs(s, tn->tn_string->st_wcp, n);
-			(void)printf("L\"%s\"", s);
-			free(s);
-		}
-		(void)printf(" ");
-	} else if (tn->tn_op == FSEL) {
-		(void)printf("o=%d, l=%d ", tn->tn_type->t_foffs,
-			     tn->tn_type->t_flen);
-	}
-	(void)printf("%s\n", ttos(tn->tn_type));
-	if (tn->tn_op == NAME || tn->tn_op == CON || tn->tn_op == STRING)
-		return;
-	display_expression(tn->tn_left, offs + 2);
-	if (modtab[tn->tn_op].m_binary ||
-	    (tn->tn_op == PUSH && tn->tn_right != NULL)) {
-		display_expression(tn->tn_right, offs + 2);
 	}
 }
 
@@ -4301,7 +4205,7 @@ check_precedence_confusion(tnode_t *tn)
 	if (!hflag)
 		return;
 
-	debug_node(tn, 0);
+	debug_node(tn);
 
 	lint_assert(modtab[tn->tn_op].m_binary);
 	for (ln = tn->tn_left; ln->tn_op == CVT; ln = ln->tn_left)

@@ -1,4 +1,4 @@
-/*	$NetBSD: main1.c,v 1.49 2021/07/04 05:49:20 rillig Exp $	*/
+/*	$NetBSD: main1.c,v 1.53 2021/08/01 19:11:54 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -37,7 +37,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: main1.c,v 1.49 2021/07/04 05:49:20 rillig Exp $");
+__RCSID("$NetBSD: main1.c,v 1.53 2021/08/01 19:11:54 rillig Exp $");
 #endif
 
 #include <sys/types.h>
@@ -70,9 +70,6 @@ bool	cflag;
 
 /* Allow features from C11, C99 and C90. */
 bool	c11flag;
-
-/* Print various debug information. */
-bool	dflag;
 
 /* Perform stricter checking of enum types and operations on enum types. */
 bool	eflag;
@@ -181,12 +178,11 @@ main(int argc, char *argv[])
 	setprogname(argv[0]);
 
 	ERR_ZERO(&msgset);
-	while ((c = getopt(argc, argv, "abcdeghmprstuvwyzA:FPR:STX:")) != -1) {
+	while ((c = getopt(argc, argv, "abceghmprstuvwyzA:FPR:STX:")) != -1) {
 		switch (c) {
 		case 'a':	aflag++;	break;
 		case 'b':	bflag = true;	break;
 		case 'c':	cflag = true;	break;
-		case 'd':	dflag = true;	break;
 		case 'e':	eflag = true;	break;
 		case 'F':	Fflag = true;	break;
 		case 'g':	gflag = true;	break;
@@ -257,8 +253,6 @@ main(int argc, char *argv[])
 #ifdef DEBUG
 	setvbuf(stdout, NULL, _IONBF, 0);
 #endif
-	if (dflag)
-		setvbuf(stdout, NULL, _IONBF, 0);
 #ifdef YYDEBUG
 	if (yflag)
 		yydebug = 1;
@@ -284,9 +278,7 @@ main(int argc, char *argv[])
 
 	/* Following warnings cannot be suppressed by LINTED */
 	lwarn = LWARN_ALL;
-#ifdef DEBUG
-	printf("%s, %d: lwarn = %d\n", curr_pos.p_file, curr_pos.p_line, lwarn);
-#endif
+	debug_step("main lwarn = %d", lwarn);
 
 	check_global_symbols();
 
