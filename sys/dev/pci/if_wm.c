@@ -9788,6 +9788,20 @@ wm_sched_handle_queue(struct wm_softc *sc, struct wm_queue *wmq)
 		softint_schedule(wmq->wmq_si);
 }
 
+static inline void
+wm_legacy_intr_disable(struct wm_softc *sc)
+{
+
+	CSR_WRITE(sc, WMREG_IMC, 0xffffffffU);
+}
+
+static inline void
+wm_legacy_intr_enable(struct wm_softc *sc)
+{
+
+	CSR_WRITE(sc, WMREG_IMS, sc->sc_icr);
+}
+
 /*
  * wm_intr_legacy:
  *
@@ -9802,6 +9816,7 @@ wm_intr_legacy(void *arg)
 	struct wm_rxqueue *rxq = &wmq->wmq_rxq;
 	uint32_t icr, rndval = 0;
 	int handled = 0;
+	bool more = false;
 
 	while (1 /* CONSTCOND */) {
 		icr = CSR_READ(sc, WMREG_ICR);
@@ -9836,7 +9851,7 @@ wm_intr_legacy(void *arg)
 		 * as if_percpuq_enqueue() just call softint_schedule().
 		 * So, we can call wm_rxeof() in interrupt context.
 		 */
-		wm_rxeof(rxq, UINT_MAX);
+		more = wm_rxeof(rxq, UINT_MAX);
 		/* Fill lower bits with RX index. See below for the upper. */
 		rndval |= rxq->rxq_ptr & WM_NRXDESC_MASK;
 
@@ -9856,7 +9871,7 @@ wm_intr_legacy(void *arg)
 			WM_Q_EVCNT_INCR(txq, txdw);
 		}
 #endif
-		wm_txeof(txq, UINT_MAX);
+		more |= wm_txeof(txq, UINT_MAX);
 		/* Fill upper bits with TX index. See above for the lower. */
 		rndval = txq->txq_next * WM_NRXDESC;
 
@@ -9887,8 +9902,9 @@ wm_intr_legacy(void *arg)
 
 	rnd_add_uint32(&sc->sc_queue[0].rnd_source, rndval);
 
-	if (handled) {
+	if (more) {
 		/* Try to get more packets going. */
+		wm_legacy_intr_disable(sc);
 		wmq->wmq_txrx_use_workqueue = sc->sc_txrx_use_workqueue;
 		wm_sched_handle_queue(sc, wmq);
 	}
@@ -9900,6 +9916,10 @@ static inline void
 wm_txrxintr_disable(struct wm_queue *wmq)
 {
 	struct wm_softc *sc = wmq->wmq_txq.txq_sc;
+
+	if (__predict_false(!wm_is_using_msix(sc))) {
+		return wm_legacy_intr_disable(sc);
+	}
 
 	if (sc->sc_type == WM_T_82574)
 		CSR_WRITE(sc, WMREG_IMC,
@@ -9917,6 +9937,10 @@ wm_txrxintr_enable(struct wm_queue *wmq)
 	struct wm_softc *sc = wmq->wmq_txq.txq_sc;
 
 	wm_itrs_calculate(sc, wmq);
+
+	if (__predict_false(!wm_is_using_msix(sc))) {
+		return wm_legacy_intr_enable(sc);
+	}
 
 	/*
 	 * ICR_OTHER which is disabled in wm_linkintr_msix() is enabled here.
