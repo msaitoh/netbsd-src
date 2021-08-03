@@ -1359,6 +1359,8 @@ ixgbe_refresh_mbufs(struct rx_ring *rxr, int limit)
 			mp = rxbuf->buf;
 
 		mp->m_pkthdr.len = mp->m_len = rxr->mbuf_sz;
+		if (mp->m_pkthdr.len == 0)
+			panic("%s: m_pkthdr.len = 0", __func__);
 
 		/* If we're dealing with an mbuf that was copied rather
 		 * than replaced, there's no need to go through busdma.
@@ -1554,6 +1556,8 @@ ixgbe_setup_receive_ring(struct rx_ring *rxr)
 		}
 		mp = rxbuf->buf;
 		mp->m_pkthdr.len = mp->m_len = rxr->mbuf_sz;
+		if (mp->m_pkthdr.len == 0)
+			panic("%s: m_pkthdr.len = 0", __func__);
 		/* Get the memory mapping */
 		error = bus_dmamap_load_mbuf(rxr->ptag->dt_dmat, rxbuf->pmap,
 		    mp, BUS_DMA_NOWAIT);
@@ -1758,12 +1762,30 @@ ixgbe_rx_input(struct rx_ring *rxr, struct ifnet *ifp, struct mbuf *m,
 	if_percpuq_enqueue(adapter->ipq, m);
 } /* ixgbe_rx_input */
 
+#if 0
+static void
+ixgbe_print_desc_rxr(struct rx_ring *rxr)
+{
+	int i;
+
+	for (i = 0; i < rxr->num_desc; i++) {
+		struct ixgbe_rx_buf *rxbuf = &rxr->rx_buffers[i];
+
+		printf("[%d] buf = %p, fmp = %p", i, rxbuf->buf, rxbuf->fmp);
+		if (rxbuf->buf != NULL)
+			printf(" len = %d", rxbuf->buf->m_pkthdr.len);
+		printf("\n");
+	}
+}
+#endif
+
 /************************************************************************
  * ixgbe_rx_discard
  ************************************************************************/
 static __inline void
 ixgbe_rx_discard(struct rx_ring *rxr, int i)
 {
+	struct adapter  *adapter = rxr->adapter;
 	struct ixgbe_rx_buf *rbuf;
 
 	rbuf = &rxr->rx_buffers[i];
@@ -1782,6 +1804,12 @@ ixgbe_rx_discard(struct rx_ring *rxr, int i)
 		rbuf->fmp = NULL;
 		rbuf->buf = NULL; /* rbuf->buf is part of fmp's chain */
 	} else if (rbuf->buf) {
+		if (rbuf->buf->m_pkthdr.len == 0) {
+			printf("discard(%d, %d): len = %d, nx_check = %d, nx_refresh = %d\n",
+			    rxr->me, i, rbuf->buf->m_pkthdr.len,
+			    rxr->next_to_check, rxr->next_to_refresh);
+			ixgbe_print_desc(adapter, rxr->me);
+		}
 		bus_dmamap_sync(rxr->ptag->dt_dmat, rbuf->pmap, 0,
 		    rbuf->buf->m_pkthdr.len, BUS_DMASYNC_POSTREAD);
 		ixgbe_dmamap_unload(rxr->ptag, rbuf->pmap);
@@ -1987,10 +2015,15 @@ ixgbe_rxeof(struct ix_queue *que)
 					rbuf->flags |= IXGBE_RX_COPY;
 
 					m_freem(newmp);
-				}
+				} else
+					printf("%s: NULL!!!\n", __func__);
 			}
 			if (sendmp == NULL) {
 				rbuf->buf = newmp;
+				newmp->m_pkthdr.len = newmp->m_len
+				    = rxr->mbuf_sz;
+				if (newmp->m_pkthdr.len == 0)
+					panic("%s: m_pkthdr.len = 0", __func__);
 				rbuf->fmp = NULL;
 				mp->m_len = len;
 				sendmp = mp;
@@ -1999,6 +2032,8 @@ ixgbe_rxeof(struct ix_queue *que)
 			/* first desc of a non-ps chain */
 			sendmp->m_flags |= M_PKTHDR;
 			sendmp->m_pkthdr.len = len;
+			if (sendmp->m_pkthdr.len == 0)
+				panic("%s: m_pkthdr.len = 0", __func__);
 		}
 		++processed;
 

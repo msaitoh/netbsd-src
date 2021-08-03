@@ -6193,6 +6193,23 @@ ixgbe_print_debug_info(struct adapter *adapter)
 	device_printf(dev, "EIAC:\t%08x\n", IXGBE_READ_REG(hw, IXGBE_EIAC));
 } /* ixgbe_print_debug_info */
 
+void
+ixgbe_print_desc(struct adapter *adapter, int qidx)
+{
+	struct rx_ring *rxr = &adapter->rx_rings[qidx];
+	int i;
+
+	printf("print_desc: %d\n", qidx);
+	for (i = 0; i < rxr->num_desc; i++) {
+		struct ixgbe_rx_buf *rxbuf = &rxr->rx_buffers[i];
+
+		printf("[%d] buf = %p, fmp = %p", i, rxbuf->buf, rxbuf->fmp);
+		if (rxbuf->buf != NULL)
+			printf(" len = %d", rxbuf->buf->m_pkthdr.len);
+		printf("\n");
+	}
+}
+
 /************************************************************************
  * ixgbe_sysctl_debug
  ************************************************************************/
@@ -6214,6 +6231,8 @@ ixgbe_sysctl_debug(SYSCTLFN_ARGS)
 
 	if (result == 1)
 		ixgbe_print_debug_info(adapter);
+	if ((result >= 10) && (result < (10 + adapter->num_queues)))
+		ixgbe_print_desc(adapter, result - 10);
 
 	return 0;
 } /* ixgbe_sysctl_debug */
