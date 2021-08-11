@@ -2019,11 +2019,16 @@ ixgbe_rxeof(struct ix_queue *que)
 					printf("%s: NULL!!!\n", __func__);
 			}
 			if (sendmp == NULL) {
+				/* Update new (used in future) mbuf */
 				rbuf->buf = newmp;
 				newmp->m_pkthdr.len = newmp->m_len
 				    = rxr->mbuf_sz;
+				if (adapter->max_frame_size
+				    <= (rxr->mbuf_sz - ETHER_ALIGN))
+					m_adj(newmp, ETHER_ALIGN);
 				if (newmp->m_pkthdr.len == 0)
 					panic("%s: m_pkthdr.len = 0", __func__);
+				/* For sendmp */
 				rbuf->fmp = NULL;
 				mp->m_len = len;
 				sendmp = mp;
