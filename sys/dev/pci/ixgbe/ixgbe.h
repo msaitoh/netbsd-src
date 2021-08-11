@@ -786,7 +786,6 @@ void ixgbe_jcl_reinit(struct adapter *, bus_dma_tag_t, struct rx_ring *,
 void ixgbe_jcl_destroy(struct adapter *,  struct rx_ring *);
 void ixgbe_print_desc(struct adapter *, int);
 
-
 #include "ixgbe_bypass.h"
 #include "ixgbe_fdir.h"
 #include "ixgbe_rss.h"
