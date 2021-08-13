@@ -1,4 +1,4 @@
-# $NetBSD: Makefile,v 1.26 2020/05/23 00:43:33 rin Exp $
+# $NetBSD: Makefile,v 1.28 2021/08/11 09:12:07 christos Exp $
 #-
 # Copyright (c) 1998 Juniper Networks, Inc.
 # All rights reserved.
@@ -51,12 +51,9 @@ MKPICLIB=yes
 DIST=   ${NETBSDSRCDIR}/external/bsd/openpam/dist
 LIB=	pam
 NOPROFILE=
-# XXX: returns no value
-#LINTFLAGS+=     -X 217 -X 284
 
-WARNS=	6
-# 233: Struct/union never defined
-LINTFLAGS+= -Sw -X 233
+WARNS=		6
+LINTFLAGS+=	-w
 
 CPPFLAGS+= -DLIB_MAJ=${SHLIB_MAJOR} -DHAVE_CONFIG_H -I${.CURDIR}
 #CPPFLAGS+= -DOPENPAM_DEBUG

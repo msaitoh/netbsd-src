@@ -1,4 +1,4 @@
-/*	$NetBSD: gcc_attribute_var.c,v 1.3 2021/07/11 15:07:39 rillig Exp $	*/
+/*	$NetBSD: gcc_attribute_var.c,v 1.5 2021/08/11 05:19:33 rillig Exp $	*/
 # 3 "gcc_attribute_var.c"
 
 /*
@@ -61,6 +61,13 @@ ambiguity_for_attribute(void)
 		case 2:
 			println();
 	}
+}
+
+void
+attribute_after_array_brackets(
+    const char *argv[] __attribute__((__unused__))
+)
+{
 }
 
 /* just to trigger _some_ error, to keep the .exp file */

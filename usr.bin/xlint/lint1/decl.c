@@ -1,4 +1,4 @@
-/* $NetBSD: decl.c,v 1.217 2021/08/01 18:37:29 rillig Exp $ */
+/* $NetBSD: decl.c,v 1.221 2021/08/10 20:43:12 rillig Exp $ */
 
 /*
  * Copyright (c) 1996 Christopher G. Demetriou.  All Rights Reserved.
@@ -38,7 +38,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: decl.c,v 1.217 2021/08/01 18:37:29 rillig Exp $");
+__RCSID("$NetBSD: decl.c,v 1.221 2021/08/10 20:43:12 rillig Exp $");
 #endif
 
 #include <sys/param.h>
@@ -209,7 +209,13 @@ expr_unqualified_type(const type_t *tp)
 	ntp->t_const = false;
 	ntp->t_volatile = false;
 
-	/* TODO: deep-copy struct/union members; see msg_115.c */
+	/*
+	 * In case of a struct or union type, the members should lose their
+	 * qualifiers as well, but that would require a deep copy of the
+	 * struct or union type.  This in turn would defeat the type
+	 * comparison in eqtype, which simply tests whether tp1->t_str ==
+	 * tp2->t_str.
+	 */
 
 	return ntp;
 }
@@ -1151,7 +1157,7 @@ declare_bit_field(sym_t *dsym, tspec_t *inout_t, type_t **const inout_tp)
 
 	type_t *const tp = *inout_tp;
 	tspec_t const t = *inout_t;
-	if (tp->t_flen < 0 || tp->t_flen > (ssize_t)size_in_bits(t)) {
+	if (tp->t_flen > size_in_bits(t)) {
 		/* illegal bit-field size: %d */
 		error(36, tp->t_flen);
 		tp->t_flen = size_in_bits(t);
@@ -2225,12 +2231,15 @@ eqtype(const type_t *tp1, const type_t *tp2,
 		if (t == STRUCT || t == UNION)
 			return tp1->t_str == tp2->t_str;
 
+		if (t == ENUM && eflag)
+			return tp1->t_enum == tp2->t_enum;
+
 		if (t == ARRAY && tp1->t_dim != tp2->t_dim) {
 			if (tp1->t_dim != 0 && tp2->t_dim != 0)
 				return false;
 		}
 
-		/* dont check prototypes for traditional */
+		/* don't check prototypes for traditional */
 		if (t == FUNC && !tflag) {
 			if (tp1->t_proto && tp2->t_proto) {
 				if (!eqargs(tp1, tp2, dowarn))

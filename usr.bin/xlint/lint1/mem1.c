@@ -1,4 +1,4 @@
-/*	$NetBSD: mem1.c,v 1.47 2021/08/01 18:07:35 rillig Exp $	*/
+/*	$NetBSD: mem1.c,v 1.49 2021/08/10 17:57:16 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -37,7 +37,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: mem1.c,v 1.47 2021/08/01 18:07:35 rillig Exp $");
+__RCSID("$NetBSD: mem1.c,v 1.49 2021/08/10 17:57:16 rillig Exp $");
 #endif
 
 #include <sys/types.h>
@@ -205,9 +205,6 @@ static	memory_block	*frmblks;
 /* length of new allocated memory blocks */
 static	size_t	mblklen;
 
-static	void	*xgetblk(memory_block **, size_t);
-static	void	xfreeblk(memory_block **);
-static	memory_block *xnewblk(void);
 
 static memory_block *
 xnewblk(void)
@@ -297,7 +294,7 @@ initmem(void)
 }
 
 
-/* Allocate memory associated with level l. */
+/* Allocate memory associated with level l, initialized with zero. */
 void *
 getlblk(size_t l, size_t s)
 {
@@ -310,6 +307,10 @@ getlblk(size_t l, size_t s)
 	return xgetblk(&mblks[l], s);
 }
 
+/*
+ * Return allocated memory for the current mem_block_level, initialized with
+ * zero.
+ */
 void *
 getblk(size_t s)
 {

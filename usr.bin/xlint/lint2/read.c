@@ -1,4 +1,4 @@
-/* $NetBSD: read.c,v 1.46 2021/07/31 19:52:44 rillig Exp $ */
+/* $NetBSD: read.c,v 1.49 2021/08/08 11:56:35 rillig Exp $ */
 
 /*
  * Copyright (c) 1996 Christopher G. Demetriou.  All Rights Reserved.
@@ -38,7 +38,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: read.c,v 1.46 2021/07/31 19:52:44 rillig Exp $");
+__RCSID("$NetBSD: read.c,v 1.49 2021/08/08 11:56:35 rillig Exp $");
 #endif
 
 #include <ctype.h>
@@ -402,7 +402,7 @@ decldef(pos_t *posp, const char *cp)
 			sym.s_def = DECL;
 			break;
 		case 'i':
-			if (sym.s_inline != NODECL)
+			if (sym.s_inline)
 				inperr("inline %c", c);
 			sym.s_inline = true;
 			break;
@@ -838,6 +838,15 @@ gettlen(const char *cp, const char **epp)
 			t = QUAD;
 		}
 		break;
+#ifdef INT128_SIZE
+	case 'J':
+		if (s == 'u') {
+			t = UINT128;
+		} else if (s == '\0') {
+			t = INT128;
+		}
+		break;
+#endif
 	case 'D':
 		if (s == 's') {
 			t = FLOAT;
@@ -1048,7 +1057,7 @@ inpqstrg(const char *src, const char **epp)
 {
 	char	*strg, *dst;
 	size_t	slen;
-	int	c;
+	char	c;
 	int	v;
 
 	dst = strg = xmalloc(slen = 32);
@@ -1101,7 +1110,7 @@ inpqstrg(const char *src, const char **epp)
 				if ((c = *src++) < '0' || c > '7')
 					inperr("not octal: %c", c);
 				v |= c - '0';
-				c = (u_char)v;
+				c = (char)v;
 				break;
 			default:
 				inperr("bad \\ escape: %c", c);
@@ -1113,7 +1122,7 @@ inpqstrg(const char *src, const char **epp)
 			dst = strg + (slen - 1);
 			slen *= 2;
 		}
-		*dst++ = (char)c;
+		*dst++ = c;
 		if ((c = *src++) == '\0')
 			inperr("missing closing quote");
 	}

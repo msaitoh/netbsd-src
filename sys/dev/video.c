@@ -1,4 +1,4 @@
-/* $NetBSD: video.c,v 1.40 2021/04/24 23:36:52 thorpej Exp $ */
+/* $NetBSD: video.c,v 1.42 2021/08/09 21:38:04 andvar Exp $ */
 
 /*
  * Copyright (c) 2008 Patrick Mahoney <pat@polycrystal.org>
@@ -36,7 +36,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: video.c,v 1.40 2021/04/24 23:36:52 thorpej Exp $");
+__KERNEL_RCSID(0, "$NetBSD: video.c,v 1.42 2021/08/09 21:38:04 andvar Exp $");
 
 #include "video.h"
 #if NVIDEO > 0
@@ -153,7 +153,7 @@ struct video_stream {
 	 * grabs these in turn and fills them with video data.  Once
 	 * filled, they are moved to the egress queue.  Samples are
 	 * dequeued either by user with MMAP method or, with READ
-	 * method, videoread() works from the fist sample in the
+	 * method, videoread() works from the first sample in the
 	 * ingress queue without dequeing.  In the first case, the
 	 * user re-queues the buffer when finished, and videoread()
 	 * does the same when all data has been read.  The sample now
@@ -434,8 +434,7 @@ video_attach_mi(const struct video_hw_if *hw_if, device_t parent)
 
 	args.hw_if = hw_if;
 	return config_found(parent, &args, video_print,
-	    CFARG_IATTR, "videobus",
-	    CFARG_EOL);
+	    CFARGS(.iattr = "videobus"));
 }
 
 /* video_submit_payload - called by hardware driver to submit payload data */

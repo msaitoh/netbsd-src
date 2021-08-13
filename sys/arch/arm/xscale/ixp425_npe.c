@@ -1,4 +1,4 @@
-/*	$NetBSD: ixp425_npe.c,v 1.13 2021/07/24 21:31:32 andvar Exp $	*/
+/*	$NetBSD: ixp425_npe.c,v 1.15 2021/08/07 16:18:46 thorpej Exp $	*/
 
 /*-
  * Copyright (c) 2006 Sam Leffler, Errno Consulting
@@ -62,7 +62,7 @@
 #if 0
 __FBSDID("$FreeBSD: src/sys/arm/xscale/ixp425/ixp425_npe.c,v 1.1 2006/11/19 23:55:23 sam Exp $");
 #endif
-__KERNEL_RCSID(0, "$NetBSD: ixp425_npe.c,v 1.13 2021/07/24 21:31:32 andvar Exp $");
+__KERNEL_RCSID(0, "$NetBSD: ixp425_npe.c,v 1.15 2021/08/07 16:18:46 thorpej Exp $");
 
 /*
  * Intel XScale Network Processing Engine (NPE) support.
@@ -318,8 +318,7 @@ ixpnpe_attach(device_t parent, device_t self, void *arg)
 	npe_reg_read(sc, IX_NPECTL) | (IX_NPECTL_OFE | IX_NPECTL_OFWE));
 
     config_search(self, ixa,
-	CFARG_SEARCH, ixpnpe_search,
-	CFARG_EOL);
+	CFARGS(.search = ixpnpe_search));
 }
 
 static int
@@ -343,7 +342,7 @@ ixpnpe_search(device_t parent, cfdata_t cf, const int *ldesc, void *arg)
 	na.na_dt = ixa->ixa_dt;
 
 	if (config_probe(parent, cf, &na)) {
-		config_attach(parent, cf, &na, ixpnpe_print, CFARG_EOL);
+		config_attach(parent, cf, &na, ixpnpe_print, CFARGS_NONE);
 		return (1);
 	}
 
@@ -1135,7 +1134,7 @@ npe_logical_reg_read(struct ixpnpe_softc *sc,
     npeInstruction |= (regAddr << IX_NPEDL_OFFSET_INSTR_SRC) |
 	(regAddr << IX_NPEDL_OFFSET_INSTR_DEST);
 
-    /* step execution of NPE intruction using Debug Executing Context stack */
+    /* step execution of NPE instruction using Debug Executing Context stack */
     error = npe_cpu_step(sc, npeInstruction, ctxtNum, IX_NPEDL_RD_INSTR_LDUR);
     if (error != 0) {
 	DPRINTF(sc->sc_dev, "%s(0x%x, %u, %u), cannot step, error %d\n",
@@ -1188,7 +1187,7 @@ npe_logical_reg_write(struct ixpnpe_softc *sc, uint32_t regAddr, uint32_t regVal
 	default:
 	    return EINVAL;
 	}
-	/* fill dest operand field of  instruction with destination reg addr */
+	/* fill dest operand field of instruction with destination reg addr */
 	npeInstruction |= (regAddr << IX_NPEDL_OFFSET_INSTR_DEST);
 
 	/* fill src operand field of instruction with least-sig 5 bits of val*/
@@ -1199,7 +1198,7 @@ npe_logical_reg_write(struct ixpnpe_softc *sc, uint32_t regAddr, uint32_t regVal
 	npeInstruction |= ((regVal & IX_NPEDL_MASK_IMMED_INSTR_COPROC_DATA) <<
 			   IX_NPEDL_DISPLACE_IMMED_INSTR_COPROC_DATA);
 
-	/* step execution of NPE intruction using Debug ECS */
+	/* step execution of NPE instruction using Debug ECS */
 	error = npe_cpu_step(sc, npeInstruction,
 					  ctxtNum, IX_NPEDL_WR_INSTR_LDUR);
     }

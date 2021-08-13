@@ -1,4 +1,4 @@
-/*	$NetBSD: tree.c,v 1.326 2021/08/01 19:11:54 rillig Exp $	*/
+/*	$NetBSD: tree.c,v 1.332 2021/08/10 20:43:12 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -37,7 +37,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: tree.c,v 1.326 2021/08/01 19:11:54 rillig Exp $");
+__RCSID("$NetBSD: tree.c,v 1.332 2021/08/10 20:43:12 rillig Exp $");
 #endif
 
 #include <float.h>
@@ -1048,8 +1048,11 @@ typeok_colon(const mod_t *mp,
 }
 
 static bool
-typeok_assign(const mod_t *mp, const tnode_t *ln, const type_t *ltp, tspec_t lt)
+typeok_assign(op_t op, const tnode_t *ln, const type_t *ltp, tspec_t lt)
 {
+	if (op == RETURN || op == INIT || op == FARG)
+		return true;
+
 	if (!ln->tn_lvalue) {
 		if (ln->tn_op == CVT && ln->tn_cast &&
 		    ln->tn_left->tn_op == LOAD) {
@@ -1057,18 +1060,16 @@ typeok_assign(const mod_t *mp, const tnode_t *ln, const type_t *ltp, tspec_t lt)
 			error(163);
 		}
 		/* %soperand of '%s' must be lvalue */
-		error(114, "left ", mp->m_name);
+		error(114, "left ", op_name(op));
 		return false;
 	} else if (ltp->t_const || ((lt == STRUCT || lt == UNION) &&
 				    has_constant_member(ltp))) {
 		if (!tflag)
 			/* %soperand of '%s' must be modifiable lvalue */
-			warning(115, "left ", mp->m_name);
+			warning(115, "left ", op_name(op));
 	}
 	return true;
 }
-
-
 
 /* Check the types using the information from modtab[]. */
 static bool
@@ -1223,7 +1224,7 @@ typeok_op(op_t op, const mod_t *mp, int arg,
 	case ORASS:
 		goto assign;
 	assign:
-		if (!typeok_assign(mp, ln, ltp, lt))
+		if (!typeok_assign(op, ln, ltp, lt))
 			return false;
 		break;
 	case COMMA:
@@ -1346,6 +1347,63 @@ check_pointer_comparison(op_t op, const tnode_t *ln, const tnode_t *rn)
 	}
 }
 
+static bool
+is_direct_function_call(const tnode_t *tn, const char *name)
+{
+	return tn->tn_op == CALL &&
+	       tn->tn_left->tn_op == ADDR &&
+	       tn->tn_left->tn_left->tn_op == NAME &&
+	       strcmp(tn->tn_left->tn_left->tn_sym->s_name, name) == 0;
+}
+
+static bool
+is_const_char_pointer(const tnode_t *tn)
+{
+	const type_t *tp;
+
+	/*
+	 * For traditional reasons, C99 6.4.5p5 defines that string literals
+	 * have type 'char[]'.  They are often implicitly converted to
+	 * 'char *', for example when they are passed as function arguments.
+	 *
+	 * C99 6.4.5p6 further defines that modifying a string that is
+	 * constructed from a string literal invokes undefined behavior.
+	 *
+	 * Out of these reasons, string literals are treated as 'effectively
+	 * const' here.
+	 */
+	if (tn->tn_op == CVT &&
+	    tn->tn_left->tn_op == ADDR &&
+	    tn->tn_left->tn_left->tn_op == STRING)
+		return true;
+
+	tp = before_conversion(tn)->tn_type;
+	return tp->t_tspec == PTR &&
+	       tp->t_subt->t_tspec == CHAR &&
+	       tp->t_subt->t_const;
+}
+
+static bool
+is_strchr_arg_const(const tnode_t *tn)
+{
+	return tn->tn_right->tn_op == PUSH &&
+	       tn->tn_right->tn_right->tn_op == PUSH &&
+	       tn->tn_right->tn_right->tn_right == NULL &&
+	       is_const_char_pointer(tn->tn_right->tn_right->tn_left);
+}
+
+static void
+check_unconst_strchr(const type_t *lstp,
+		     const tnode_t *rn, const type_t *rstp)
+{
+	if (lstp->t_tspec == CHAR && !lstp->t_const &&
+	    is_direct_function_call(rn, "strchr") &&
+	    is_strchr_arg_const(rn)) {
+		/* call to '%s' effectively discards 'const' from argument */
+		warning(346, "strchr");
+	}
+}
+
 /*
  * Checks type compatibility for ASSIGN, INIT, FARG and RETURN
  * and prints warnings/errors if necessary.
@@ -1429,6 +1487,10 @@ check_assign_types_compatible(op_t op, int arg,
 				break;
 			}
 		}
+
+		if (!tflag)
+			check_unconst_strchr(lstp, rn, rstp);
+
 		return true;
 	}
 
@@ -3365,13 +3427,14 @@ cast(tnode_t *tn, type_t *tp)
 	} else if (nt == UNION) {
 		sym_t *m;
 		struct_or_union *str = tp->t_str;
-		if (!Sflag) {
-			/* union cast is a C9X feature */
+		if (!gflag) {
+			/* union cast is a GCC extension */
 			error(328);
 			return NULL;
 		}
 		for (m = str->sou_first_member; m != NULL; m = m->s_next) {
-			if (sametype(m->s_type, tn->tn_type)) {
+			if (eqtype(m->s_type, tn->tn_type,
+			    false, false, NULL)) {
 				tn = expr_zalloc_tnode();
 				tn->tn_op = CVT;
 				tn->tn_type = tp;
@@ -3384,7 +3447,8 @@ cast(tnode_t *tn, type_t *tp)
 		error(329, type_name(tn->tn_type), type_name(tp));
 		return NULL;
 	} else if (nt == STRUCT || nt == ARRAY || nt == FUNC) {
-		if (!Sflag || nt == ARRAY || nt == FUNC)
+		/* Casting to a struct is an undocumented GCC extension. */
+		if (!(gflag && nt == STRUCT))
 			goto invalid_cast;
 	} else if (ot == STRUCT || ot == UNION) {
 		goto invalid_cast;
@@ -3729,9 +3793,6 @@ check_null_effect(const tnode_t *tn)
 	}
 }
 
-/*
- * Called by expr() to recursively perform some tests.
- */
 /* ARGSUSED */
 void
 check_expr_misc(const tnode_t *tn, bool vctx, bool tctx,
@@ -3911,7 +3972,6 @@ check_expr_misc(const tnode_t *tn, bool vctx, bool tctx,
 			    szof);
 		break;
 	}
-
 }
 
 /*

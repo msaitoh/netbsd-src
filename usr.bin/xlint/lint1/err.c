@@ -1,4 +1,4 @@
-/*	$NetBSD: err.c,v 1.132 2021/07/31 19:07:52 rillig Exp $	*/
+/*	$NetBSD: err.c,v 1.135 2021/08/09 20:07:23 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -37,7 +37,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: err.c,v 1.132 2021/07/31 19:07:52 rillig Exp $");
+__RCSID("$NetBSD: err.c,v 1.135 2021/08/09 20:07:23 rillig Exp $");
 #endif
 
 #include <sys/types.h>
@@ -268,7 +268,7 @@ const char *const msgs[] = {
 	"return value type mismatch (%s) and (%s)",		      /* 211 */
 	"cannot return incomplete type",			      /* 212 */
 	"void function %s cannot return value",			      /* 213 */
-	"function %s expects to return value",			      /* 214 */
+	"function '%s' expects to return value",		      /* 214 */
 	"function '%s' implicitly declared to return int",	      /* 215 */
 	"function %s has return (e); and return;",		      /* 216 */
 	"function %s falls off bottom without returning value",	      /* 217 */
@@ -382,7 +382,7 @@ const char *const msgs[] = {
 	"variable declaration in for loop",			      /* 325 */
 	"%s attribute ignored for %s",				      /* 326 */
 	"declarations after statements is a C99 feature",	      /* 327 */
-	"union cast is a C9X feature",				      /* 328 */
+	"union cast is a GCC extension",			      /* 328 */
 	"type '%s' is not a member of '%s'",			      /* 329 */
 	"operand of '%s' must be bool, not '%s'",		      /* 330 */
 	"left operand of '%s' must be bool, not '%s'",		      /* 331 */
@@ -400,6 +400,7 @@ const char *const msgs[] = {
 	"static array size is a C11 extension",			      /* 343 */
 	"bit-field of type plain 'int' has implementation-defined signedness", /* 344 */
 	"generic selection requires C11 or later",		      /* 345 */
+	"call to '%s' effectively discards 'const' from argument",    /* 346 */
 };
 
 static struct include_level {
