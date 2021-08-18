@@ -1,4 +1,4 @@
-/*	$NetBSD: xhci.c,v 1.146 2021/06/12 13:58:05 riastradh Exp $	*/
+/*	$NetBSD: xhci.c,v 1.148 2021/08/17 22:00:32 andvar Exp $	*/
 
 /*
  * Copyright (c) 2013 Jonathan A. Kollasch
@@ -34,7 +34,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: xhci.c,v 1.146 2021/06/12 13:58:05 riastradh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: xhci.c,v 1.148 2021/08/17 22:00:32 andvar Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_usb.h"
@@ -1136,7 +1136,7 @@ xhci_hc_reset(struct xhci_softc * const sc)
 	xhci_op_write_4(sc, XHCI_USBCMD, usbcmd);
 	for (i = 0; i < XHCI_WAIT_HCRST; i++) {
 		/*
-		 * Wait 1ms first. Existing Intel xHCI requies 1ms delay to
+		 * Wait 1ms first. Existing Intel xHCI requires 1ms delay to
 		 * prevent system hang (Errata).
 		 */
 		usb_delay_ms(&sc->sc_bus, 1);
@@ -1958,7 +1958,7 @@ xhci_stop_endpoint(struct usbd_pipe *pipe)
  * Set TR Dequeue Pointer.
  * xHCI 1.1  4.6.10  6.4.3.9
  * Purge all of the TRBs on ring and reinitialize ring.
- * Set TR dequeue Pointr to 0 and Cycle State to 1.
+ * Set TR dequeue Pointer to 0 and Cycle State to 1.
  * EPSTATE of endpoint must be ERROR or STOPPED, otherwise CONTEXT_STATE
  * error will be generated.
  */

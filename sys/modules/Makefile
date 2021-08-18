@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.251 2021/08/09 20:49:10 andvar Exp $
+#	$NetBSD: Makefile,v 1.253 2021/08/17 21:39:32 kre Exp $
 
 .include <bsd.own.mk>
 
@@ -27,6 +27,7 @@ SUBDIR+=	adosfs
 SUBDIR+=	aio
 SUBDIR+=	audio
 SUBDIR+=	autofs
+SUBDIR+=	blakes2s
 SUBDIR+=	blowfish
 SUBDIR+=	bpf
 SUBDIR+=	bpf_filter
@@ -100,6 +101,7 @@ SUBDIR+=	if_ure
 SUBDIR+=	if_url
 SUBDIR+=	if_urndis
 SUBDIR+=	if_vlan
+SUBDIR+=	if_wg
 SUBDIR+=	iic
 SUBDIR+=	ip_ecn
 SUBDIR+=	ipl
@@ -388,6 +390,8 @@ SUBDIR+= 	dm
 SUBDIR+=	cyclic
 SUBDIR+=	dtrace
 .endif
+
+SUBDIR+=        sodium
 
 # we need solaris for the dtrace and zfs modules
 .if (${MKDTRACE} != "no" || ${MKZFS} != "no")

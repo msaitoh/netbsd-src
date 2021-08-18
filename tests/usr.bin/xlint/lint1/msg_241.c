@@ -1,4 +1,4 @@
-/*	$NetBSD: msg_241.c,v 1.4 2021/02/27 15:29:15 rillig Exp $	*/
+/*	$NetBSD: msg_241.c,v 1.6 2021/08/16 20:11:03 rillig Exp $	*/
 # 3 "msg_241.c"
 
 // Test for message: dubious operation on enum, op %s [241]
@@ -72,4 +72,25 @@ example(void)
 
 	/* The cast to unsigned is required by GCC at WARNS=6. */
 	c &= ~(unsigned)GREEN;	/* expect: 241 */
+}
+
+void
+cover_typeok_enum(enum color c, int i)
+{
+	/* expect+2: warning: dubious operation on enum, op * [241] */
+	/* expect+1: warning: combination of 'enum color' and 'int', op > [242] */
+	if (c * i > 5)
+		return;
+}
+
+const char *
+color_name(enum color c)
+{
+	static const char *name[] = { "red", "green", "blue" };
+
+	if (c == RED)
+		return *(c + name); /* unusual but allowed */
+	if (c == GREEN)
+		return c[name]; /* even more unusual */
+	return name[c];
 }

@@ -1,5 +1,5 @@
 #! /bin/sh
-# $NetBSD: accept.sh,v 1.5 2021/08/08 13:19:51 rillig Exp $
+# $NetBSD: accept.sh,v 1.7 2021/08/16 06:24:37 rillig Exp $
 #
 # Copyright (c) 2021 The NetBSD Foundation, Inc.
 # All rights reserved.
@@ -84,7 +84,7 @@ for pattern in "$@"; do
 				msgid=${msgid#msg_00}
 				msgid=${msgid#msg_0}
 				msgid=${msgid#msg_}
-				msgid=${msgid%_*}
+				msgid=${msgid%%_*}
 				if ! grep "\\[$msgid\\]" "$expfile" >/dev/null; then
 					echo "$base should trigger the message '$msgid'"
 				fi

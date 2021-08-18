@@ -1,4 +1,4 @@
-/*	$NetBSD: authorityKeyIdentifier.h,v 1.1.1.3 2018/02/06 01:53:06 christos Exp $	*/
+/*	$NetBSD: authorityKeyIdentifier.h,v 1.2 2021/08/14 16:14:51 christos Exp $	*/
 
 
 #include "asn-incl.h"

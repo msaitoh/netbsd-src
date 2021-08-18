@@ -1,4 +1,4 @@
-/*	$NetBSD: tree.c,v 1.332 2021/08/10 20:43:12 rillig Exp $	*/
+/*	$NetBSD: tree.c,v 1.337 2021/08/16 18:51:03 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -37,7 +37,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: tree.c,v 1.332 2021/08/10 20:43:12 rillig Exp $");
+__RCSID("$NetBSD: tree.c,v 1.337 2021/08/16 18:51:03 rillig Exp $");
 #endif
 
 #include <float.h>
@@ -513,7 +513,7 @@ build_binary(tnode_t *ln, op_t op, tnode_t *rn)
 	 * union member, or if it is not to be assigned to the left operand
 	 */
 	if (mp->m_binary && op != ARROW && op != POINT &&
-	    op != ASSIGN && op != RETURN) {
+	    op != ASSIGN && op != RETURN && op != INIT) {
 		rn = promote(op, false, rn);
 	}
 
@@ -587,6 +587,7 @@ build_binary(tnode_t *ln, op_t op, tnode_t *rn)
 	case XORASS:
 	case ORASS:
 	case RETURN:
+	case INIT:
 		ntn = build_assignment(op, ln, rn);
 		break;
 	case COMMA:
@@ -848,7 +849,7 @@ typeok_shr(const mod_t *mp,
 	ort = before_conversion(rn)->tn_type->t_tspec;
 
 	/* operands have integer types (checked above) */
-	if (pflag && !is_uinteger(lt)) {
+	if (pflag && !is_uinteger(olt)) {
 		/*
 		 * The left operand is signed. This means that
 		 * the operation is (possibly) nonportable.
@@ -1348,12 +1349,27 @@ check_pointer_comparison(op_t op, const tnode_t *ln, const tnode_t *rn)
 }
 
 static bool
-is_direct_function_call(const tnode_t *tn, const char *name)
+is_direct_function_call(const tnode_t *tn, const char **out_name)
 {
-	return tn->tn_op == CALL &&
-	       tn->tn_left->tn_op == ADDR &&
-	       tn->tn_left->tn_left->tn_op == NAME &&
-	       strcmp(tn->tn_left->tn_left->tn_sym->s_name, name) == 0;
+
+	if (!(tn->tn_op == CALL &&
+	      tn->tn_left->tn_op == ADDR &&
+	      tn->tn_left->tn_left->tn_op == NAME))
+		return false;
+
+	*out_name = tn->tn_left->tn_left->tn_sym->s_name;
+	return true;
+}
+
+static bool
+is_unconst_function(const char *name)
+{
+
+	return strcmp(name, "memchr") == 0 ||
+	       strcmp(name, "strchr") == 0 ||
+	       strcmp(name, "strpbrk") == 0 ||
+	       strcmp(name, "strrchr") == 0 ||
+	       strcmp(name, "strstr") == 0;
 }
 
 static bool
@@ -1384,23 +1400,31 @@ is_const_char_pointer(const tnode_t *tn)
 }
 
 static bool
-is_strchr_arg_const(const tnode_t *tn)
+is_first_arg_const(const tnode_t *tn)
 {
-	return tn->tn_right->tn_op == PUSH &&
-	       tn->tn_right->tn_right->tn_op == PUSH &&
-	       tn->tn_right->tn_right->tn_right == NULL &&
-	       is_const_char_pointer(tn->tn_right->tn_right->tn_left);
+	const tnode_t *an;
+
+	an = tn->tn_right;
+	if (an == NULL)
+		return false;
+
+	while (an->tn_right != NULL)
+		an = an->tn_right;
+	return is_const_char_pointer(an->tn_left);
 }
 
 static void
-check_unconst_strchr(const type_t *lstp,
-		     const tnode_t *rn, const type_t *rstp)
+check_unconst_function(const type_t *lstp,
+		       const tnode_t *rn, const type_t *rstp)
 {
+	const char *function_name;
+
 	if (lstp->t_tspec == CHAR && !lstp->t_const &&
-	    is_direct_function_call(rn, "strchr") &&
-	    is_strchr_arg_const(rn)) {
+	    is_direct_function_call(rn, &function_name) &&
+	    is_unconst_function(function_name) &&
+	    is_first_arg_const(rn)) {
 		/* call to '%s' effectively discards 'const' from argument */
-		warning(346, "strchr");
+		warning(346, function_name);
 	}
 }
 
@@ -1489,7 +1513,7 @@ check_assign_types_compatible(op_t op, int arg,
 		}
 
 		if (!tflag)
-			check_unconst_strchr(lstp, rn, rstp);
+			check_unconst_function(lstp, rn, rstp);
 
 		return true;
 	}
@@ -1520,7 +1544,6 @@ check_assign_types_compatible(op_t op, int arg,
 
 	if (lt == PTR && rt == PTR) {
 		switch (op) {
-		case INIT:
 		case RETURN:
 			warn_incompatible_pointers(NULL, ltp, rtp);
 			break;
@@ -1564,11 +1587,6 @@ check_bad_enum_operation(op_t op, const tnode_t *ln, const tnode_t *rn)
 	if (!eflag)
 		return;
 
-	if (!(ln->tn_type->t_is_enum ||
-	      (modtab[op].m_binary && rn->tn_type->t_is_enum))) {
-		return;
-	}
-
 	/*
 	 * Enum as offset to a pointer is an exception (otherwise enums
 	 * could not be used as array indices).
@@ -1581,7 +1599,6 @@ check_bad_enum_operation(op_t op, const tnode_t *ln, const tnode_t *rn)
 
 	/* dubious operation on enum, op %s */
 	warning(241, op_name(op));
-
 }
 
 /*
@@ -2528,10 +2545,10 @@ warn_incompatible_pointers(const mod_t *mp,
 		}
 	} else {
 		if (mp == NULL) {
-			/* illegal pointer combination */
-			warning(184);
+			/* illegal combination of '%s' and '%s' */
+			warning(184, type_name(ltp), type_name(rtp));
 		} else {
-			/* illegal pointer combination (%s) and (%s), op %s */
+			/* illegal combination of '%s' and '%s', op '%s' */
 			warning(124,
 			    type_name(ltp), type_name(rtp), mp->m_name);
 		}
@@ -2876,7 +2893,8 @@ build_assignment(op_t op, tnode_t *ln, tnode_t *rn)
 			rn = fold(rn);
 	}
 
-	if ((op == ASSIGN || op == RETURN) && (lt == STRUCT || rt == STRUCT)) {
+	if ((op == ASSIGN || op == RETURN || op == INIT) &&
+	    (lt == STRUCT || rt == STRUCT)) {
 		lint_assert(lt == rt);
 		lint_assert(ln->tn_type->t_str == rn->tn_type->t_str);
 		if (is_incomplete(ln->tn_type)) {
