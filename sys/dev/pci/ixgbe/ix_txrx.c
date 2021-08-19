@@ -1,4 +1,4 @@
-/* $NetBSD: ix_txrx.c,v 1.82 2021/08/18 09:17:17 msaitoh Exp $ */
+/* $NetBSD: ix_txrx.c,v 1.84 2021/08/19 04:49:29 msaitoh Exp $ */
 
 /******************************************************************************
 
@@ -64,7 +64,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: ix_txrx.c,v 1.82 2021/08/18 09:17:17 msaitoh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: ix_txrx.c,v 1.84 2021/08/19 04:49:29 msaitoh Exp $");
 
 #include "opt_inet.h"
 #include "opt_inet6.h"
@@ -1353,7 +1353,8 @@ ixgbe_refresh_mbufs(struct rx_ring *rxr, int limit)
 				rxr->no_jmbuf.ev_count++;
 				goto update;
 			}
-			if (adapter->max_frame_size <= (MCLBYTES - ETHER_ALIGN))
+			if (adapter->max_frame_size
+			    <= (rxr->mbuf_sz - ETHER_ALIGN))
 				m_adj(mp, ETHER_ALIGN);
 		} else
 			mp = rxbuf->buf;
@@ -1567,7 +1568,7 @@ ixgbe_setup_receive_ring(struct rx_ring *rxr)
                         goto fail;
 		}
 		bus_dmamap_sync(rxr->ptag->dt_dmat, rxbuf->pmap,
-		    0, adapter->rx_mbuf_sz, BUS_DMASYNC_PREREAD);
+		    0, mp->m_pkthdr.len, BUS_DMASYNC_PREREAD);
 		/* Update the descriptor and the cached value */
 		rxr->rx_base[j].read.pkt_addr =
 		    htole64(rxbuf->pmap->dm_segs[0].ds_addr);
