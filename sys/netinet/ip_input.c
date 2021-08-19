@@ -407,6 +407,11 @@ ipintr(void *arg __unused)
 			continue;
 		}
 
+#if 0
+		if (strncmp(ifp->if_xname, "ixg", 3) == 0)
+			printf("%s: input: %p\n",
+			    ifp->if_xname, mtod(m, void *));
+#endif
 		ip_input(m, ifp);
 
 		m_put_rcvif_psref(ifp, &psref);
@@ -452,6 +457,11 @@ ip_input(struct mbuf *m, struct ifnet *ifp)
 	 * it.  Otherwise, if it is aligned, make sure the entire
 	 * base IP header is in the first mbuf of the chain.
 	 */
+	if (strncmp(ifp->if_xname, "ixg", 3) == 0) {
+		if (((uintptr_t)mtod(m, void *) & (__alignof(struct ip) -1)) != 0)
+			printf("%s: misalign (%p, %zu)\n", ifp->if_xname,
+			    mtod(m, void *), __alignof(struct ip) -1);
+	}
 	if (M_GET_ALIGNED_HDR(&m, struct ip, true) != 0) {
 		/* XXXJRT new stat, please */
 		IP_STATINC(IP_STAT_TOOSMALL);
