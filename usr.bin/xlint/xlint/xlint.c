@@ -1,4 +1,4 @@
-/* $NetBSD: xlint.c,v 1.72 2021/08/09 21:27:20 rillig Exp $ */
+/* $NetBSD: xlint.c,v 1.77 2021/08/19 16:29:41 rillig Exp $ */
 
 /*
  * Copyright (c) 1996 Christopher G. Demetriou.  All Rights Reserved.
@@ -38,7 +38,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: xlint.c,v 1.72 2021/08/09 21:27:20 rillig Exp $");
+__RCSID("$NetBSD: xlint.c,v 1.77 2021/08/19 16:29:41 rillig Exp $");
 #endif
 
 #include <sys/param.h>
@@ -95,10 +95,10 @@ static	char	**libs;
 /* search path for libraries */
 static	char	**libsrchpath;
 
-static  char	*libexec_path;
+static const char *libexec_dir;
 
 /* flags */
-static	bool	iflag, oflag, Cflag, sflag, tflag, Fflag, dflag, Bflag, Sflag;
+static	bool	iflag, oflag, Cflag, sflag, tflag, Fflag, dflag;
 
 /* print the commands executed to run the stages of compilation */
 static	bool	Vflag;
@@ -203,10 +203,32 @@ pass_to_lint1(const char *opt)
 }
 
 static void
+pass_flag_to_lint1(int flag)
+{
+	char buf[3];
+
+	buf[0] = '-';
+	buf[1] = (char)flag;
+	buf[2] = '\0';
+	pass_to_lint1(buf);
+}
+
+static void
 pass_to_lint2(const char *opt)
 {
 
 	list_add_copy(&lint2.flags, opt);
+}
+
+static void
+pass_flag_to_lint2(int flag)
+{
+	char buf[3];
+
+	buf[0] = '-';
+	buf[1] = (char)flag;
+	buf[2] = '\0';
+	pass_to_lint2(buf);
 }
 
 static void
@@ -308,7 +330,7 @@ int
 main(int argc, char *argv[])
 {
 	int	c;
-	char	flgbuf[3], *tmp;
+	char	*tmp;
 	size_t	len;
 	const char *ks;
 
@@ -372,12 +394,14 @@ main(int argc, char *argv[])
 		case 'v':
 		case 'w':
 		case 'z':
-			(void)sprintf(flgbuf, "-%c", c);
-			pass_to_lint1(flgbuf);
+		case 'P':
+			pass_flag_to_lint1(c);
 			break;
 
 		case 'A':
-			pass_to_lint1("-A");
+		case 'R':
+		case 'X':
+			pass_flag_to_lint1(c);
 			pass_to_lint1(optarg);
 			break;
 
@@ -386,15 +410,8 @@ main(int argc, char *argv[])
 			/* FALLTHROUGH */
 		case 'u':
 		case 'h':
-			(void)sprintf(flgbuf, "-%c", c);
-			pass_to_lint1(flgbuf);
-			pass_to_lint2(flgbuf);
-			break;
-
-		case 'X':
-			(void)sprintf(flgbuf, "-%c", c);
-			pass_to_lint1(flgbuf);
-			pass_to_lint1(optarg);
+			pass_flag_to_lint1(c);
+			pass_flag_to_lint2(c);
 			break;
 
 		case 'i':
@@ -408,20 +425,12 @@ main(int argc, char *argv[])
 			break;
 
 		case 'p':
-			pass_to_lint1("-p");
-			pass_to_lint2("-p");
 			if (*deflibs != NULL) {
 				list_clear(&deflibs);
 				list_add_copy(&deflibs, "c");
 			}
-			break;
-
-		case 'P':
-			pass_to_lint1("-P");
-			break;
-
-		case 'R':
-			pass_to_lint1(concat2("-R", optarg));
+			pass_flag_to_lint1(c);
+			pass_flag_to_lint2(c);
 			break;
 
 		case 's':
@@ -432,49 +441,49 @@ main(int argc, char *argv[])
 			list_add_copy(&cpp.lcflags, "-Wtrigraphs");
 			list_add_copy(&cpp.lcflags, "-pedantic");
 			list_add_copy(&cpp.lcflags, "-D__STRICT_ANSI__");
-			pass_to_lint1("-s");
-			pass_to_lint2("-s");
 			sflag = true;
+			pass_flag_to_lint1(c);
+			pass_flag_to_lint2(c);
 			break;
 
 		case 'S':
 			if (tflag)
 				usage();
-			pass_to_lint1("-S");
-			Sflag = true;
+			pass_flag_to_lint1(c);
 			break;
 
 		case 'T':
-			(void)sprintf(flgbuf, "-%c", c);
 			pass_to_cpp("-I" PATH_STRICT_BOOL_INCLUDE);
-			pass_to_lint1(flgbuf);
-			pass_to_lint2(flgbuf);
+			pass_flag_to_lint1(c);
+			pass_flag_to_lint2(c);
 			break;
 
 #if !HAVE_NBTOOL_CONFIG_H
 		case 't':
 			if (sflag)
 				usage();
+			tflag = true;
 			list_clear(&cpp.lcflags);
 			list_add_copy(&cpp.lcflags, "-traditional");
 			list_add_copy(&cpp.lcflags, "-Wtraditional");
 			list_add_copy(&cpp.lcflags, "-D" MACHINE);
 			list_add_copy(&cpp.lcflags, "-D" MACHINE_ARCH);
-			pass_to_lint1("-t");
-			pass_to_lint2("-t");
-			tflag = true;
+			pass_flag_to_lint1(c);
+			pass_flag_to_lint2(c);
 			break;
 #endif
 
 		case 'x':
-			pass_to_lint2("-x");
+		case 'H':
+			pass_flag_to_lint2(c);
 			break;
 
 		case 'C':
 			if (Cflag || oflag || iflag)
 				usage();
 			Cflag = true;
-			list_add(&lint2.flags, concat2("-C", optarg));
+			pass_flag_to_lint2(c);
+			pass_to_lint2(optarg);
 			lint2.outlib = xasprintf("llib-l%s.ln", optarg);
 			list_clear(&deflibs);
 			break;
@@ -510,13 +519,8 @@ main(int argc, char *argv[])
 			list_add_copy(&libsrchpath, optarg);
 			break;
 
-		case 'H':
-			pass_to_lint2("-H");
-			break;
-
 		case 'B':
-			Bflag = true;
-			libexec_path = xstrdup(optarg);
+			libexec_dir = xstrdup(optarg);
 			break;
 
 		case 'V':
@@ -548,22 +552,16 @@ main(int argc, char *argv[])
 		if (arg[0] == '-') {
 			char ***list;
 
-			list = NULL;	/* XXXGCC -Wuninitialized */
-
 			/* option */
-			switch (arg[1]) {
-			case 'l':
+			if (arg[1] == 'l')
 				list = &libs;
-				break;
-
-			case 'L':
+			else if (arg[1] == 'L')
 				list = &libsrchpath;
-				break;
-
-			default:
+			else {
 				usage();
 				/* NOTREACHED */
 			}
+
 			if (arg[2] != '\0')
 				list_add_copy(list, arg + 2);
 			else if (argc > 1) {
@@ -693,7 +691,7 @@ fname(const char *name)
 
 	/* run lint1 */
 
-	if (!Bflag) {
+	if (libexec_dir == NULL) {
 		pathname = xasprintf("%s/%slint1",
 		    PATH_LIBEXEC, target_prefix);
 	} else {
@@ -701,7 +699,7 @@ fname(const char *name)
 		 * XXX Unclear whether we should be using target_prefix
 		 * XXX here.  --thorpej@wasabisystems.com
 		 */
-		pathname = concat2(libexec_path, "/lint1");
+		pathname = concat2(libexec_dir, "/lint1");
 	}
 
 	list_add_copy(&args, pathname);
@@ -831,14 +829,14 @@ run_lint2(void)
 
 	args = list_new();
 
-	if (!Bflag) {
+	if (libexec_dir == NULL) {
 		path = xasprintf("%s/%slint2", PATH_LIBEXEC, target_prefix);
 	} else {
 		/*
 		 * XXX Unclear whether we should be using target_prefix
 		 * XXX here.  --thorpej@wasabisystems.com
 		 */
-		path = concat2(libexec_path, "/lint2");
+		path = concat2(libexec_dir, "/lint2");
 	}
 
 	list_add_copy(&args, path);
