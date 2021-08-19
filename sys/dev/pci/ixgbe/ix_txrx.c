@@ -96,6 +96,10 @@ static bool ixgbe_rsc_enable = FALSE;
  */
 static int atr_sample_rate = 20;
 
+#define IXGBE_M_ADJ(adapter, rxr, mp)					\
+	if (adapter->max_frame_size <= (rxr->mbuf_sz - ETHER_ALIGN))	\
+		m_adj(mp, ETHER_ALIGN)
+
 /************************************************************************
  *  Local Function prototypes
  ************************************************************************/
@@ -1354,9 +1358,7 @@ ixgbe_refresh_mbufs(struct rx_ring *rxr, int limit)
 				goto update;
 			}
 			mp->m_pkthdr.len = mp->m_len = rxr->mbuf_sz;
-			if (adapter->max_frame_size
-			    <= (rxr->mbuf_sz - ETHER_ALIGN))
-				m_adj(mp, ETHER_ALIGN);
+			IXGBE_M_ADJ(adapter, rxr, mp);
 		} else
 			mp = rxbuf->buf;
 
@@ -1553,8 +1555,7 @@ ixgbe_setup_receive_ring(struct rx_ring *rxr)
 		}
 		mp = rxbuf->buf;
 		mp->m_pkthdr.len = mp->m_len = rxr->mbuf_sz;
-		if (adapter->max_frame_size <= (rxr->mbuf_sz - ETHER_ALIGN))
-			m_adj(mp, ETHER_ALIGN);
+		IXGBE_M_ADJ(adapter, rxr, mp);
 		/* Get the memory mapping */
 		error = bus_dmamap_load_mbuf(rxr->ptag->dt_dmat, rxbuf->pmap,
 		    mp, BUS_DMA_NOWAIT);
@@ -1966,11 +1967,8 @@ ixgbe_rxeof(struct ix_queue *que)
 		sendmp = rbuf->fmp;
 		if (sendmp != NULL) {  /* secondary frag */
 			/* Update new (used in future) mbuf */
-			newmp->m_pkthdr.len = newmp->m_len
-			    = rxr->mbuf_sz;
-			if (adapter->max_frame_size
-			    <= (rxr->mbuf_sz - ETHER_ALIGN))
-				m_adj(newmp, ETHER_ALIGN);
+			newmp->m_pkthdr.len = newmp->m_len = rxr->mbuf_sz;
+			IXGBE_M_ADJ(adapter, rxr, newmp);
 			rbuf->buf = newmp;
 			rbuf->fmp = NULL;
 
@@ -2019,9 +2017,7 @@ ixgbe_rxeof(struct ix_queue *que)
 				/* Update new (used in future) mbuf */
 				newmp->m_pkthdr.len = newmp->m_len
 				    = rxr->mbuf_sz;
-				if (adapter->max_frame_size
-				    <= (rxr->mbuf_sz - ETHER_ALIGN))
-					m_adj(newmp, ETHER_ALIGN);
+				IXGBE_M_ADJ(adapter, rxr, newmp);
 				rbuf->buf = newmp;
 				rbuf->fmp = NULL;
 
