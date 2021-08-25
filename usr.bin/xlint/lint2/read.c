@@ -1,4 +1,4 @@
-/* $NetBSD: read.c,v 1.49 2021/08/08 11:56:35 rillig Exp $ */
+/* $NetBSD: read.c,v 1.55 2021/08/22 13:21:48 rillig Exp $ */
 
 /*
  * Copyright (c) 1996 Christopher G. Demetriou.  All Rights Reserved.
@@ -38,7 +38,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: read.c,v 1.49 2021/08/08 11:56:35 rillig Exp $");
+__RCSID("$NetBSD: read.c,v 1.55 2021/08/22 13:21:48 rillig Exp $");
 #endif
 
 #include <ctype.h>
@@ -393,17 +393,17 @@ decldef(pos_t *posp, const char *cp)
 		switch (c) {
 		case 'd':
 			if (sym.s_def != NODECL)
-				inperr("nodecl %c", c);
+				inperr("def");
 			sym.s_def = DEF;
 			break;
 		case 'e':
 			if (sym.s_def != NODECL)
-				inperr("nodecl %c", c);
+				inperr("decl");
 			sym.s_def = DECL;
 			break;
 		case 'i':
 			if (sym.s_inline)
-				inperr("inline %c", c);
+				inperr("inline");
 			sym.s_inline = true;
 			break;
 		case 'o':
@@ -423,12 +423,12 @@ decldef(pos_t *posp, const char *cp)
 			break;
 		case 't':
 			if (sym.s_def != NODECL)
-				inperr("nodecl %c", c);
+				inperr("tdef");
 			sym.s_def = TDEF;
 			break;
 		case 'u':
 			if (used)
-				inperr("used %c", c);
+				inperr("used");
 			used = true;
 			break;
 		case 'v':
@@ -556,19 +556,76 @@ usedsym(pos_t *posp, const char *cp)
 	hte->h_lusym = &usym->u_next;
 }
 
+static tspec_t
+parse_tspec(const char **pp, char c, bool *osdef)
+{
+	char s;
+
+	switch (c) {
+	case 's':	/* 'signed' or 'struct' or 'float' */
+	case 'u':	/* 'unsigned' or 'union' */
+	case 'l':	/* 'long double' */
+	case 'e':	/* 'enum' */
+		s = c;
+		c = *(*pp)++;
+		break;
+	default:
+		s = '\0';
+		break;
+	}
+
+	switch (c) {
+	case 'B':
+		return BOOL;
+	case 'C':
+		return s == 's' ? SCHAR : (s == 'u' ? UCHAR : CHAR);
+	case 'S':
+		return s == 'u' ? USHORT : SHORT;
+	case 'I':
+		return s == 'u' ? UINT : INT;
+	case 'L':
+		return s == 'u' ? ULONG : LONG;
+	case 'Q':
+		return s == 'u' ? UQUAD : QUAD;
+#ifdef INT128_SIZE
+	case 'J':
+		return s == 'u' ? UINT128 : INT128;
+#endif
+	case 'D':
+		return s == 's' ? FLOAT : (s == 'l' ? LDOUBLE : DOUBLE);
+	case 'V':
+		return VOID;
+	case 'P':
+		return PTR;
+	case 'A':
+		return ARRAY;
+	case 'F':
+	case 'f':
+		*osdef = c == 'f';
+		return FUNC;
+	case 'T':
+		return s == 'e' ? ENUM : (s == 's' ? STRUCT : UNION);
+	case 'X':
+		return s == 's' ? FCOMPLEX
+				       : (s == 'l' ? LCOMPLEX : DCOMPLEX);
+	default:
+		inperr("tspec '%c'", c);
+	}
+}
+
 /*
  * Read a type and return the index of this type.
  */
 static u_short
 inptype(const char *cp, const char **epp)
 {
-	char	c, s;
+	char	c;
 	const	char *ep;
 	type_t	*tp;
 	int	narg, i;
 	bool	osdef = false;
 	size_t	tlen;
-	u_short	tidx, sidx;
+	u_short	tidx;
 	int	h;
 
 	/* If we have this type already, return its index. */
@@ -586,87 +643,24 @@ inptype(const char *cp, const char **epp)
 
 	c = *cp++;
 
-	while (c == 'c' || c == 'v') {
-		if (c == 'c') {
-			tp->t_const = true;
-		} else {
-			tp->t_volatile = true;
-		}
+	if (c == 'c') {
+		tp->t_const = true;
+		c = *cp++;
+	}
+	if (c == 'v') {
+		tp->t_volatile = true;
 		c = *cp++;
 	}
 
-	switch (c) {
-	case 's':
-	case 'u':
-	case 'l':
-	case 'e':
-		s = c;
-		c = *cp++;
-		break;
-	default:
-		s = '\0';
-		break;
-	}
-
-	switch (c) {
-	case 'B':
-		tp->t_tspec = BOOL;
-		break;
-	case 'C':
-		tp->t_tspec = s == 's' ? SCHAR : (s == 'u' ? UCHAR : CHAR);
-		break;
-	case 'S':
-		tp->t_tspec = s == 'u' ? USHORT : SHORT;
-		break;
-	case 'I':
-		tp->t_tspec = s == 'u' ? UINT : INT;
-		break;
-	case 'L':
-		tp->t_tspec = s == 'u' ? ULONG : LONG;
-		break;
-	case 'Q':
-		tp->t_tspec = s == 'u' ? UQUAD : QUAD;
-		break;
-#ifdef INT128_SIZE
-	case 'J':
-		tp->t_tspec = s == 'u' ? UINT128 : INT128;
-		break;
-#endif
-	case 'D':
-		tp->t_tspec = s == 's' ? FLOAT : (s == 'l' ? LDOUBLE : DOUBLE);
-		break;
-	case 'V':
-		tp->t_tspec = VOID;
-		break;
-	case 'P':
-		tp->t_tspec = PTR;
-		break;
-	case 'A':
-		tp->t_tspec = ARRAY;
-		break;
-	case 'F':
-	case 'f':
-		osdef = c == 'f';
-		tp->t_tspec = FUNC;
-		break;
-	case 'T':
-		tp->t_tspec = s == 'e' ? ENUM : (s == 's' ? STRUCT : UNION);
-		break;
-	case 'X':
-		tp->t_tspec = s == 's' ? FCOMPLEX
-				       : (s == 'l' ? LCOMPLEX : DCOMPLEX);
-		break;
-	}
+	tp->t_tspec = parse_tspec(&cp, c, &osdef);
 
 	switch (tp->t_tspec) {
 	case ARRAY:
 		tp->t_dim = parse_int(&cp);
-		sidx = inptype(cp, &cp); /* force seq. point! (ditto below) */
-		tp->t_subt = TP(sidx);
+		tp->t_subt = TP(inptype(cp, &cp));
 		break;
 	case PTR:
-		sidx = inptype(cp, &cp);
-		tp->t_subt = TP(sidx);
+		tp->t_subt = TP(inptype(cp, &cp));
 		break;
 	case FUNC:
 		c = *cp;
@@ -674,20 +668,18 @@ inptype(const char *cp, const char **epp)
 			if (!osdef)
 				tp->t_proto = true;
 			narg = parse_int(&cp);
-			tp->t_args = xcalloc((size_t)(narg + 1),
+			tp->t_args = xcalloc((size_t)narg + 1,
 					     sizeof(*tp->t_args));
 			for (i = 0; i < narg; i++) {
 				if (i == narg - 1 && *cp == 'E') {
 					tp->t_vararg = true;
 					cp++;
 				} else {
-					sidx = inptype(cp, &cp);
-					tp->t_args[i] = TP(sidx);
+					tp->t_args[i] = TP(inptype(cp, &cp));
 				}
 			}
 		}
-		sidx = inptype(cp, &cp);
-		tp->t_subt = TP(sidx);
+		tp->t_subt = TP(inptype(cp, &cp));
 		break;
 	case ENUM:
 		tp->t_tspec = INT;
@@ -716,33 +708,7 @@ inptype(const char *cp, const char **epp)
 			break;
 		}
 		break;
-	case LONG:
-	case VOID:
-	case LDOUBLE:
-	case DOUBLE:
-	case FLOAT:
-	case UQUAD:
-	case QUAD:
-#ifdef INT128_SIZE
-	case UINT128:
-	case INT128:
-#endif
-	case ULONG:
-	case UINT:
-	case INT:
-	case USHORT:
-	case SHORT:
-	case UCHAR:
-	case SCHAR:
-	case CHAR:
-	case BOOL:
-	case UNSIGN:
-	case SIGNED:
-	case NOTSPEC:
-	case FCOMPLEX:
-	case DCOMPLEX:
-	case LCOMPLEX:
-	case COMPLEX:
+	default:
 		break;
 	}
 
@@ -760,26 +726,15 @@ gettlen(const char *cp, const char **epp)
 	char	c, s;
 	tspec_t	t;
 	int	narg, i;
-	bool	cm, vm;
 
 	cp1 = cp;
 
 	c = *cp++;
 
-	cm = vm = false;
-
-	while (c == 'c' || c == 'v') {
-		if (c == 'c') {
-			if (cm)
-				inperr("cm: %c", c);
-			cm = true;
-		} else {
-			if (vm)
-				inperr("vm: %c", c);
-			vm = true;
-		}
+	if (c == 'c')
 		c = *cp++;
-	}
+	if (c == 'v')
+		c = *cp++;
 
 	switch (c) {
 	case 's':
@@ -892,12 +847,11 @@ gettlen(const char *cp, const char **epp)
 		}
 		break;
 	default:
-		inperr("bad type: %c %c", c, s);
+		break;
 	}
 
-	if (t == NOTSPEC) {
-		inperr("undefined type: %c %c", c, s);
-	}
+	if (t == NOTSPEC)
+		inperr("bad type: %c %c", c, s);
 
 	switch (t) {
 	case ARRAY:
@@ -926,8 +880,6 @@ gettlen(const char *cp, const char **epp)
 	case UNION:
 		switch (*cp++) {
 		case '1':
-			(void)inpname(cp, &cp);
-			break;
 		case '2':
 			(void)inpname(cp, &cp);
 			break;
@@ -942,36 +894,10 @@ gettlen(const char *cp, const char **epp)
 			(void)parse_int(&cp);
 			break;
 		default:
-			inperr("bad value: %c\n", cp[-1]);
+			inperr("bad value: %c", cp[-1]);
 		}
 		break;
-	case FLOAT:
-	case USHORT:
-	case SHORT:
-	case UCHAR:
-	case SCHAR:
-	case CHAR:
-	case BOOL:
-	case UNSIGN:
-	case SIGNED:
-	case NOTSPEC:
-	case INT:
-	case UINT:
-	case DOUBLE:
-	case LDOUBLE:
-	case VOID:
-	case ULONG:
-	case LONG:
-	case QUAD:
-	case UQUAD:
-#ifdef INT128_SIZE
-	case INT128:
-	case UINT128:
-#endif
-	case FCOMPLEX:
-	case DCOMPLEX:
-	case LCOMPLEX:
-	case COMPLEX:
+	default:
 		break;
 	}
 
@@ -998,7 +924,7 @@ findtype(const char *cp, size_t len, int h)
 }
 
 /*
- * Store a type and its type string so we can later share this type
+ * Store a type and its type string, so we can later share this type
  * if we read the same type string from the input file.
  */
 static u_short
@@ -1233,7 +1159,7 @@ mkstatic(hte_t *hte)
 	 * Create a new hash table entry
 	 *
 	 * XXX this entry should be put at the beginning of the list to
-	 * avoid to process the same symbol twice.
+	 * avoid processing the same symbol twice.
 	 */
 	for (nhte = hte; nhte->h_link != NULL; nhte = nhte->h_link)
 		continue;

@@ -1,4 +1,4 @@
-/* $NetBSD: lint2.h,v 1.14 2021/04/10 18:36:27 rillig Exp $ */
+/* $NetBSD: lint2.h,v 1.16 2021/08/22 13:01:47 rillig Exp $ */
 
 /*
  * Copyright (c) 1996 Christopher G. Demetriou.  All Rights Reserved.
@@ -115,7 +115,7 @@ typedef	struct sym {
 	struct {
 		pos_t	s_pos;		/* pos of def./decl. */
 #ifndef lint
-		u_int	s_def : 3;	/* DECL, TDEF or DEF */
+		u_char	s_def;		/* DECL, TDEF or DEF */
 #else
 		def_t	s_def;
 #endif
@@ -185,7 +185,11 @@ typedef	struct hte {
 	struct  hte *h_hte;	/* pointer to other htes (for renames) */
 } hte_t;
 
-/* maps type indices into pointers to type structs */
-#define TP(idx)		(tlst[idx])
-
 #include "externs2.h"
+
+/* maps type indices into pointers to type structs */
+static inline type_t *
+TP(u_short type_id) {
+	/* force sequence point for newly parsed type_id */
+	return tlst[type_id];
+}

@@ -1,4 +1,4 @@
-/*	$NetBSD: externs1.h,v 1.128 2021/08/01 19:11:54 rillig Exp $	*/
+/*	$NetBSD: externs1.h,v 1.132 2021/08/23 06:26:37 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -42,6 +42,7 @@ extern	bool	eflag;
 extern	bool	Fflag;
 extern	bool	gflag;
 extern	bool	hflag;
+extern	bool	pflag;
 extern	bool	rflag;
 extern	bool	sflag;
 extern	bool	tflag;
@@ -51,6 +52,7 @@ extern	bool	yflag;
 extern	bool	wflag;
 extern	bool	zflag;
 extern	bool	Sflag;
+extern	bool	Tflag;
 extern	bool	Pflag;
 
 extern	void	norecover(void);
@@ -76,7 +78,6 @@ extern	symt_t	symtyp;
 extern	FILE	*yyin;
 
 extern	void	initscan(void);
-extern	int	msb(int64_t, tspec_t, int);
 extern	int64_t	convert_integer(int64_t, tspec_t, int);
 extern	void	clear_warn_flags(void);
 extern	sym_t	*getsym(sbuf_t *);

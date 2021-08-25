@@ -1,4 +1,4 @@
-/* $NetBSD: lint1.h,v 1.121 2021/08/01 08:03:43 rillig Exp $ */
+/* $NetBSD: lint1.h,v 1.125 2021/08/23 17:03:23 rillig Exp $ */
 
 /*
  * Copyright (c) 1996 Christopher G. Demetriou.  All Rights Reserved.
@@ -79,7 +79,7 @@ typedef struct {
 	} while (false)
 
 /*
- * Strings cannot be referenced to simply by a pointer to its first
+ * Strings cannot be referenced simply by a pointer to their first
  * char. This is because strings can contain NUL characters other than the
  * trailing NUL.
  *
@@ -135,7 +135,7 @@ typedef struct {
  */
 typedef	struct {
 	u_int	sou_size_in_bits;
-	u_int	sou_align_in_bits : 15;
+	u_short	sou_align_in_bits;
 	bool	sou_incomplete : 1;
 	struct	sym *sou_first_member;
 	struct	sym *sou_tag;
@@ -362,7 +362,7 @@ typedef	struct dinfo {
 				   for all declarators */
 	sym_t	*d_redeclared_symbol;
 	u_int	d_offset;	/* offset of next structure member */
-	u_int	d_sou_align_in_bits; /* alignment required for current
+	u_short	d_sou_align_in_bits; /* alignment required for current
 				 * structure */
 	scl_t	d_ctx;		/* context of declaration */
 	bool	d_const : 1;	/* const in declaration specifiers */
@@ -552,6 +552,12 @@ is_nonzero(const tnode_t *tn)
 	return tn != NULL && tn->tn_op == CON && is_nonzero_val(tn->tn_val);
 }
 
+static inline bool
+is_binary(const tnode_t *tn)
+{
+	return modtab[tn->tn_op].m_binary;
+}
+
 static inline uint64_t
 bit(unsigned i)
 {
@@ -564,6 +570,12 @@ bit(unsigned i)
 
 	lint_assert(i < 64);
 	return (uint64_t)1 << i;
+}
+
+static inline bool
+msb(int64_t q, tspec_t t)
+{
+	return (q & bit(size_in_bits(t) - 1)) != 0;
 }
 
 static inline uint64_t

@@ -1,10 +1,10 @@
-/*	$NetBSD: msg_230.c,v 1.4 2021/07/03 19:31:22 rillig Exp $	*/
+/*	$NetBSD: msg_230.c,v 1.6 2021/08/23 17:47:34 rillig Exp $	*/
 # 3 "msg_230.c"
 
 // Test for message: nonportable character comparison, op %s [230]
 
 /* lint1-flags: -S -g -p -w */
-/* lint1-only-if schar */
+/* lint1-only-if: schar */
 
 void example(char c, unsigned char uc, signed char sc)
 {
@@ -30,5 +30,12 @@ void example(char c, unsigned char uc, signed char sc)
 	if (uc <= -1)
 		return;
 	if (sc <= -1)
+		return;
+
+	/* expect+1: warning: nonportable character comparison, op <= [230] */
+	if (-1 <= c)
+		return;
+	/* expect+1: warning: nonportable character comparison, op <= [230] */
+	if (256 <= c)
 		return;
 }

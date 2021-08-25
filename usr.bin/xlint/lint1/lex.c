@@ -1,4 +1,4 @@
-/* $NetBSD: lex.c,v 1.63 2021/08/19 08:59:22 christos Exp $ */
+/* $NetBSD: lex.c,v 1.69 2021/08/23 06:26:37 rillig Exp $ */
 
 /*
  * Copyright (c) 1996 Christopher G. Demetriou.  All Rights Reserved.
@@ -38,7 +38,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: lex.c,v 1.63 2021/08/19 08:59:22 christos Exp $");
+__RCSID("$NetBSD: lex.c,v 1.69 2021/08/23 06:26:37 rillig Exp $");
 #endif
 
 #include <ctype.h>
@@ -72,7 +72,7 @@ bool in_system_header = false;
 static	sbuf_t *allocsb(void);
 static	void	freesb(sbuf_t *);
 static	int	inpc(void);
-static	int	hash(const char *);
+static	u_int	hash(const char *);
 static	sym_t *	search(sbuf_t *);
 static	int	keyw(sym_t *);
 static	int	get_escaped_char(int);
@@ -100,7 +100,8 @@ lex_unknown_character(int c)
 #define kwdef(name, token, scl, tspec, tqual,	c89, c99, gcc, attr, deco) \
 	{ \
 		name, token, scl, tspec, tqual, \
-		(c89) > 0, (c99) > 0, (gcc) > 0, (attr) > 0, deco, \
+		(c89) > 0, (c99) > 0, (gcc) > 0, (attr) > 0, \
+		((deco) & 1) != 0, ((deco) & 2) != 0, ((deco) & 4) != 0, \
 	}
 #define kwdef_token(name, token,		c89, c99, gcc, attr, deco) \
 	kwdef(name, token, 0, 0, 0,		c89, c99, gcc, attr, deco)
@@ -130,7 +131,9 @@ static	struct	kwtab {
 	bool	kw_c99 : 1;	/* C99 keyword */
 	bool	kw_gcc : 1;	/* GCC keyword */
 	bool	kw_attr : 1;	/* GCC attribute, keyword */
-	u_int	kw_deco : 3;	/* 1 = name, 2 = __name, 4 = __name__ */
+	bool	kw_plain : 1;	/* 'name' */
+	bool	kw_leading : 1;	/* '__name' */
+	bool	kw_both : 1;	/* '__name__' */
 } kwtab[] = {
 	kwdef_gcc_attr(	"alias",	T_AT_ALIAS),
 	kwdef_keyword(	"_Alignas",	T_ALIGNAS),
@@ -282,32 +285,19 @@ symtab_remove(sym_t *sym)
 
 
 static void
-add_keyword(const struct kwtab *kw, u_int deco)
+add_keyword(const struct kwtab *kw, bool leading, bool trailing)
 {
 	sym_t *sym;
 	char buf[256];
 	const char *name;
 
-	if ((kw->kw_deco & deco) == 0)
-		return;
-
-	switch (deco) {
-	case 1:
+	if (!leading && !trailing) {
 		name = kw->kw_name;
-		break;
-	case 2:
-		snprintf(buf, sizeof(buf), "__%s", kw->kw_name);
-		name = strdup(buf);
-		break;
-	default:
-		lint_assert(deco == 4);
-		snprintf(buf, sizeof(buf), "__%s__", kw->kw_name);
-		name = strdup(buf);
-		break;
+	} else {
+		snprintf(buf, sizeof(buf), "%s%s%s",
+		    leading ? "__" : "", kw->kw_name, trailing ? "__" : "");
+		name = xstrdup(buf);
 	}
-
-	if (name == NULL)
-		err(1, "Can't init symbol table");
 
 	sym = getblk(sizeof(*sym));
 	sym->s_name = name;
@@ -326,7 +316,7 @@ add_keyword(const struct kwtab *kw, u_int deco)
 
 /*
  * All keywords are written to the symbol table. This saves us looking
- * in a extra table for each name we found.
+ * in an extra table for each name we found.
  */
 void
 initscan(void)
@@ -340,9 +330,12 @@ initscan(void)
 			continue;
 		if (kw->kw_gcc && !gflag)
 			continue;
-		add_keyword(kw, 1);
-		add_keyword(kw, 2);
-		add_keyword(kw, 4);
+		if (kw->kw_plain)
+			add_keyword(kw, false, false);
+		if (kw->kw_leading)
+			add_keyword(kw, true, false);
+		if (kw->kw_both)
+			add_keyword(kw, true, true);
 	}
 }
 
@@ -399,7 +392,7 @@ inpc(void)
 	return c;
 }
 
-static int
+static u_int
 hash(const char *s)
 {
 	u_int	v;
@@ -466,7 +459,7 @@ lex_name(const char *yytext, size_t yyleng)
 static sym_t *
 search(sbuf_t *sb)
 {
-	int h;
+	u_int h;
 	sym_t *sym;
 	const struct kwtab *kw;
 
@@ -665,30 +658,7 @@ lex_integer_constant(const char *yytext, size_t yyleng, int base)
 #endif
 		break;
 #endif
-		/* LINTED206: (enumeration values not handled in switch) */
-	case STRUCT:
-	case VOID:
-	case LDOUBLE:
-	case FUNC:
-	case ARRAY:
-	case PTR:
-	case ENUM:
-	case UNION:
-	case SIGNED:
-	case NOTSPEC:
-	case DOUBLE:
-	case FLOAT:
-	case USHORT:
-	case SHORT:
-	case UCHAR:
-	case SCHAR:
-	case CHAR:
-	case BOOL:
-	case UNSIGN:
-	case FCOMPLEX:
-	case DCOMPLEX:
-	case LCOMPLEX:
-	case COMPLEX:
+	default:
 		break;
 	}
 
@@ -700,15 +670,6 @@ lex_integer_constant(const char *yytext, size_t yyleng, int base)
 	yylval.y_val->v_quad = (int64_t)uq;
 
 	return T_CON;
-}
-
-int
-msb(int64_t q, tspec_t t, int len)
-{
-
-	if (len <= 0)
-		len = size_in_bits(t);
-	return (q & bit(len - 1)) != 0 ? 1 : 0;
 }
 
 /*
@@ -726,9 +687,9 @@ convert_integer(int64_t q, tspec_t t, int len)
 		len = size_in_bits(t);
 
 	vbits = value_bits(len);
-	return t == PTR || is_uinteger(t) || msb(q, t, len) == 0
-	    ? q & vbits
-	    : q | ~vbits;
+	return t == PTR || is_uinteger(t) || ((q & bit(len - 1)) == 0)
+	    ? (int64_t)(q & vbits)
+	    : (int64_t)(q | ~vbits);
 }
 
 /*

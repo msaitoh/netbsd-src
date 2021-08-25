@@ -1,4 +1,4 @@
-/*	$NetBSD: bozohttpd.c,v 1.132 2021/05/05 07:41:48 mrg Exp $	*/
+/*	$NetBSD: bozohttpd.c,v 1.136 2021/08/24 09:47:36 mrg Exp $	*/
 
 /*	$eterna: bozohttpd.c,v 1.178 2011/11/18 09:21:15 mrg Exp $	*/
 
@@ -108,7 +108,7 @@
 #define INDEX_HTML		"index.html"
 #endif
 #ifndef SERVER_SOFTWARE
-#define SERVER_SOFTWARE		"bozohttpd/20210504"
+#define SERVER_SOFTWARE		"bozohttpd/20210824"
 #endif
 #ifndef PUBLIC_HTML
 #define PUBLIC_HTML		"public_html"
@@ -148,7 +148,7 @@
 #include "bozohttpd.h"
 
 #ifndef SSL_TIMEOUT
-#define	SSL_TIMEOUT		"30"	/* wait for 30 seconds for ssl handshake  */
+#define	SSL_TIMEOUT		"30"	/* ssl handshake: 30 seconds timeout */
 #endif
 #ifndef INITIAL_TIMEOUT
 #define	INITIAL_TIMEOUT		"30"	/* wait for 30 seconds initially */
@@ -241,7 +241,7 @@ bozo_set_pref(bozohttpd_t *httpd, bozoprefs_t *bozoprefs,
 }
 
 static void
-bozo_clear_prefs(bozohttpd_t *httpd, bozoprefs_t *prefs)
+bozo_clear_prefs(bozoprefs_t *prefs)
 {
 	size_t	i;
 
@@ -670,23 +670,14 @@ bozo_read_request(bozohttpd_t *httpd)
 	 * Override the bound port from the request value, so it works even
 	 * if passed through a proxy that doesn't rewrite the port.
 	 */
+	port = NULL;
 	if (httpd->bindport) {
 		if (strcmp(httpd->bindport, BOZO_HTTP_PORT) != 0)
 			port = httpd->bindport;
-		else
-			port = NULL;
-	} else {
-		if (getsockname(0, (struct sockaddr *)(void *)&ss, &slen) < 0)
-			port = NULL;
-		else {
-			if (getnameinfo((struct sockaddr *)(void *)&ss, slen,
-					NULL, 0, bufport, sizeof bufport,
-					NI_NUMERICSERV) == 0)
-				port = bufport;
-			else
-				port = NULL;
-		}
-	}
+	} else if (getsockname(0, (struct sockaddr *)(void *)&ss, &slen) == 0 &&
+		   getnameinfo((struct sockaddr *)(void *)&ss, slen, NULL, 0,
+			       bufport, sizeof bufport, NI_NUMERICSERV) == 0)
+		port = bufport;
 	if (port != NULL)
 		request->hr_serverport = bozostrdup(httpd, request, port);
 
@@ -1459,7 +1450,7 @@ use_slashdir:
 
 /*
  * checks to see if this request has a valid .bzredirect file.  returns
- * 0 when no redirection happend, or 1 when handle_redirect() has been
+ * 0 when no redirection happened, or 1 when handle_redirect() has been
  * called, -1 on error.
  */
 static int
@@ -2722,7 +2713,7 @@ bozo_setup(bozohttpd_t *httpd, bozoprefs_t *prefs, const char *vhost,
 void
 bozo_cleanup(bozohttpd_t *httpd, bozoprefs_t *prefs)
 {
-	bozo_clear_prefs(httpd, prefs);
+	bozo_clear_prefs(prefs);
 
 	free(httpd->virthostname);
 	free(httpd->errorbuf);

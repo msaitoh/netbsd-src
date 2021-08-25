@@ -1,4 +1,4 @@
-/*	$NetBSD: tree.c,v 1.337 2021/08/16 18:51:03 rillig Exp $	*/
+/*	$NetBSD: tree.c,v 1.351 2021/08/23 17:03:23 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -37,7 +37,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: tree.c,v 1.337 2021/08/16 18:51:03 rillig Exp $");
+__RCSID("$NetBSD: tree.c,v 1.351 2021/08/23 17:03:23 rillig Exp $");
 #endif
 
 #include <float.h>
@@ -355,7 +355,7 @@ struct_or_union_member(tnode_t *tn, op_t op, sym_t *msym)
 			continue;
 		if (strcmp(msym->s_name, csym->s_name) != 0)
 			continue;
-		for (sym = csym->s_link ; sym != NULL; sym = sym->s_link) {
+		for (sym = csym->s_link; sym != NULL; sym = sym->s_link) {
 			bool w;
 
 			if (sym->s_scl != MOS && sym->s_scl != MOU)
@@ -759,7 +759,7 @@ typeok_incdec(op_t op, const tnode_t *tn, const type_t *tp)
 
 static bool
 typeok_address(const mod_t *mp,
-	    const tnode_t *tn, const type_t *tp, tspec_t t)
+	       const tnode_t *tn, const type_t *tp, tspec_t t)
 {
 	if (t == ARRAY || t == FUNC) {
 		/* ok, a warning comes later (in build_address()) */
@@ -1023,8 +1023,8 @@ typeok_colon(const mod_t *mp,
 		return true;
 
 	if ((lt == PTR && is_integer(rt)) || (is_integer(lt) && rt == PTR)) {
-		const char *lx = lt == PTR ?  "pointer" : "integer";
-		const char *rx = rt == PTR ?  "pointer" : "integer";
+		const char *lx = lt == PTR ? "pointer" : "integer";
+		const char *rx = rt == PTR ? "pointer" : "integer";
 		/* illegal combination of %s (%s) and %s (%s), op %s */
 		warning(123, lx, type_name(ltp),
 		    rx, type_name(rtp), mp->m_name);
@@ -1958,6 +1958,36 @@ convert(op_t op, int arg, type_t *tp, tnode_t *tn)
 }
 
 /*
+ * The types differ in sign or base type (char, short, int, long, long long,
+ * float, double, long double).
+ *
+ * If they differ only in sign and the argument is representable in both
+ * types, print no warning.
+ */
+static void
+check_prototype_conversion_integer(const tnode_t *tn, const tnode_t *ptn,
+				   const type_t *tp, tspec_t nt, tspec_t ot,
+				   int arg)
+{
+
+	if (!hflag)
+		return;
+
+	/*
+	 * If the types differ only in sign and the argument has the same
+	 * representation in both types, print no warning.
+	 */
+	if (ptn->tn_op == CON && is_integer(nt) &&
+	    signed_type(nt) == signed_type(ot) &&
+	    !msb(ptn->tn_val->v_quad, ot))
+		return;
+
+	/* argument #%d is converted from '%s' to '%s' ... */
+	warning(259,
+	    arg, type_name(tn->tn_type), type_name(tp));
+}
+
+/*
  * Print a warning if a prototype causes a type conversion that is
  * different from what would happen to the same argument in the
  * absence of a prototype.
@@ -2000,24 +2030,8 @@ check_prototype_conversion(int arg, tspec_t nt, tspec_t ot, type_t *tp,
 			warning(259,
 			    arg, type_name(tn->tn_type), type_name(tp));
 		}
-	} else if (hflag) {
-		/*
-		 * they differ in sign or base type (char, short, int,
-		 * long, long long, float, double, long double)
-		 *
-		 * if they differ only in sign and the argument is a constant
-		 * and the msb of the argument is not set, print no warning
-		 */
-		if (ptn->tn_op == CON && is_integer(nt) &&
-		    signed_type(nt) == signed_type(ot) &&
-		    msb(ptn->tn_val->v_quad, ot, -1) == 0) {
-			/* ok */
-		} else {
-			/* argument #%d is converted from '%s' to '%s' ... */
-			warning(259,
-			    arg, type_name(tn->tn_type), type_name(tp));
-		}
-	}
+	} else
+		check_prototype_conversion_integer(tn, ptn, tp, nt, ot, arg);
 }
 
 /*
@@ -2712,6 +2726,7 @@ build_real_imag(op_t op, tnode_t *ln)
 
 	return ntn;
 }
+
 /*
  * Create a tree node for the unary & operator
  */
@@ -3005,19 +3020,20 @@ plength(type_t *tp)
 static tnode_t *
 fold(tnode_t *tn)
 {
-	val_t	*v;
-	tspec_t	t;
-	bool	utyp, ovfl;
-	int64_t	sl, sr = 0, q = 0, mask;
+	val_t *v;
+	tspec_t t;
+	bool utyp, ovfl;
+	int64_t sl, sr = 0, q = 0, mask;
 	uint64_t ul, ur = 0;
-	tnode_t	*cn;
+	tnode_t *cn;
 
 	v = xcalloc(1, sizeof(*v));
-	v->v_tspec = t = tn->tn_type->t_tspec;
+	v->v_tspec = tn->tn_type->t_tspec;
 
-	utyp = t == PTR || is_uinteger(t);
+	t = tn->tn_left->tn_type->t_tspec;
+	utyp = !is_integer(t) || is_uinteger(t);
 	ul = sl = tn->tn_left->tn_val->v_quad;
-	if (modtab[tn->tn_op].m_binary)
+	if (is_binary(tn))
 		ur = sr = tn->tn_right->tn_val->v_quad;
 
 	mask = value_bits(size_in_bits(t));
@@ -3029,7 +3045,7 @@ fold(tnode_t *tn)
 		break;
 	case UMINUS:
 		q = -sl;
-		if (sl != 0 && msb(q, t, -1) == msb(sl, t, -1))
+		if (sl != 0 && msb(q, t) == msb(sl, t))
 			ovfl = true;
 		break;
 	case COMPL:
@@ -3044,7 +3060,7 @@ fold(tnode_t *tn)
 				ovfl = true;
 		} else {
 			q = sl * sr;
-			if (msb(q, t, -1) != (msb(sl, t, -1) ^ msb(sr, t, -1)))
+			if (msb(q, t) != (msb(sl, t) ^ msb(sr, t)))
 				ovfl = true;
 		}
 		break;
@@ -3068,23 +3084,17 @@ fold(tnode_t *tn)
 		break;
 	case PLUS:
 		q = utyp ? (int64_t)(ul + ur) : sl + sr;
-		if (msb(sl, t, -1)  != 0 && msb(sr, t, -1) != 0) {
-			if (msb(q, t, -1) == 0)
-				ovfl = true;
-		} else if (msb(sl, t, -1) == 0 && msb(sr, t, -1) == 0) {
-			if (msb(q, t, -1) != 0)
-				ovfl = true;
-		}
+		if (msb(sl, t) && msb(sr, t) && !msb(q, t))
+			ovfl = true;
+		if (!utyp && !msb(sl, t) && !msb(sr, t) && msb(q, t))
+			ovfl = true;
 		break;
 	case MINUS:
 		q = utyp ? (int64_t)(ul - ur) : sl - sr;
-		if (msb(sl, t, -1) != 0 && msb(sr, t, -1) == 0) {
-			if (msb(q, t, -1) == 0)
-				ovfl = true;
-		} else if (msb(sl, t, -1) == 0 && msb(sr, t, -1) != 0) {
-			if (msb(q, t, -1) != 0)
-				ovfl = true;
-		}
+		if (!utyp && msb(sl, t) && !msb(sr, t) && !msb(q, t))
+			ovfl = true;
+		if (!msb(sl, t) && msb(sr, t) && msb(q, t))
+			ovfl = true;
 		break;
 	case SHL:
 		q = utyp ? (int64_t)(ul << sr) : sl << sr;
@@ -3129,10 +3139,10 @@ fold(tnode_t *tn)
 	}
 
 	/* XXX does not work for quads. */
-	if (ovfl || ((uint64_t)(q | mask) != ~(uint64_t)0 &&
-	    (q & ~mask) != 0)) {
+	if (ovfl ||
+	    ((uint64_t)(q | mask) != ~(uint64_t)0 && (q & ~mask) != 0)) {
 		if (hflag)
-			/* integer overflow detected, op %s */
+			/* integer overflow detected, op '%s' */
 			warning(141, op_name(tn->tn_op));
 	}
 
@@ -3141,7 +3151,7 @@ fold(tnode_t *tn)
 	cn = build_constant(tn->tn_type, v);
 	if (tn->tn_left->tn_system_dependent)
 		cn->tn_system_dependent = true;
-	if (modtab[tn->tn_op].m_binary && tn->tn_right->tn_system_dependent)
+	if (is_binary(tn) && tn->tn_right->tn_system_dependent)
 		cn->tn_system_dependent = true;
 
 	return cn;
@@ -3162,7 +3172,7 @@ fold_test(tnode_t *tn)
 	lint_assert(v->v_tspec == INT || (Tflag && v->v_tspec == BOOL));
 
 	l = constant_is_nonzero(tn->tn_left);
-	r = modtab[tn->tn_op].m_binary && constant_is_nonzero(tn->tn_right);
+	r = is_binary(tn) && constant_is_nonzero(tn->tn_right);
 
 	switch (tn->tn_op) {
 	case NOT:
@@ -3192,7 +3202,7 @@ fold_float(tnode_t *tn)
 {
 	val_t	*v;
 	tspec_t	t;
-	ldbl_t	l, r = 0;
+	ldbl_t	lv, rv = 0;
 
 	fpe = 0;
 	v = xcalloc(1, sizeof(*v));
@@ -3200,61 +3210,60 @@ fold_float(tnode_t *tn)
 
 	lint_assert(is_floating(t));
 	lint_assert(t == tn->tn_left->tn_type->t_tspec);
-	lint_assert(!modtab[tn->tn_op].m_binary ||
-	    t == tn->tn_right->tn_type->t_tspec);
+	lint_assert(!is_binary(tn) || t == tn->tn_right->tn_type->t_tspec);
 
-	l = tn->tn_left->tn_val->v_ldbl;
-	if (modtab[tn->tn_op].m_binary)
-		r = tn->tn_right->tn_val->v_ldbl;
+	lv = tn->tn_left->tn_val->v_ldbl;
+	if (is_binary(tn))
+		rv = tn->tn_right->tn_val->v_ldbl;
 
 	switch (tn->tn_op) {
 	case UPLUS:
-		v->v_ldbl = l;
+		v->v_ldbl = lv;
 		break;
 	case UMINUS:
-		v->v_ldbl = -l;
+		v->v_ldbl = -lv;
 		break;
 	case MULT:
-		v->v_ldbl = l * r;
+		v->v_ldbl = lv * rv;
 		break;
 	case DIV:
-		if (r == 0.0) {
+		if (rv == 0.0) {
 			/* division by 0 */
 			error(139);
 			if (t == FLOAT) {
-				v->v_ldbl = l < 0 ? -FLT_MAX : FLT_MAX;
+				v->v_ldbl = lv < 0 ? -FLT_MAX : FLT_MAX;
 			} else if (t == DOUBLE) {
-				v->v_ldbl = l < 0 ? -DBL_MAX : DBL_MAX;
+				v->v_ldbl = lv < 0 ? -DBL_MAX : DBL_MAX;
 			} else {
-				v->v_ldbl = l < 0 ? -LDBL_MAX : LDBL_MAX;
+				v->v_ldbl = lv < 0 ? -LDBL_MAX : LDBL_MAX;
 			}
 		} else {
-			v->v_ldbl = l / r;
+			v->v_ldbl = lv / rv;
 		}
 		break;
 	case PLUS:
-		v->v_ldbl = l + r;
+		v->v_ldbl = lv + rv;
 		break;
 	case MINUS:
-		v->v_ldbl = l - r;
+		v->v_ldbl = lv - rv;
 		break;
 	case LT:
-		v->v_quad = l < r ? 1 : 0;
+		v->v_quad = lv < rv ? 1 : 0;
 		break;
 	case LE:
-		v->v_quad = l <= r ? 1 : 0;
+		v->v_quad = lv <= rv ? 1 : 0;
 		break;
 	case GE:
-		v->v_quad = l >= r ? 1 : 0;
+		v->v_quad = lv >= rv ? 1 : 0;
 		break;
 	case GT:
-		v->v_quad = l > r ? 1 : 0;
+		v->v_quad = lv > rv ? 1 : 0;
 		break;
 	case EQ:
-		v->v_quad = l == r ? 1 : 0;
+		v->v_quad = lv == rv ? 1 : 0;
 		break;
 	case NE:
-		v->v_quad = l != r ? 1 : 0;
+		v->v_quad = lv != rv ? 1 : 0;
 		break;
 	default:
 		lint_assert(/*CONSTCOND*/false);
@@ -3273,9 +3282,9 @@ fold_float(tnode_t *tn)
 		} else if (t == DOUBLE) {
 			v->v_ldbl = v->v_ldbl < 0 ? -DBL_MAX : DBL_MAX;
 		} else {
-			v->v_ldbl = v->v_ldbl < 0 ? -LDBL_MAX: LDBL_MAX;
+			v->v_ldbl = v->v_ldbl < 0 ? -LDBL_MAX : LDBL_MAX;
 		}
-	    fpe = 0;
+		fpe = 0;
 	}
 
 	return build_constant(tn->tn_type, v);
@@ -3801,14 +3810,47 @@ has_side_effect(const tnode_t *tn) // NOLINT(misc-no-recursion)
 	return false;
 }
 
+static bool
+is_void_cast(const tnode_t *tn)
+{
+
+	return tn->tn_op == CVT && tn->tn_cast &&
+	       tn->tn_type->t_tspec == VOID;
+}
+
+static bool
+is_local_symbol(const tnode_t *tn)
+{
+
+	return tn->tn_op == LOAD &&
+	       tn->tn_left->tn_op == NAME &&
+	       tn->tn_left->tn_sym->s_scl == AUTO;
+}
+
+static bool
+is_int_constant_zero(const tnode_t *tn)
+{
+
+	return tn->tn_op == CON &&
+	       tn->tn_type->t_tspec == INT &&
+	       tn->tn_val->v_quad == 0;
+}
+
 static void
 check_null_effect(const tnode_t *tn)
 {
 
-	if (hflag && !has_side_effect(tn)) {
-		/* expression has null effect */
-		warning(129);
-	}
+	if (!hflag)
+		return;
+	if (has_side_effect(tn))
+		return;
+	if (is_void_cast(tn) && is_local_symbol(tn->tn_left))
+		return;
+	if (is_void_cast(tn) && is_int_constant_zero(tn->tn_left))
+		return;
+
+	/* expression has null effect */
+	warning(129);
 }
 
 /* ARGSUSED */
@@ -4196,40 +4238,37 @@ constant_addr(const tnode_t *tn, const sym_t **symp, ptrdiff_t *offsp)
 	}
 }
 
-/*
- * Concatenate two string constants.
- */
+/* Append s2 to s1, then free s2. */
 strg_t *
-cat_strings(strg_t *strg1, strg_t *strg2)
+cat_strings(strg_t *s1, strg_t *s2)
 {
-	size_t	len1, len2, len;
+	size_t len1, len2, sz;
 
-	if (strg1->st_tspec != strg2->st_tspec) {
+	if (s1->st_tspec != s2->st_tspec) {
 		/* cannot concatenate wide and regular string literals */
 		error(292);
-		return strg1;
+		return s1;
 	}
 
-	len1 = strg1->st_len;
-	len2 = strg2->st_len + 1;	/* + NUL */
-	len = len1 + len2;
+	len1 = s1->st_len;
+	len2 = s2->st_len;
 
-#define COPY(F) \
-    do { \
-	strg1->F = xrealloc(strg1->F, len * sizeof(*strg1->F)); \
-	(void)memcpy(strg1->F + len1, strg2->F, len2 * sizeof(*strg1->F)); \
-	free(strg2->F); \
-    } while (false)
+	if (s1->st_tspec == CHAR) {
+		sz = sizeof(*s1->st_cp);
+		s1->st_cp = xrealloc(s1->st_cp, (len1 + len2 + 1) * sz);
+		memcpy(s1->st_cp + len1, s2->st_cp, (len2 + 1) * sz);
+		free(s2->st_cp);
+	} else {
+		sz = sizeof(*s1->st_wcp);
+		s1->st_wcp = xrealloc(s1->st_wcp, (len1 + len2 + 1) * sz);
+		memcpy(s1->st_wcp + len1, s2->st_wcp, (len2 + 1) * sz);
+		free(s2->st_wcp);
+	}
 
-	if (strg1->st_tspec == CHAR)
-		COPY(st_cp);
-	else
-		COPY(st_wcp);
+	s1->st_len = len1 + len2;
+	free(s2);
 
-	strg1->st_len = len - 1; /* - NUL */
-	free(strg2);
-
-	return strg1;
+	return s1;
 }
 
 static bool
@@ -4285,7 +4324,7 @@ check_precedence_confusion(tnode_t *tn)
 
 	debug_node(tn);
 
-	lint_assert(modtab[tn->tn_op].m_binary);
+	lint_assert(is_binary(tn));
 	for (ln = tn->tn_left; ln->tn_op == CVT; ln = ln->tn_left)
 		continue;
 	for (rn = tn->tn_right; rn->tn_op == CVT; rn = rn->tn_left)

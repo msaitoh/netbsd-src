@@ -1,4 +1,4 @@
-/* $NetBSD: emit1.c,v 1.48 2021/08/08 10:41:34 rillig Exp $ */
+/* $NetBSD: emit1.c,v 1.50 2021/08/23 06:21:59 rillig Exp $ */
 
 /*
  * Copyright (c) 1996 Christopher G. Demetriou.  All Rights Reserved.
@@ -38,7 +38,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: emit1.c,v 1.48 2021/08/08 10:41:34 rillig Exp $");
+__RCSID("$NetBSD: emit1.c,v 1.50 2021/08/23 06:21:59 rillig Exp $");
 #endif
 
 #include "lint1.h"
@@ -415,11 +415,11 @@ outcall(const tnode_t *tn, bool rvused, bool rvdisc)
 				if ((q = arg->tn_val->v_quad) == 0) {
 					/* zero constant */
 					outchar('z');
-				} else if (msb(q, t, 0) == 0) {
-					/* positive if casted to signed */
+				} else if (!msb(q, t)) {
+					/* positive if cast to signed */
 					outchar('p');
 				} else {
-					/* negative if casted to signed */
+					/* negative if cast to signed */
 					outchar('n');
 				}
 				outint(n);

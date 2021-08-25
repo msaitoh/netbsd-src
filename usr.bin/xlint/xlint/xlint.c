@@ -1,4 +1,4 @@
-/* $NetBSD: xlint.c,v 1.77 2021/08/19 16:29:41 rillig Exp $ */
+/* $NetBSD: xlint.c,v 1.79 2021/08/20 05:45:19 rillig Exp $ */
 
 /*
  * Copyright (c) 1996 Christopher G. Demetriou.  All Rights Reserved.
@@ -38,7 +38,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: xlint.c,v 1.77 2021/08/19 16:29:41 rillig Exp $");
+__RCSID("$NetBSD: xlint.c,v 1.79 2021/08/20 05:45:19 rillig Exp $");
 #endif
 
 #include <sys/param.h>
