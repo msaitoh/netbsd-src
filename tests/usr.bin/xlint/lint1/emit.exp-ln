@@ -56,3 +56,4 @@ Semit.c
 163c0.163s2"%%"i9my_printff2PcCPCV
 164c0.164s2"%\a%\b%\f%\n%\r%\t%\v%\177"i9my_printff2PcCPCV
 159d0.159d14cover_outqcharF0V
+173d0.173d17call_gcc_builtinsF2IPLV

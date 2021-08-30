@@ -1,4 +1,4 @@
-/*	$NetBSD: hash.c,v 1.16 2021/08/22 13:12:39 rillig Exp $	*/
+/*	$NetBSD: hash.c,v 1.22 2021/08/28 21:52:14 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -37,7 +37,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: hash.c,v 1.16 2021/08/22 13:12:39 rillig Exp $");
+__RCSID("$NetBSD: hash.c,v 1.22 2021/08/28 21:52:14 rillig Exp $");
 #endif
 
 /*
@@ -53,8 +53,6 @@ __RCSID("$NetBSD: hash.c,v 1.16 2021/08/22 13:12:39 rillig Exp $");
 
 /* pointer to hash table, initialized in inithash() */
 static	hte_t	**htab;
-
-static	u_int	hash(const char *);
 
 /*
  * Initialize hash table.
@@ -72,16 +70,16 @@ _inithash(hte_t ***tablep)
 /*
  * Compute hash value from a string.
  */
-static u_int
+static unsigned int
 hash(const char *s)
 {
-	u_int	v;
-	const	u_char *us;
+	unsigned int v;
+	const char *p;
 
 	v = 0;
-	for (us = (const u_char *)s; *us != '\0'; us++) {
-		v = (v << sizeof(v)) + *us;
-		v ^= v >> (sizeof(v) * CHAR_BIT - sizeof(v));
+	for (p = s; *p != '\0'; p++) {
+		v = (v << 4) + (unsigned char)*p;
+		v ^= v >> 28;
 	}
 	return v % HSHSIZ2;
 }
@@ -93,7 +91,7 @@ hash(const char *s)
 hte_t *
 _hsearch(hte_t **table, const char *s, bool mknew)
 {
-	u_int	h;
+	unsigned int h;
 	hte_t	*hte;
 
 	if (table == NULL)
@@ -127,22 +125,67 @@ _hsearch(hte_t **table, const char *s, bool mknew)
 	return hte;
 }
 
+struct hte_list {
+	hte_t **items;
+	size_t len;
+	size_t cap;
+};
+
+static void
+hte_list_add(struct hte_list *list, hte_t *item)
+{
+	if (list->len >= list->cap) {
+		list->cap = list->cap == 0 ? 1024 : 2 * list->cap;
+		list->items = xrealloc(list->items,
+		    sizeof(list->items[0]) * list->cap);
+	}
+	list->items[list->len++] = item;
+}
+
+static int
+hte_by_name(const void *va, const void *vb)
+{
+	const hte_t *a = *((const hte_t *const *)va);
+	const hte_t *b = *((const hte_t *const *)vb);
+
+	return strcmp(a->h_name, b->h_name);
+}
+
 /*
- * Call function f for each name in the hash table.
+ * Call the action for each name in the hash table.
  */
 void
-_forall(hte_t **table, void (*f)(hte_t *))
+symtab_forall(void (*action)(hte_t *))
 {
 	int	i;
 	hte_t	*hte;
-
-	if (table == NULL)
-		table = htab;
+	hte_t	**table = htab;
 
 	for (i = 0; i < HSHSIZ2; i++) {
 		for (hte = table[i]; hte != NULL; hte = hte->h_link)
-			(*f)(hte);
+			action(hte);
 	}
+}
+
+/* Run the action for each name in the symbol table, in alphabetic order. */
+void
+symtab_forall_sorted(void (*action)(hte_t *))
+{
+	hte_t *hte;
+	struct hte_list sorted = { NULL, 0, 0 };
+	size_t i;
+	hte_t **table = htab;
+
+	for (i = 0; i < HSHSIZ2; i++)
+		for (hte = table[i]; hte != NULL; hte = hte->h_link)
+			hte_list_add(&sorted, hte);
+
+	qsort(sorted.items, sorted.len, sizeof(sorted.items[0]), hte_by_name);
+
+	for (i = 0; i < sorted.len; i++)
+		action(sorted.items[i]);
+
+	free(sorted.items);
 }
 
 /*

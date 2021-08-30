@@ -1,4 +1,4 @@
-/* $NetBSD: ixv.c,v 1.164 2021/07/15 08:09:31 msaitoh Exp $ */
+/* $NetBSD: ixv.c,v 1.166 2021/08/26 09:03:47 msaitoh Exp $ */
 
 /******************************************************************************
 
@@ -35,13 +35,12 @@
 /*$FreeBSD: head/sys/dev/ixgbe/if_ixv.c 331224 2018-03-19 20:55:05Z erj $*/
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: ixv.c,v 1.164 2021/07/15 08:09:31 msaitoh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: ixv.c,v 1.166 2021/08/26 09:03:47 msaitoh Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_inet.h"
 #include "opt_inet6.h"
 #include "opt_net_mpsafe.h"
-#include "opt_ixgbe.h"
 #endif
 
 #include "ixgbe.h"
@@ -521,8 +520,6 @@ ixv_attach(device_t parent, device_t dev, void *aux)
 	/* Set default high limit of copying mbuf in rxeof */
 	adapter->rx_copy_len = IXGBE_RX_COPY_LEN_MAX;
 
-	adapter->num_jcl = adapter->num_rx_desc * IXGBE_JCLNUM_MULTI;
-
 	/* Setup MSI-X */
 	error = ixv_configure_interrupts(adapter);
 	if (error)
@@ -660,7 +657,7 @@ ixv_detach(device_t dev, int flags)
 		evcnt_detach(&rxr->rx_packets);
 		evcnt_detach(&rxr->rx_bytes);
 		evcnt_detach(&rxr->rx_copies);
-		evcnt_detach(&rxr->no_jmbuf);
+		evcnt_detach(&rxr->no_mbuf);
 		evcnt_detach(&rxr->rx_discarded);
 	}
 	evcnt_detach(&stats->ipcs);
@@ -751,14 +748,8 @@ ixv_init_locked(struct adapter *adapter)
 	/* Setup Multicast table */
 	ixv_set_rxfilter(adapter);
 
-	/*
-	 * Determine the correct mbuf pool
-	 * for doing jumbo/headersplit
-	 */
-	if (adapter->max_frame_size <= MCLBYTES)
-		adapter->rx_mbuf_sz = MCLBYTES;
-	else
-		adapter->rx_mbuf_sz = MJUMPAGESIZE;
+	/* Use fixed buffer size, even for jumbo frames */
+	adapter->rx_mbuf_sz = MCLBYTES;
 
 	/* Prepare receive descriptors and buffers */
 	error = ixgbe_setup_receive_structures(adapter);
@@ -2599,13 +2590,6 @@ ixv_add_device_sysctls(struct adapter *adapter)
 		aprint_error_dev(dev, "could not create sysctl\n");
 
 	if (sysctl_createv(log, 0, &rnode, &cnode,
-	    CTLFLAG_READONLY, CTLTYPE_INT, "num_jcl_per_queue",
-	    SYSCTL_DESCR("Number of jumbo buffers per queue"),
-	    NULL, 0, &adapter->num_jcl, 0, CTL_CREATE,
-	    CTL_EOL) != 0)
-		aprint_error_dev(dev, "could not create sysctl\n");
-
-	if (sysctl_createv(log, 0, &rnode, &cnode,
 	    CTLFLAG_READWRITE, CTLTYPE_BOOL, "enable_aim",
 	    SYSCTL_DESCR("Interrupt Moderation"),
 	    NULL, 0, &adapter->enable_aim, 0, CTL_CREATE, CTL_EOL) != 0)
@@ -2758,8 +2742,8 @@ ixv_add_stats_sysctls(struct adapter *adapter)
 		    "Queue Bytes Received");
 		evcnt_attach_dynamic(&rxr->rx_copies, EVCNT_TYPE_MISC,
 		    NULL, adapter->queues[i].evnamebuf, "Copied RX Frames");
-		evcnt_attach_dynamic(&rxr->no_jmbuf, EVCNT_TYPE_MISC,
-		    NULL, adapter->queues[i].evnamebuf, "Rx no jumbo mbuf");
+		evcnt_attach_dynamic(&rxr->no_mbuf, EVCNT_TYPE_MISC,
+		    NULL, adapter->queues[i].evnamebuf, "Rx no mbuf");
 		evcnt_attach_dynamic(&rxr->rx_discarded, EVCNT_TYPE_MISC,
 		    NULL, adapter->queues[i].evnamebuf, "Rx discarded");
 #ifdef LRO
@@ -2856,7 +2840,7 @@ ixv_clear_evcnt(struct adapter *adapter)
 		rxr->rx_packets.ev_count = 0;
 		rxr->rx_bytes.ev_count = 0;
 		rxr->rx_copies.ev_count = 0;
-		rxr->no_jmbuf.ev_count = 0;
+		rxr->no_mbuf.ev_count = 0;
 		rxr->rx_discarded.ev_count = 0;
 	}
 

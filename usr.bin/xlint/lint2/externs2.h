@@ -1,4 +1,4 @@
-/* $NetBSD: externs2.h,v 1.12 2021/08/22 14:50:06 rillig Exp $ */
+/* $NetBSD: externs2.h,v 1.14 2021/08/28 17:18:42 rillig Exp $ */
 
 /*
  * Copyright (c) 1996 Christopher G. Demetriou.  All Rights Reserved.
@@ -52,12 +52,12 @@ extern	bool	Tflag;
  */
 extern	void	_inithash(hte_t ***);
 extern	hte_t	*_hsearch(hte_t **, const char *, bool);
-extern	void	_forall(hte_t **, void (*)(hte_t *));
+extern	void	symtab_forall(void (*)(hte_t *));
 extern	void	_destroyhash(hte_t **);
+extern	void	symtab_forall_sorted(void (*)(hte_t *));
 
 #define	inithash()	_inithash(NULL);
 #define	hsearch(a, b)	_hsearch(NULL, (a), (b))
-#define	forall(a)	_forall(NULL, (a))
 
 /*
  * read.c

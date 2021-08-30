@@ -1,4 +1,4 @@
-/* $NetBSD: decl.c,v 1.222 2021/08/16 06:49:56 rillig Exp $ */
+/* $NetBSD: decl.c,v 1.228 2021/08/29 15:49:04 rillig Exp $ */
 
 /*
  * Copyright (c) 1996 Christopher G. Demetriou.  All Rights Reserved.
@@ -38,7 +38,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: decl.c,v 1.222 2021/08/16 06:49:56 rillig Exp $");
+__RCSID("$NetBSD: decl.c,v 1.228 2021/08/29 15:49:04 rillig Exp $");
 #endif
 
 #include <sys/param.h>
@@ -64,7 +64,7 @@ dinfo_t	*dcs;
 
 static	type_t	*tdeferr(type_t *, tspec_t);
 static	void	settdsym(type_t *, sym_t *);
-static	void	align(u_int, u_int);
+static	void	align(unsigned int, unsigned int);
 static	sym_t	*newtag(sym_t *, scl_t, bool, bool);
 static	bool	eqargs(const type_t *, const type_t *, bool *);
 static	bool	mnoarg(const type_t *, bool *);
@@ -552,15 +552,15 @@ settdsym(type_t *tp, sym_t *sym)
 	}
 }
 
-static size_t
+static unsigned int
 bitfieldsize(sym_t **mem)
 {
-	size_t len = (*mem)->s_type->t_flen;
+	unsigned int len = (*mem)->s_type->t_flen;
 	while (*mem != NULL && (*mem)->s_type->t_bitfield) {
 		len += (*mem)->s_type->t_flen;
 		*mem = (*mem)->s_next;
 	}
-	return ((len + INT_SIZE - 1) / INT_SIZE) * INT_SIZE;
+	return len - len % INT_SIZE;
 }
 
 static void
@@ -581,7 +581,7 @@ setpackedsize(type_t *tp)
 				if (mem == NULL)
 					break;
 			}
-			size_t x = (size_t)type_size_in_bits(mem->s_type);
+			unsigned int x = type_size_in_bits(mem->s_type);
 			if (tp->t_tspec == STRUCT)
 				sp->sou_size_in_bits += x;
 			else if (x > sp->sou_size_in_bits)
@@ -951,17 +951,14 @@ length(const type_t *tp, const char *name)
 	return elem * elsz;
 }
 
-int
+unsigned int
 alignment_in_bits(const type_t *tp)
 {
 	size_t	a;
 	tspec_t	t;
 
-	while (tp != NULL && tp->t_tspec == ARRAY)
+	while (tp->t_tspec == ARRAY)
 		tp = tp->t_subt;
-
-	if (tp == NULL)
-		return -1;
 
 	if ((t = tp->t_tspec) == STRUCT || t == UNION) {
 		a = tp->t_str->sou_align_in_bits;
@@ -1183,7 +1180,7 @@ declarator_1_struct_union(sym_t *dsym)
 	type_t	*tp;
 	tspec_t	t;
 	int	sz;
-	u_int	o = 0;	/* Appease GCC */
+	unsigned int o = 0;	/* Appease GCC */
 
 	lint_assert(dsym->s_scl == MOS || dsym->s_scl == MOU);
 
@@ -1230,7 +1227,7 @@ declarator_1_struct_union(sym_t *dsym)
 	if (dsym->s_bitfield) {
 		align(alignment_in_bits(tp), tp->t_flen);
 		dsym->s_value.v_quad =
-		    (dcs->d_offset / size_in_bits(t)) * size_in_bits(t);
+		    dcs->d_offset - dcs->d_offset % size_in_bits(t);
 		tp->t_foffs = dcs->d_offset - (int)dsym->s_value.v_quad;
 		dcs->d_offset += tp->t_flen;
 	} else {
@@ -1260,9 +1257,9 @@ declarator_1_struct_union(sym_t *dsym)
  * al contains the required alignment, len the length of a bit-field.
  */
 static void
-align(u_int al, u_int len)
+align(unsigned int al, unsigned int len)
 {
-	u_int no;
+	unsigned int no;
 
 	/*
 	 * The alignment of the current element becomes the alignment of
@@ -1810,6 +1807,7 @@ storage_class_name(scl_t sc)
 	case ENUM_TAG:	return "enum";
 	default:	lint_assert(/*CONSTCOND*/false);
 	}
+	/* NOTREACHED */
 }
 
 /*
@@ -1829,7 +1827,7 @@ complete_tag_struct_or_union(type_t *tp, sym_t *fmem)
 	setcomplete(tp, true);
 
 	t = tp->t_tspec;
-	align(dcs->d_sou_align_in_bits, 0);
+	align((u_int)dcs->d_sou_align_in_bits, 0);
 	sp = tp->t_str;
 	sp->sou_align_in_bits = dcs->d_sou_align_in_bits;
 	sp->sou_first_member = fmem;
@@ -1853,7 +1851,8 @@ complete_tag_struct_or_union(type_t *tp, sym_t *fmem)
 				if (mem == NULL)
 					break;
 			}
-			sp->sou_size_in_bits += type_size_in_bits(mem->s_type);
+			sp->sou_size_in_bits +=
+			    type_size_in_bits(mem->s_type);
 		}
 		if (mem->s_name != unnamed)
 			n++;
@@ -1973,7 +1972,7 @@ declare_extern(sym_t *dsym, bool initflg, sbuf_t *renaming)
 		 */
 		rval = dsym->s_type->t_subt->t_tspec != VOID;
 		outfdef(dsym, &dsym->s_def_pos, rval, false, NULL);
-	} else {
+	} else if (!is_compiler_builtin(dsym->s_name)) {
 		outsym(dsym, dsym->s_scl, dsym->s_def);
 	}
 

@@ -1,4 +1,4 @@
-/* $NetBSD: lex.c,v 1.69 2021/08/23 06:26:37 rillig Exp $ */
+/* $NetBSD: lex.c,v 1.80 2021/08/29 09:29:32 rillig Exp $ */
 
 /*
  * Copyright (c) 1996 Christopher G. Demetriou.  All Rights Reserved.
@@ -38,7 +38,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: lex.c,v 1.69 2021/08/23 06:26:37 rillig Exp $");
+__RCSID("$NetBSD: lex.c,v 1.80 2021/08/29 09:29:32 rillig Exp $");
 #endif
 
 #include <ctype.h>
@@ -52,7 +52,7 @@ __RCSID("$NetBSD: lex.c,v 1.69 2021/08/23 06:26:37 rillig Exp $");
 #include "lint1.h"
 #include "cgram.h"
 
-#define CHAR_MASK	((int)(~(~0U << CHAR_SIZE)))
+#define CHAR_MASK	((1U << CHAR_SIZE) - 1)
 
 
 /* Current position (it's also updated when an included file is parsed) */
@@ -72,7 +72,7 @@ bool in_system_header = false;
 static	sbuf_t *allocsb(void);
 static	void	freesb(sbuf_t *);
 static	int	inpc(void);
-static	u_int	hash(const char *);
+static	unsigned int hash(const char *);
 static	sym_t *	search(sbuf_t *);
 static	int	keyw(sym_t *);
 static	int	get_escaped_char(int);
@@ -205,6 +205,7 @@ static	struct	kwtab {
 	kwdef_gcc_attr(	"pure",		T_AT_PURE),
 	kwdef_token(	"__real__",	T_REAL,			0,0,1,0,1),
 	kwdef_sclass(	"register",	REG,			0,0,0,0,1),
+	kwdef_gcc_attr(	"regparm",	T_AT_REGPARM),
 	kwdef_tqual(	"restrict",	RESTRICT,		0,1,0,0,5),
 	kwdef_keyword(	"return",	T_RETURN),
 	kwdef_gcc_attr(	"returns_nonnull",T_AT_RETURNS_NONNULL),
@@ -294,7 +295,7 @@ add_keyword(const struct kwtab *kw, bool leading, bool trailing)
 	if (!leading && !trailing) {
 		name = kw->kw_name;
 	} else {
-		snprintf(buf, sizeof(buf), "%s%s%s",
+		(void)snprintf(buf, sizeof(buf), "%s%s%s",
 		    leading ? "__" : "", kw->kw_name, trailing ? "__" : "");
 		name = xstrdup(buf);
 	}
@@ -392,16 +393,16 @@ inpc(void)
 	return c;
 }
 
-static u_int
+static unsigned int
 hash(const char *s)
 {
-	u_int	v;
-	const	u_char *us;
+	unsigned int v;
+	const char *p;
 
 	v = 0;
-	for (us = (const u_char *)s; *us != '\0'; us++) {
-		v = (v << sizeof(v)) + *us;
-		v ^= v >> (sizeof(v) * CHAR_BIT - sizeof(v));
+	for (p = s; *p != '\0'; p++) {
+		v = (v << 4) + (unsigned char)*p;
+		v ^= v >> 28;
 	}
 	return v % HSHSIZ1;
 }
@@ -459,7 +460,7 @@ lex_name(const char *yytext, size_t yyleng)
 static sym_t *
 search(sbuf_t *sb)
 {
-	u_int h;
+	unsigned int h;
 	sym_t *sym;
 	const struct kwtab *kw;
 
@@ -503,25 +504,19 @@ int
 lex_integer_constant(const char *yytext, size_t yyleng, int base)
 {
 	int	l_suffix, u_suffix;
-	int	len;
+	size_t	len;
 	const	char *cp;
 	char	c, *eptr;
 	tspec_t	typ;
 	bool	ansiu;
 	bool	warned = false;
-#ifdef TARG_INT128_MAX
-	__uint128_t uq = 0;
-	static	tspec_t contypes[2][4] = {
-		{ INT,  LONG,  QUAD, INT128, },
-		{ UINT, ULONG, UQUAD, UINT128, }
-	};
-#else
 	uint64_t uq = 0;
-	static	tspec_t contypes[2][3] = {
+
+	/* C11 6.4.4.1p5 */
+	static const tspec_t suffix_type[2][3] = {
 		{ INT,  LONG,  QUAD, },
 		{ UINT, ULONG, UQUAD, }
 	};
-#endif
 
 	cp = yytext;
 	len = yyleng;
@@ -556,11 +551,11 @@ lex_integer_constant(const char *yytext, size_t yyleng, int base)
 		/* suffix U is illegal in traditional C */
 		warning(97);
 	}
-	typ = contypes[u_suffix][l_suffix];
+	typ = suffix_type[u_suffix][l_suffix];
 
 	errno = 0;
 
-	uq = strtouq(cp, &eptr, base);
+	uq = strtoull(cp, &eptr, base);
 	lint_assert(eptr == cp + len);
 	if (errno != 0) {
 		/* integer constant out of range */
@@ -639,30 +634,11 @@ lex_integer_constant(const char *yytext, size_t yyleng, int base)
 			warning(252);
 		}
 		break;
-#ifdef INT128_SIZE
-	case INT128:
-#ifdef TARG_INT128_MAX
-		if (uq > TARG_INT128_MAX && !tflag) {
-			typ = UINT128;
-			if (!sflag)
-				ansiu = true;
-		}
-#endif
-		break;
-	case UINT128:
-#ifdef TARG_INT128_MAX
-		if (uq > TARG_UINT128_MAX && !warned) {
-			/* integer constant out of range */
-			warning(252);
-		}
-#endif
-		break;
-#endif
 	default:
 		break;
 	}
 
-	uq = (uint64_t)convert_integer((int64_t)uq, typ, -1);
+	uq = (uint64_t)convert_integer((int64_t)uq, typ, 0);
 
 	yylval.y_val = xcalloc(1, sizeof(*yylval.y_val));
 	yylval.y_val->v_tspec = typ;
@@ -679,11 +655,11 @@ lex_integer_constant(const char *yytext, size_t yyleng, int base)
  * to the width of type t.
  */
 int64_t
-convert_integer(int64_t q, tspec_t t, int len)
+convert_integer(int64_t q, tspec_t t, unsigned int len)
 {
 	uint64_t vbits;
 
-	if (len <= 0)
+	if (len == 0)
 		len = size_in_bits(t);
 
 	vbits = value_bits(len);
@@ -815,14 +791,8 @@ lex_character_constant(void)
 		/* empty character constant */
 		error(73);
 	}
-	if (n == 1) {
-		/*
-		 * XXX: use the target platform's 'char' instead of the
-		 *  'char' from the execution environment, to be able to
-		 *  run lint for powerpc on x86_64.
-		 */
-		val = (char)val;
-	}
+	if (n == 1)
+		val = (int)convert_integer(val, CHAR, CHAR_SIZE);
 
 	yylval.y_val = xcalloc(1, sizeof(*yylval.y_val));
 	yylval.y_val->v_tspec = INT;
@@ -1150,6 +1120,8 @@ lex_comment(void)
 		{ "CONSTANTCONDITION",	false,	constcond	},
 		{ "FALLTHRU",		false,	fallthru	},
 		{ "FALLTHROUGH",	false,	fallthru	},
+		{ "FALL THROUGH",	false,	fallthru	},
+		{ "fallthrough",	false,	fallthru	},
 		{ "LINTLIBRARY",	false,	lintlib		},
 		{ "LINTED",		true,	linted		},
 		{ "LONGLONG",		false,	longlong	},
@@ -1174,10 +1146,15 @@ lex_comment(void)
 
 	/* Read the potential keyword to keywd */
 	l = 0;
-	while (c != EOF && isupper(c) && l < sizeof(keywd) - 1) {
+	while (c != EOF && l < sizeof(keywd) - 1 &&
+	    (isalpha(c) || isspace(c))) {
+		if (islower(c) && l > 0 && ch_isupper(keywd[0]))
+			break;
 		keywd[l++] = (char)c;
 		c = inpc();
 	}
+	while (l > 0 && ch_isspace(keywd[l - 1]))
+		l--;
 	keywd[l] = '\0';
 
 	/* look for the keyword */
@@ -1275,7 +1252,7 @@ clear_warn_flags(void)
 int
 lex_string(void)
 {
-	u_char	*s;
+	unsigned char *s;
 	int	c;
 	size_t	len, max;
 	strg_t	*strg;

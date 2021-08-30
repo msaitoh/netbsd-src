@@ -1,4 +1,4 @@
-/*	$NetBSD: err.c,v 1.139 2021/08/23 06:50:01 rillig Exp $	*/
+/*	$NetBSD: err.c,v 1.141 2021/08/27 20:19:45 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -37,7 +37,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: err.c,v 1.139 2021/08/23 06:50:01 rillig Exp $");
+__RCSID("$NetBSD: err.c,v 1.141 2021/08/27 20:19:45 rillig Exp $");
 #endif
 
 #include <sys/types.h>
@@ -132,7 +132,7 @@ const char *const msgs[] = {
 	"overflow in hex escape",				      /* 75 */
 	"character escape does not fit in character",		      /* 76 */
 	"bad octal digit %c",					      /* 77 */
-	"nonportable character escape",				      /* 78 */
+	"",			/* unused */			      /* 78 */
 	"dubious escape \\%c",					      /* 79 */
 	"dubious escape \\%o",					      /* 80 */
 	"\\a undefined in traditional C",			      /* 81 */
@@ -233,7 +233,7 @@ const char *const msgs[] = {
 	"",			/* no longer used */		      /* 176 */
 	"non-constant initializer",				      /* 177 */
 	"initializer does not fit",				      /* 178 */
-	"cannot initialize struct/union with no named member",	      /* 179 */
+	"",			/* unused since 2021-03-29 */	      /* 179 */
 	"bit-field initializer does not fit",			      /* 180 */
 	"{}-enclosed initializer required",			      /* 181 */
 	"incompatible pointer types (%s != %s)",		      /* 182 */

@@ -1,4 +1,4 @@
-/*	$NetBSD: tree.c,v 1.351 2021/08/23 17:03:23 rillig Exp $	*/
+/*	$NetBSD: tree.c,v 1.363 2021/08/29 17:01:27 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -37,7 +37,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: tree.c,v 1.351 2021/08/23 17:03:23 rillig Exp $");
+__RCSID("$NetBSD: tree.c,v 1.363 2021/08/29 17:01:27 rillig Exp $");
 #endif
 
 #include <float.h>
@@ -191,12 +191,28 @@ fallback_symbol(sym_t *sym)
 	error(99, sym->s_name);
 }
 
-/* https://gcc.gnu.org/onlinedocs/gcc/C-Extensions.html */
-static bool
-is_gcc_builtin(const char *name)
+/*
+ * Functions that are predeclared by GCC or other compilers can be called
+ * with arbitrary arguments.  Since lint usually runs after a successful
+ * compilation, it's the compiler's job to catch any errors.
+ */
+bool
+is_compiler_builtin(const char *name)
 {
-	return strncmp(name, "__atomic_", 9) == 0 ||
-	       strncmp(name, "__builtin_", 10) == 0;
+	/* https://gcc.gnu.org/onlinedocs/gcc/C-Extensions.html */
+	if (gflag) {
+		if (strncmp(name, "__atomic_", 9) == 0 ||
+		    strncmp(name, "__builtin_", 10) == 0 ||
+		    /* obsolete but still in use, as of 2021 */
+		    strncmp(name, "__sync_", 7) == 0)
+			return true;
+	}
+
+	/* https://software.intel.com/sites/landingpage/IntrinsicsGuide/ */
+	if (strncmp(name, "_mm_", 4) == 0)
+		return true;
+
+	return false;
 }
 
 /*
@@ -212,7 +228,7 @@ build_name(sym_t *sym, int follow_token)
 		sym->s_scl = EXTERN;
 		sym->s_def = DECL;
 		if (follow_token == T_LPAREN) {
-			if (gflag && is_gcc_builtin(sym->s_name)) {
+			if (is_compiler_builtin(sym->s_name)) {
 				/*
 				 * Do not warn about these, just assume that
 				 * they are regular functions compatible with
@@ -220,7 +236,7 @@ build_name(sym_t *sym, int follow_token)
 				 */
 			} else if (Sflag) {
 				/* function '%s' implicitly declared to ... */
-				warning(215, sym->s_name);
+				error(215, sym->s_name);
 			} else if (sflag) {
 				/* function '%s' implicitly declared to ... */
 				warning(215, sym->s_name);
@@ -1761,7 +1777,7 @@ promote(op_t op, bool farg, tnode_t *tn)
 {
 	tspec_t	t;
 	type_t	*ntp;
-	u_int	len;
+	unsigned int len;
 
 	t = tn->tn_type->t_tspec;
 
@@ -2215,15 +2231,15 @@ convert_constant_floating(op_t op, int arg, tspec_t ot, const type_t *tp,
 	case INT:
 		max = TARG_INT_MAX;	min = TARG_INT_MIN;	break;
 	case UINT:
-		max = (u_int)TARG_UINT_MAX;min = 0;		break;
+		max = TARG_UINT_MAX;	min = 0;		break;
 	case LONG:
 		max = TARG_LONG_MAX;	min = TARG_LONG_MIN;	break;
 	case ULONG:
-		max = (u_long)TARG_ULONG_MAX; min = 0;		break;
+		max = TARG_ULONG_MAX;	min = 0;		break;
 	case QUAD:
 		max = QUAD_MAX;		min = QUAD_MIN;		break;
 	case UQUAD:
-		max = (uint64_t)UQUAD_MAX; min = 0;		break;
+		max = UQUAD_MAX;	min = 0;		break;
 	case FLOAT:
 	case FCOMPLEX:
 		max = FLT_MAX;		min = -FLT_MAX;		break;
@@ -2251,6 +2267,7 @@ convert_constant_floating(op_t op, int arg, tspec_t ot, const type_t *tp,
 		}
 		v->v_ldbl = v->v_ldbl > 0 ? max : min;
 	}
+
 	if (nt == FLOAT) {
 		nv->v_ldbl = (float)v->v_ldbl;
 	} else if (nt == DOUBLE) {
@@ -2258,8 +2275,7 @@ convert_constant_floating(op_t op, int arg, tspec_t ot, const type_t *tp,
 	} else if (nt == LDOUBLE) {
 		nv->v_ldbl = v->v_ldbl;
 	} else {
-		nv->v_quad = (nt == PTR || is_uinteger(nt)) ?
-		    (int64_t)v->v_ldbl : (int64_t)v->v_ldbl;
+		nv->v_quad = (int64_t)v->v_ldbl;
 	}
 }
 
@@ -2769,8 +2785,6 @@ build_plus_minus(op_t op, tnode_t *ln, tnode_t *rn)
 	}
 
 	if (ln->tn_type->t_tspec == PTR && rn->tn_type->t_tspec != PTR) {
-
-		/* XXX: this assertion should be easy to trigger */
 		lint_assert(is_integer(rn->tn_type->t_tspec));
 
 		check_ctype_macro_invocation(ln, rn);
@@ -2946,18 +2960,19 @@ build_assignment(op_t op, tnode_t *ln, tnode_t *rn)
 }
 
 /*
- * Get length of type tp->t_subt.
+ * Get length of type tp->t_subt, as a constant expression of type ptrdiff_t
+ * as seen from the target platform.
  */
 static tnode_t *
 plength(type_t *tp)
 {
-	int	elem, elsz;
+	int elem, elsz_in_bits;
 
 	lint_assert(tp->t_tspec == PTR);
 	tp = tp->t_subt;
 
 	elem = 1;
-	elsz = 0;
+	elsz_in_bits = 0;
 
 	while (tp->t_tspec == ARRAY) {
 		elem *= tp->t_dim;
@@ -2975,7 +2990,7 @@ plength(type_t *tp)
 		break;
 	case STRUCT:
 	case UNION:
-		if ((elsz = tp->t_str->sou_size_in_bits) == 0)
+		if ((elsz_in_bits = tp->t_str->sou_size_in_bits) == 0)
 			/* cannot do pointer arithmetic on operand of ... */
 			error(136);
 		break;
@@ -2986,25 +3001,25 @@ plength(type_t *tp)
 		}
 		/* FALLTHROUGH */
 	default:
-		if ((elsz = size_in_bits(tp->t_tspec)) == 0) {
+		if ((elsz_in_bits = size_in_bits(tp->t_tspec)) == 0) {
 			/* cannot do pointer arithmetic on operand of ... */
 			error(136);
 		} else {
-			lint_assert(elsz != -1);
+			lint_assert(elsz_in_bits != -1);
 		}
 		break;
 	}
 
-	if (elem == 0 && elsz != 0) {
+	if (elem == 0 && elsz_in_bits != 0) {
 		/* cannot do pointer arithmetic on operand of unknown size */
 		error(136);
 	}
 
-	if (elsz == 0)
-		elsz = CHAR_SIZE;
+	if (elsz_in_bits == 0)
+		elsz_in_bits = CHAR_SIZE;
 
 	return build_integer_constant(PTRDIFF_TSPEC,
-	    (int64_t)(elem * elsz / CHAR_SIZE));
+	    (int64_t)(elem * elsz_in_bits / CHAR_SIZE));
 }
 
 /*
@@ -3146,7 +3161,7 @@ fold(tnode_t *tn)
 			warning(141, op_name(tn->tn_op));
 	}
 
-	v->v_quad = convert_integer(q, t, -1);
+	v->v_quad = convert_integer(q, t, 0);
 
 	cn = build_constant(tn->tn_type, v);
 	if (tn->tn_left->tn_system_dependent)
@@ -3297,7 +3312,7 @@ fold_float(tnode_t *tn)
 tnode_t *
 build_sizeof(const type_t *tp)
 {
-	int64_t size_in_bytes = type_size_in_bits(tp) / CHAR_SIZE;
+	unsigned int size_in_bytes = type_size_in_bits(tp) / CHAR_SIZE;
 	tnode_t *tn = build_integer_constant(SIZEOF_TSPEC, size_in_bytes);
 	tn->tn_system_dependent = true;
 	return tn;
@@ -3315,16 +3330,16 @@ build_offsetof(const type_t *tp, const sym_t *sym)
 		error(111, "offsetof");
 
 	// XXX: wrong size, no checking for sym fixme
-	int64_t offset_in_bytes = type_size_in_bits(tp) / CHAR_SIZE;
+	unsigned int offset_in_bytes = type_size_in_bits(tp) / CHAR_SIZE;
 	tnode_t *tn = build_integer_constant(SIZEOF_TSPEC, offset_in_bytes);
 	tn->tn_system_dependent = true;
 	return tn;
 }
 
-int64_t
+unsigned int
 type_size_in_bits(const type_t *tp)
 {
-	int	elem, elsz;
+	unsigned int elem, elsz;
 	bool	flex;
 
 	elem = 1;
@@ -3379,7 +3394,7 @@ type_size_in_bits(const type_t *tp)
 		break;
 	}
 
-	return (int64_t)elem * elsz;
+	return elem * elsz;
 }
 
 tnode_t *
@@ -3940,7 +3955,8 @@ check_expr_misc(const tnode_t *tn, bool vctx, bool tctx,
 	case CALL:
 		lint_assert(ln->tn_op == ADDR);
 		lint_assert(ln->tn_left->tn_op == NAME);
-		if (!szof)
+		if (!szof &&
+		    !is_compiler_builtin(ln->tn_left->tn_sym->s_name))
 			outcall(tn, vctx || tctx, rvdisc);
 		break;
 	case EQ:
@@ -4093,6 +4109,14 @@ check_array_index(tnode_t *tn, bool amper)
 	}
 }
 
+static bool
+is_out_of_char_range(const tnode_t *tn)
+{
+	return tn->tn_op == CON &&
+	       !(0 <= tn->tn_val->v_quad &&
+		 tn->tn_val->v_quad < 1 << (CHAR_SIZE - 1));
+}
+
 /*
  * Check for ordered comparisons of unsigned values with 0.
  */
@@ -4110,16 +4134,8 @@ check_integer_comparison(op_t op, tnode_t *ln, tnode_t *rn)
 	if (!is_integer(lt) || !is_integer(rt))
 		return;
 
-	if ((hflag || pflag) && lt == CHAR && rn->tn_op == CON &&
-	    (rn->tn_val->v_quad < 0 ||
-	     rn->tn_val->v_quad > (int)~(~0U << (CHAR_SIZE - 1)))) {
-		/* nonportable character comparison, op %s */
-		warning(230, op_name(op));
-		return;
-	}
-	if ((hflag || pflag) && rt == CHAR && ln->tn_op == CON &&
-	    (ln->tn_val->v_quad < 0 ||
-	     ln->tn_val->v_quad > (int)~(~0U << (CHAR_SIZE - 1)))) {
+	if ((hflag || pflag) && ((lt == CHAR && is_out_of_char_range(rn)) ||
+				 (rt == CHAR && is_out_of_char_range(ln)))) {
 		/* nonportable character comparison, op %s */
 		warning(230, op_name(op));
 		return;
@@ -4225,9 +4241,11 @@ constant_addr(const tnode_t *tn, const sym_t **symp, ptrdiff_t *offsp)
 		 *	struct foo {
 		 *		unsigned char a;
 		 *	} f = {
-		 *		(u_char)(u_long)(&(((struct foo *)0)->a))
+		 *		(unsigned char)(unsigned long)
+		 *		    (&(((struct foo *)0)->a))
 		 *	};
-		 * since psize(u_long) != psize(u_char) this fails.
+		 * since psize(unsigned long) != psize(unsigned char),
+		 * this fails.
 		 */
 		else if (psize(t) != psize(ot))
 			return -1;

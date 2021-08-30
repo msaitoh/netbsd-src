@@ -1,4 +1,4 @@
-/*	$NetBSD: externs1.h,v 1.132 2021/08/23 06:26:37 rillig Exp $	*/
+/*	$NetBSD: externs1.h,v 1.137 2021/08/29 15:49:04 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -78,7 +78,7 @@ extern	symt_t	symtyp;
 extern	FILE	*yyin;
 
 extern	void	initscan(void);
-extern	int64_t	convert_integer(int64_t, tspec_t, int);
+extern	int64_t	convert_integer(int64_t, tspec_t, unsigned int);
 extern	void	clear_warn_flags(void);
 extern	sym_t	*getsym(sbuf_t *);
 extern	void	cleanup(void);
@@ -187,7 +187,7 @@ extern	void	setasm(void);
 extern	void	begin_type(void);
 extern	void	end_type(void);
 extern	int	length(const type_t *, const char *);
-extern	int	alignment_in_bits(const type_t *);
+extern	unsigned int alignment_in_bits(const type_t *);
 extern	sym_t	*lnklst(sym_t *, sym_t *);
 extern	void	check_type(sym_t *);
 extern	sym_t	*declarator_1_struct_union(sym_t *);
@@ -234,6 +234,7 @@ extern	const char *scl_name(scl_t);
 extern	const tnode_t *before_conversion(const tnode_t *);
 extern	type_t	*derive_type(type_t *, tspec_t);
 extern	type_t	*expr_derive_type(type_t *, tspec_t);
+extern	bool	is_compiler_builtin(const char *);
 extern	tnode_t	*build_constant(type_t *, val_t *);
 extern	tnode_t	*build_name(sym_t *, int);
 extern	tnode_t	*build_string(strg_t *);
@@ -262,7 +263,7 @@ extern	void	check_expr_misc(const tnode_t *, bool, bool, bool,
 		    bool, bool, bool);
 extern	bool	constant_addr(const tnode_t *, const sym_t **, ptrdiff_t *);
 extern	strg_t	*cat_strings(strg_t *, strg_t *);
-extern  int64_t type_size_in_bits(const type_t *);
+extern  unsigned int type_size_in_bits(const type_t *);
 
 /*
  * func.c
