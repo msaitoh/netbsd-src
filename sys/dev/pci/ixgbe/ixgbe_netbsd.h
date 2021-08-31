@@ -70,7 +70,28 @@ void ixgbe_dmamap_destroy(ixgbe_dma_tag_t *, bus_dmamap_t);
 void ixgbe_dmamap_sync(ixgbe_dma_tag_t *, bus_dmamap_t, int);
 void ixgbe_dmamap_unload(ixgbe_dma_tag_t *, bus_dmamap_t);
 
+#if 0
 struct mbuf *ixgbe_getcl(void);
+#else
+static __inline struct mbuf *
+ixgbe_getcl(void)
+{
+	struct mbuf *m;
+
+	MGETHDR(m, M_DONTWAIT, MT_DATA);
+
+	if (m == NULL)
+		return NULL;
+
+	MCLGET(m, M_DONTWAIT);
+	if ((m->m_flags & M_EXT) == 0) {
+		m_freem(m);
+		return NULL;
+	}
+
+	return m;
+}
+#endif
 void ixgbe_pci_enable_busmaster(pci_chipset_tag_t, pcitag_t);
 
 u_int atomic_load_acq_uint(volatile u_int *);

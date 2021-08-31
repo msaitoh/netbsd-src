@@ -99,7 +99,7 @@ ixgbe_dmamap_create(ixgbe_dma_tag_t *dt, int flags, bus_dmamap_t *dmamp)
 	    dt->dt_maxsegsize, dt->dt_boundary, flags, dmamp);
 }
 
-
+#if 0
 struct mbuf *
 ixgbe_getcl(void)
 {
@@ -118,6 +118,7 @@ ixgbe_getcl(void)
 
 	return m;
 }
+#endif
 
 void
 ixgbe_pci_enable_busmaster(pci_chipset_tag_t pc, pcitag_t tag)
