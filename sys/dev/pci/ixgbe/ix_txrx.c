@@ -1825,7 +1825,7 @@ ixgbe_rxeof(struct ix_queue *que)
 	}
 #endif /* DEV_NETMAP */
 
-	/* Sync the ring. */
+	/* Sync the ring. The size is rx_process_limit or the first half */
 	if ((rxr->next_to_check + limit) <= rxr->num_desc) {
 		/* Non-wraparound */
 		bus_dmamap_sync(rxr->rxdma.dma_tag->dt_dmat,
@@ -1837,17 +1837,15 @@ ixgbe_rxeof(struct ix_queue *que)
 		/* Wraparound */
 		unsigned int len = rxr->num_desc - rxr->next_to_check;
 
+		/* Sync the first half. */
 		bus_dmamap_sync(rxr->rxdma.dma_tag->dt_dmat,
 		    rxr->rxdma.dma_map,
 		    sizeof(union ixgbe_adv_rx_desc) * rxr->next_to_check,
 		    sizeof(union ixgbe_adv_rx_desc) * len,
 		    BUS_DMASYNC_POSTREAD | BUS_DMASYNC_POSTWRITE);
+
+		/* Set the size of the last half */
 		syncremain = limit - len;
-#if 0
-		device_printf(adapter->dev, "maxsize = %zu, onesize = %zu\n",
-		    rxr->rxdma.dma_tag->dt_maxsize, sizeof(union ixgbe_adv_rx_desc));
-		device_printf(adapter->dev, "cur = %d, len = %u, syncremain = %d\n", rxr->next_to_check, len, syncremain);
-#endif
 	}
 
 	/*
@@ -1866,17 +1864,13 @@ ixgbe_rxeof(struct ix_queue *que)
 		bool        eop;
 
 		if (wraparound) {
-			/* Sync the ring. */
+			/* Sync the last half. */
 			KASSERT(syncremain != 0);
 			bus_dmamap_sync(rxr->rxdma.dma_tag->dt_dmat,
 			    rxr->rxdma.dma_map,
 			    0,
 			    sizeof(union ixgbe_adv_rx_desc) * syncremain,
 			    BUS_DMASYNC_POSTREAD | BUS_DMASYNC_POSTWRITE);
-#if 0
-			device_printf(adapter->dev, "remain = %u\n",
-			    syncremain);
-#endif
 			wraparound = false;
 		}
 
