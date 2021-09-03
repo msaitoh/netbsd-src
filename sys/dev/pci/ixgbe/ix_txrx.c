@@ -1807,6 +1807,8 @@ ixgbe_rxeof(struct ix_queue *que)
 	u32			loopcount = 0;
 	u32			limit = adapter->rx_process_limit;
 	bool			discard_multidesc = rxr->discard_multidesc;
+	bool			wraparound = false;
+	unsigned int		syncremain = 0;
 #ifdef RSS
 	u16			pkt_info;
 #endif
@@ -1823,6 +1825,31 @@ ixgbe_rxeof(struct ix_queue *que)
 	}
 #endif /* DEV_NETMAP */
 
+	/* Sync the ring. */
+	if ((rxr->next_to_check + limit) <= rxr->num_desc) {
+		/* Non-wraparound */
+		bus_dmamap_sync(rxr->rxdma.dma_tag->dt_dmat,
+		    rxr->rxdma.dma_map,
+		    sizeof(union ixgbe_adv_rx_desc) * rxr->next_to_check,
+		    sizeof(union ixgbe_adv_rx_desc) * limit,
+		    BUS_DMASYNC_POSTREAD | BUS_DMASYNC_POSTWRITE);
+	} else {
+		/* Wraparound */
+		unsigned int len = rxr->num_desc - rxr->next_to_check;
+
+		bus_dmamap_sync(rxr->rxdma.dma_tag->dt_dmat,
+		    rxr->rxdma.dma_map,
+		    sizeof(union ixgbe_adv_rx_desc) * rxr->next_to_check,
+		    sizeof(union ixgbe_adv_rx_desc) * len,
+		    BUS_DMASYNC_POSTREAD | BUS_DMASYNC_POSTWRITE);
+		syncremain = limit - len;
+#if 0
+		device_printf(adapter->dev, "maxsize = %zu, onesize = %zu\n",
+		    rxr->rxdma.dma_tag->dt_maxsize, sizeof(union ixgbe_adv_rx_desc));
+		device_printf(adapter->dev, "cur = %d, len = %u, syncremain = %d\n", rxr->next_to_check, len, syncremain);
+#endif
+	}
+
 	/*
 	 * The max number of loop is rx_process_limit. If discard_multidesc is
 	 * true, continue processing to not to send broken packet to the upper
@@ -1838,9 +1865,20 @@ ixgbe_rxeof(struct ix_queue *que)
 		u16         vtag = 0;
 		bool        eop;
 
-		/* Sync the ring. */
-		ixgbe_dmamap_sync(rxr->rxdma.dma_tag, rxr->rxdma.dma_map,
-		    BUS_DMASYNC_POSTREAD | BUS_DMASYNC_POSTWRITE);
+		if (wraparound) {
+			/* Sync the ring. */
+			KASSERT(syncremain != 0);
+			bus_dmamap_sync(rxr->rxdma.dma_tag->dt_dmat,
+			    rxr->rxdma.dma_map,
+			    0,
+			    sizeof(union ixgbe_adv_rx_desc) * syncremain,
+			    BUS_DMASYNC_POSTREAD | BUS_DMASYNC_POSTWRITE);
+#if 0
+			device_printf(adapter->dev, "remain = %u\n",
+			    syncremain);
+#endif
+			wraparound = false;
+		}
 
 		cur = &rxr->rx_base[i];
 		staterr = le32toh(cur->wb.upper.status_error);
@@ -2100,8 +2138,10 @@ next_desc:
 		    BUS_DMASYNC_PREREAD | BUS_DMASYNC_PREWRITE);
 
 		/* Advance our pointers to the next descriptor. */
-		if (++i == rxr->num_desc)
+		if (++i == rxr->num_desc) {
+			wraparound = true;
 			i = 0;
+		}
 		rxr->next_to_check = i;
 
 		/* Now send to the stack or do LRO */
