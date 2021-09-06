@@ -1804,7 +1804,7 @@ ixgbe_rxeof(struct ix_queue *que)
 	struct ixgbe_rx_buf	*rbuf, *nbuf;
 	int			i, nextp, processed = 0;
 	u32			staterr = 0;
-	u32			loopcount = 0;
+	u32			loopcount = 0, numdesc;
 	u32			limit = adapter->rx_process_limit;
 	bool			discard_multidesc = rxr->discard_multidesc;
 	bool			wraparound = false;
@@ -1828,25 +1828,19 @@ ixgbe_rxeof(struct ix_queue *que)
 	/* Sync the ring. The size is rx_process_limit or the first half */
 	if ((rxr->next_to_check + limit) <= rxr->num_desc) {
 		/* Non-wraparound */
-		bus_dmamap_sync(rxr->rxdma.dma_tag->dt_dmat,
-		    rxr->rxdma.dma_map,
-		    sizeof(union ixgbe_adv_rx_desc) * rxr->next_to_check,
-		    sizeof(union ixgbe_adv_rx_desc) * limit,
-		    BUS_DMASYNC_POSTREAD | BUS_DMASYNC_POSTWRITE);
+		numdesc = limit;
 	} else {
-		/* Wraparound */
-		unsigned int len = rxr->num_desc - rxr->next_to_check;
-
-		/* Sync the first half. */
-		bus_dmamap_sync(rxr->rxdma.dma_tag->dt_dmat,
-		    rxr->rxdma.dma_map,
-		    sizeof(union ixgbe_adv_rx_desc) * rxr->next_to_check,
-		    sizeof(union ixgbe_adv_rx_desc) * len,
-		    BUS_DMASYNC_POSTREAD | BUS_DMASYNC_POSTWRITE);
+		/* Wraparound. Sync the first half. */
+		numdesc = rxr->num_desc - rxr->next_to_check;
 
 		/* Set the size of the last half */
-		syncremain = limit - len;
+		syncremain = limit - numdesc;
 	}
+	bus_dmamap_sync(rxr->rxdma.dma_tag->dt_dmat,
+	    rxr->rxdma.dma_map,
+	    sizeof(union ixgbe_adv_rx_desc) * rxr->next_to_check,
+	    sizeof(union ixgbe_adv_rx_desc) * numdesc,
+	    BUS_DMASYNC_POSTREAD | BUS_DMASYNC_POSTWRITE);
 
 	/*
 	 * The max number of loop is rx_process_limit. If discard_multidesc is
@@ -1866,13 +1860,19 @@ ixgbe_rxeof(struct ix_queue *que)
 		if (wraparound) {
 			/* Sync the last half. */
 			KASSERT(syncremain != 0);
-			bus_dmamap_sync(rxr->rxdma.dma_tag->dt_dmat,
-			    rxr->rxdma.dma_map,
-			    0,
-			    sizeof(union ixgbe_adv_rx_desc) * syncremain,
-			    BUS_DMASYNC_POSTREAD | BUS_DMASYNC_POSTWRITE);
+			numdesc = syncremain;
 			wraparound = false;
-		}
+		} else if (__predict_false(loopcount >= limit)) {
+			KASSERT(discard_multidesc == true);
+			numdesc = 1;
+		} else
+			numdesc = 0;
+
+		if (numdesc != 0)
+			bus_dmamap_sync(rxr->rxdma.dma_tag->dt_dmat,
+			    rxr->rxdma.dma_map, 0,
+			    sizeof(union ixgbe_adv_rx_desc) * numdesc,
+			    BUS_DMASYNC_POSTREAD | BUS_DMASYNC_POSTWRITE);
 
 		cur = &rxr->rx_base[i];
 		staterr = le32toh(cur->wb.upper.status_error);
@@ -1909,7 +1909,7 @@ ixgbe_rxeof(struct ix_queue *que)
 		}
 
 		/* pre-alloc new mbuf */
-		if (!discard_multidesc)
+		if (__predict_true(!discard_multidesc))
 			newmp = ixgbe_getcl();
 		else
 			newmp = NULL;
