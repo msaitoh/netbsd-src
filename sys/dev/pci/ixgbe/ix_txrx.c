@@ -1808,7 +1808,7 @@ ixgbe_rxeof(struct ix_queue *que)
 	u32			limit = adapter->rx_process_limit;
 	bool			discard_multidesc = rxr->discard_multidesc;
 	bool			wraparound = false;
-	unsigned int		syncremain = 0;
+	unsigned int		syncremain;
 #ifdef RSS
 	u16			pkt_info;
 #endif
@@ -1829,6 +1829,7 @@ ixgbe_rxeof(struct ix_queue *que)
 	if ((rxr->next_to_check + limit) <= rxr->num_desc) {
 		/* Non-wraparound */
 		numdesc = limit;
+		syncremain = 0;
 	} else {
 		/* Wraparound. Sync the first half. */
 		numdesc = rxr->num_desc - rxr->next_to_check;
