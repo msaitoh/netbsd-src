@@ -1,4 +1,4 @@
-/*	$NetBSD: tyname.c,v 1.45 2021/08/28 13:29:26 rillig Exp $	*/
+/*	$NetBSD: tyname.c,v 1.50 2021/09/05 18:34:50 rillig Exp $	*/
 
 /*-
  * Copyright (c) 2005 The NetBSD Foundation, Inc.
@@ -35,7 +35,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: tyname.c,v 1.45 2021/08/28 13:29:26 rillig Exp $");
+__RCSID("$NetBSD: tyname.c,v 1.50 2021/09/05 18:34:50 rillig Exp $");
 #endif
 
 #include <limits.h>
@@ -150,43 +150,10 @@ buf_add_int(buffer *buf, int n)
 const char *
 tspec_name(tspec_t t)
 {
-	switch (t) {
-	case SIGNED:	return "signed";
-	case UNSIGN:	return "unsigned";
-	case BOOL:	return "_Bool";
-	case CHAR:	return "char";
-	case SCHAR:	return "signed char";
-	case UCHAR:	return "unsigned char";
-	case SHORT:	return "short";
-	case USHORT:	return "unsigned short";
-	case INT:	return "int";
-	case UINT:	return "unsigned int";
-	case LONG:	return "long";
-	case ULONG:	return "unsigned long";
-	case QUAD:	return "long long";
-	case UQUAD:	return "unsigned long long";
-#ifdef INT128_SIZE
-	case INT128:	return "__int128_t";
-	case UINT128:	return "__uint128_t";
-#endif
-	case FLOAT:	return "float";
-	case DOUBLE:	return "double";
-	case LDOUBLE:	return "long double";
-	case VOID:	return "void";
-	case STRUCT:	return "struct";
-	case UNION:	return "union";
-	case ENUM:	return "enum";
-	case PTR:	return "pointer";
-	case ARRAY:	return "array";
-	case FUNC:	return "function";
-	case COMPLEX:	return "_Complex";
-	case FCOMPLEX:	return "float _Complex";
-	case DCOMPLEX:	return "double _Complex";
-	case LCOMPLEX:	return "long double _Complex";
-	default:
+	const char *name = ttab[t].tt_name;
+	if (name == NULL)
 		INTERNAL_ERROR("tspec_name(%d)", t);
-		return NULL;
-	}
+	return name;
 }
 
 static void
@@ -196,7 +163,7 @@ type_name_of_function(buffer *buf, const type_t *tp)
 
 	buf_add(buf, "(");
 	if (tp->t_proto) {
-#ifdef t_enum /* lint1 */
+#ifdef IS_LINT1
 		sym_t *arg;
 
 		arg = tp->t_args;
@@ -206,7 +173,7 @@ type_name_of_function(buffer *buf, const type_t *tp)
 			buf_add(buf, sep), sep = ", ";
 			buf_add(buf, type_name(arg->s_type));
 		}
-#else /* lint2 */
+#else
 		type_t **argtype;
 
 		argtype = tp->t_args;
@@ -230,7 +197,7 @@ static void
 type_name_of_struct_or_union(buffer *buf, const type_t *tp)
 {
 	buf_add(buf, " ");
-#ifdef t_str
+#ifdef IS_LINT1
 	if (tp->t_str->sou_tag->s_name == unnamed &&
 	    tp->t_str->sou_first_typedef != NULL) {
 		buf_add(buf, "typedef ");
@@ -247,7 +214,7 @@ static void
 type_name_of_enum(buffer *buf, const type_t *tp)
 {
 	buf_add(buf, " ");
-#ifdef t_enum
+#ifdef IS_LINT1
 	if (tp->t_enum->en_tag->s_name == unnamed &&
 	    tp->t_enum->en_first_typedef != NULL) {
 		buf_add(buf, "typedef ");
@@ -264,7 +231,7 @@ static void
 type_name_of_array(buffer *buf, const type_t *tp)
 {
 	buf_add(buf, "[");
-#ifdef t_str /* lint1 */
+#ifdef IS_LINT1
 	if (tp->t_incomplete_array)
 		buf_add(buf, "unknown_size");
 	else
@@ -296,40 +263,13 @@ type_name(const type_t *tp)
 	if (tp->t_volatile)
 		buf_add(&buf, "volatile ");
 
-#ifdef t_str
+#ifdef IS_LINT1
 	if ((t == STRUCT || t == UNION) && tp->t_str->sou_incomplete)
 		buf_add(&buf, "incomplete ");
 #endif
 	buf_add(&buf, tspec_name(t));
 
 	switch (t) {
-	case BOOL:
-	case CHAR:
-	case UCHAR:
-	case SCHAR:
-	case SHORT:
-	case USHORT:
-	case INT:
-	case UINT:
-	case LONG:
-	case ULONG:
-	case QUAD:
-	case UQUAD:
-#ifdef INT128_SIZE
-	case INT128:
-	case UINT128:
-#endif
-	case FLOAT:
-	case DOUBLE:
-	case LDOUBLE:
-	case VOID:
-	case COMPLEX:
-	case FCOMPLEX:
-	case DCOMPLEX:
-	case LCOMPLEX:
-	case SIGNED:
-	case UNSIGN:
-		break;
 	case PTR:
 		buf_add(&buf, " to ");
 		buf_add(&buf, type_name(tp->t_subt));
@@ -348,7 +288,7 @@ type_name(const type_t *tp)
 		type_name_of_function(&buf, tp);
 		break;
 	default:
-		INTERNAL_ERROR("type_name(%d)", t);
+		break;
 	}
 
 	name = intern(buf.data);

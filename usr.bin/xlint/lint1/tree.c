@@ -1,4 +1,4 @@
-/*	$NetBSD: tree.c,v 1.363 2021/08/29 17:01:27 rillig Exp $	*/
+/*	$NetBSD: tree.c,v 1.380 2021/09/05 18:34:50 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -37,7 +37,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: tree.c,v 1.363 2021/08/29 17:01:27 rillig Exp $");
+__RCSID("$NetBSD: tree.c,v 1.380 2021/09/05 18:34:50 rillig Exp $");
 #endif
 
 #include <float.h>
@@ -115,8 +115,8 @@ derive_type(type_t *tp, tspec_t t)
 }
 
 /*
- * Build 'pointer to tp', 'array of tp' or 'function returning tp'.  The
- * memory is freed at the end of the current expression.
+ * Derive 'pointer to tp' or 'function returning tp'.
+ * The memory is freed at the end of the current expression.
  */
 type_t *
 expr_derive_type(type_t *tp, tspec_t t)
@@ -215,6 +215,51 @@ is_compiler_builtin(const char *name)
 	return false;
 }
 
+static bool
+str_endswith(const char *haystack, const char *needle)
+{
+	size_t hlen = strlen(haystack);
+	size_t nlen = strlen(needle);
+
+	return nlen <= hlen &&
+	       memcmp(haystack + hlen - nlen, needle, nlen) == 0;
+}
+
+/* https://gcc.gnu.org/onlinedocs/gcc/Integer-Overflow-Builtins.html */
+static bool
+is_gcc_bool_builtin(const char *name)
+{
+	return strncmp(name, "__builtin_", 10) == 0 &&
+	       (str_endswith(name, "_overflow") ||
+		str_endswith(name, "_overflow_p"));
+}
+
+static void
+build_name_call(sym_t *sym)
+{
+
+	if (is_compiler_builtin(sym->s_name)) {
+		/*
+		 * Do not warn about these, just assume that
+		 * they are regular functions compatible with
+		 * non-prototype calling conventions.
+		 */
+
+		if (is_gcc_bool_builtin(sym->s_name))
+			sym->s_type = gettyp(BOOL);
+
+	} else if (Sflag) {
+		/* function '%s' implicitly declared to return int */
+		error(215, sym->s_name);
+	} else if (sflag) {
+		/* function '%s' implicitly declared to return int */
+		warning(215, sym->s_name);
+	}
+
+	/* XXX if tflag is set, the symbol should be exported to level 0 */
+	sym->s_type = derive_type(sym->s_type, FUNC);
+}
+
 /*
  * Create a node for a name (symbol table entry).
  * follow_token is the token which follows the name.
@@ -228,24 +273,7 @@ build_name(sym_t *sym, int follow_token)
 		sym->s_scl = EXTERN;
 		sym->s_def = DECL;
 		if (follow_token == T_LPAREN) {
-			if (is_compiler_builtin(sym->s_name)) {
-				/*
-				 * Do not warn about these, just assume that
-				 * they are regular functions compatible with
-				 * non-prototype calling conventions.
-				 */
-			} else if (Sflag) {
-				/* function '%s' implicitly declared to ... */
-				error(215, sym->s_name);
-			} else if (sflag) {
-				/* function '%s' implicitly declared to ... */
-				warning(215, sym->s_name);
-			}
-			/*
-			 * XXX if tflag is set the symbol should be
-			 * exported to level 0
-			 */
-			sym->s_type = derive_type(sym->s_type, FUNC);
+			build_name_call(sym);
 		} else {
 			fallback_symbol(sym);
 		}
@@ -274,14 +302,19 @@ build_string(strg_t *strg)
 {
 	size_t	len;
 	tnode_t	*n;
+	type_t *tp;
 
 	len = strg->st_len;
 
 	n = expr_zalloc_tnode();
 
+	tp = expr_zalloc(sizeof(*tp));
+	tp->t_tspec = ARRAY;
+	tp->t_subt = gettyp(strg->st_tspec);
+	tp->t_dim = (int)(len + 1);
+
 	n->tn_op = STRING;
-	n->tn_type = expr_derive_type(gettyp(strg->st_tspec), ARRAY);
-	n->tn_type->t_dim = len + 1;
+	n->tn_type = tp;
 	n->tn_lvalue = true;
 
 	n->tn_string = expr_zalloc(sizeof(*n->tn_string));
@@ -752,6 +785,37 @@ is_null_pointer(const tnode_t *tn)
 	       && (tn->tn_op == CON && tn->tn_val->v_quad == 0);
 }
 
+/*
+ * Most errors required by ANSI C are reported in struct_or_union_member().
+ * Here we only check for totally wrong things.
+ */
+static bool
+typeok_point(const tnode_t *ln, const type_t *ltp, tspec_t lt)
+{
+	if (lt == FUNC || lt == VOID || ltp->t_bitfield ||
+	    ((lt != STRUCT && lt != UNION) && !ln->tn_lvalue)) {
+		/* Without tflag we got already an error */
+		if (tflag)
+			/* unacceptable operand of '%s' */
+			error(111, op_name(POINT));
+		return false;
+	}
+	return true;
+}
+
+static bool
+typeok_arrow(tspec_t lt)
+{
+	if (lt == PTR || (tflag && is_integer(lt)))
+		return true;
+
+	/* Without tflag we got already an error */
+	if (tflag)
+		/* unacceptable operand of '%s' */
+		error(111, op_name(ARROW));
+	return false;
+}
+
 static bool
 typeok_incdec(op_t op, const tnode_t *tn, const type_t *tp)
 {
@@ -808,7 +872,7 @@ typeok_address(const mod_t *mp,
 }
 
 static bool
-typeok_star(tspec_t t)
+typeok_indir(tspec_t t)
 {
 	/* until now there were no type checks for this operator */
 	if (t != PTR) {
@@ -956,9 +1020,9 @@ is_typeok_eq(const tnode_t *ln, tspec_t lt, const tnode_t *rn, tspec_t rt)
 }
 
 static bool
-typeok_ordered_comparison(op_t op,
-			  const tnode_t *ln, const type_t *ltp, tspec_t lt,
-			  const tnode_t *rn, const type_t *rtp, tspec_t rt)
+typeok_compare(op_t op,
+	       const tnode_t *ln, const type_t *ltp, tspec_t lt,
+	       const tnode_t *rn, const type_t *rtp, tspec_t rt)
 {
 	if (lt == PTR && rt == PTR) {
 		check_pointer_comparison(op, ln, rn);
@@ -981,16 +1045,14 @@ typeok_ordered_comparison(op_t op,
 }
 
 static bool
-typeok_quest(tspec_t lt, const tnode_t **rn)
+typeok_quest(tspec_t lt, const tnode_t *rn)
 {
 	if (!is_scalar(lt)) {
 		/* first operand must have scalar type, op ? : */
 		error(170);
 		return false;
 	}
-	while ((*rn)->tn_op == CVT)
-		*rn = (*rn)->tn_left;
-	lint_assert((*rn)->tn_op == COLON);
+	lint_assert(before_conversion(rn)->tn_op == COLON);
 	return true;
 }
 
@@ -1005,7 +1067,7 @@ typeok_colon_pointer(const mod_t *mp, const type_t *ltp, const type_t *rtp)
 	if ((lst == VOID && rst == FUNC) || (lst == FUNC && rst == VOID)) {
 		/* (void *)0 handled above */
 		if (sflag)
-			/* ANSI C forbids conv. of %s to %s, op %s */
+			/* ANSI C forbids conversion of %s to %s, op %s */
 			warning(305, "function pointer", "'void *'",
 			    mp->m_name);
 		return;
@@ -1122,93 +1184,58 @@ typeok_scalar(op_t op, const mod_t *mp,
 	return true;
 }
 
-/* Check the types for specific operators and type combinations. */
+/*
+ * Check the types for specific operators and type combinations.
+ *
+ * At this point, the operands already conform to the type requirements of
+ * the operator, such as being integer, floating or scalar.
+ */
 static bool
 typeok_op(op_t op, const mod_t *mp, int arg,
 	  const tnode_t *ln, const type_t *ltp, tspec_t lt,
 	  const tnode_t *rn, const type_t *rtp, tspec_t rt)
 {
 	switch (op) {
-	case POINT:
-		/*
-		 * Most errors required by ANSI C are reported in
-		 * struct_or_union_member().
-		 * Here we only must check for totally wrong things.
-		 */
-		if (lt == FUNC || lt == VOID || ltp->t_bitfield ||
-		    ((lt != STRUCT && lt != UNION) && !ln->tn_lvalue)) {
-			/* Without tflag we got already an error */
-			if (tflag)
-				/* unacceptable operand of '%s' */
-				error(111, mp->m_name);
-			return false;
-		}
-		/* Now we have an object we can create a pointer to */
-		break;
 	case ARROW:
-		if (lt != PTR && !(tflag && is_integer(lt))) {
-			/* Without tflag we got already an error */
-			if (tflag)
-				/* unacceptable operand of '%s' */
-				error(111, mp->m_name);
-			return false;
-		}
-		break;
-	case INCAFT:
-	case DECAFT:
+		return typeok_arrow(lt);
+	case POINT:
+		return typeok_point(ln, ltp, lt);
 	case INCBEF:
 	case DECBEF:
-		if (!typeok_incdec(op, ln, ltp))
-			return false;
-		break;
-	case ADDR:
-		if (!typeok_address(mp, ln, ltp, lt))
-			return false;
-		break;
+	case INCAFT:
+	case DECAFT:
+		return typeok_incdec(op, ln, ltp);
 	case INDIR:
-		if (!typeok_star(lt))
-			return false;
-		break;
+		return typeok_indir(lt);
+	case ADDR:
+		return typeok_address(mp, ln, ltp, lt);
 	case PLUS:
-		if (!typeok_plus(op, ltp, lt, rtp, rt))
-			return false;
-		break;
+		return typeok_plus(op, ltp, lt, rtp, rt);
 	case MINUS:
-		if (!typeok_minus(op, ltp, lt, rtp, rt))
-			return false;
-		break;
-	case SHR:
-		typeok_shr(mp, ln, lt, rn, rt);
-		goto shift;
+		return typeok_minus(op, ltp, lt, rtp, rt);
 	case SHL:
 		typeok_shl(mp, lt, rt);
+		goto shift;
+	case SHR:
+		typeok_shr(mp, ln, lt, rn, rt);
 	shift:
 		typeok_shift(lt, rn, rt);
 		break;
+	case LT:
+	case LE:
+	case GT:
+	case GE:
+	compare:
+		return typeok_compare(op, ln, ltp, lt, rn, rtp, rt);
 	case EQ:
 	case NE:
-		/*
-		 * Accept some things which are allowed with EQ and NE,
-		 * but not with ordered comparisons.
-		 */
 		if (is_typeok_eq(ln, lt, rn, rt))
 			break;
-		/* FALLTHROUGH */
-	case LT:
-	case GT:
-	case LE:
-	case GE:
-		if (!typeok_ordered_comparison(op, ln, ltp, lt, rn, rtp, rt))
-			return false;
-		break;
+		goto compare;
 	case QUEST:
-		if (!typeok_quest(lt, &rn))
-			return false;
-		break;
+		return typeok_quest(lt, rn);
 	case COLON:
-		if (!typeok_colon(mp, ln, ltp, lt, rn, rtp, rt))
-			return false;
-		break;
+		return typeok_colon(mp, ln, ltp, lt, rn, rtp, rt);
 	case ASSIGN:
 	case INIT:
 	case FARG:
@@ -1222,7 +1249,6 @@ typeok_op(op_t op, const mod_t *mp, int arg,
 		goto assign;
 	case ADDASS:
 	case SUBASS:
-		/* operands have scalar types (checked above) */
 		if ((lt == PTR && !is_integer(rt)) || rt == PTR) {
 			warn_incompatible_types(op, ltp, lt, rtp, rt);
 			return false;
@@ -1239,43 +1265,13 @@ typeok_op(op_t op, const mod_t *mp, int arg,
 	case ANDASS:
 	case XORASS:
 	case ORASS:
-		goto assign;
 	assign:
-		if (!typeok_assign(op, ln, ltp, lt))
-			return false;
-		break;
+		return typeok_assign(op, ln, ltp, lt);
 	case COMMA:
 		if (!modtab[ln->tn_op].m_has_side_effect)
 			check_null_effect(ln);
 		break;
-		/* LINTED206: (enumeration values not handled in switch) */
-	case CON:
-	case CASE:
-	case PUSH:
-	case LOAD:
-	case ICALL:
-	case CVT:
-	case CALL:
-	case FSEL:
-	case STRING:
-	case NAME:
-	case LOGOR:
-	case LOGAND:
-	case BITOR:
-	case BITXOR:
-	case BITAND:
-	case MOD:
-	case DIV:
-	case MULT:
-	case UMINUS:
-	case UPLUS:
-	case DEC:
-	case INC:
-	case COMPL:
-	case NOT:
-	case NOOP:
-	case REAL:
-	case IMAG:
+	default:
 		break;
 	}
 	return true;
@@ -1430,8 +1426,7 @@ is_first_arg_const(const tnode_t *tn)
 }
 
 static void
-check_unconst_function(const type_t *lstp,
-		       const tnode_t *rn, const type_t *rstp)
+check_unconst_function(const type_t *lstp, const tnode_t *rn)
 {
 	const char *function_name;
 
@@ -1444,136 +1439,142 @@ check_unconst_function(const type_t *lstp,
 	}
 }
 
-/*
- * Checks type compatibility for ASSIGN, INIT, FARG and RETURN
- * and prints warnings/errors if necessary.
- * If the types are (almost) compatible, 1 is returned, otherwise 0.
- */
-static bool
-check_assign_types_compatible(op_t op, int arg,
-			      const tnode_t *ln, const tnode_t *rn)
+static void
+check_assign_void_pointer(op_t op, int arg,
+			  tspec_t lt, tspec_t lst,
+			  tspec_t rt, tspec_t rst)
 {
-	tspec_t	lt, rt, lst = NOTSPEC, rst = NOTSPEC;
-	type_t	*ltp, *rtp, *lstp = NULL, *rstp = NULL;
-	const mod_t *mp;
-	const	char *lts, *rts;
+	const char *lts, *rts;
 
-	if ((lt = (ltp = ln->tn_type)->t_tspec) == PTR)
-		lst = (lstp = ltp->t_subt)->t_tspec;
-	if ((rt = (rtp = rn->tn_type)->t_tspec) == PTR)
-		rst = (rstp = rtp->t_subt)->t_tspec;
-	mp = &modtab[op];
+	if (!(lt == PTR && rt == PTR && (lst == VOID || rst == VOID)))
+		return;
+	/* two pointers, at least one pointer to void */
 
-	if (lt == BOOL && is_scalar(rt))	/* C99 6.3.1.2 */
-		return true;
+	if (!(sflag && (lst == FUNC || rst == FUNC)))
+		return;
+	/* comb. of ptr to func and ptr to void */
 
-	if (is_arithmetic(lt) && (is_arithmetic(rt) || rt == BOOL))
-		return true;
+	*(lst == FUNC ? &lts : &rts) = "function pointer";
+	*(lst == VOID ? &lts : &rts) = "'void *'";
 
-	if ((lt == STRUCT || lt == UNION) && (rt == STRUCT || rt == UNION))
-		/* both are struct or union */
-		return ltp->t_str == rtp->t_str;
-
-	/* a null pointer may be assigned to any pointer */
-	if (lt == PTR && is_null_pointer(rn))
-		return true;
-
-	if (lt == PTR && rt == PTR && (lst == VOID || rst == VOID)) {
-		/* two pointers, at least one pointer to void */
-		if (sflag && (lst == FUNC || rst == FUNC)) {
-			/* comb. of ptr to func and ptr to void */
-			*(lst == FUNC ? &lts : &rts) = "function pointer";
-			*(lst == VOID ? &lts : &rts) = "'void *'";
-			switch (op) {
-			case INIT:
-			case RETURN:
-				/* ANSI C forbids conversion of %s to %s */
-				warning(303, rts, lts);
-				break;
-			case FARG:
-				/* ANSI C forbids conv. of %s to %s, arg #%d */
-				warning(304, rts, lts, arg);
-				break;
-			default:
-				/* ANSI C forbids conv. of %s to %s, op %s */
-				warning(305, rts, lts, mp->m_name);
-				break;
-			}
-		}
+	switch (op) {
+	case INIT:
+	case RETURN:
+		/* ANSI C forbids conversion of %s to %s */
+		warning(303, rts, lts);
+		break;
+	case FARG:
+		/* ANSI C forbids conversion of %s to %s, arg #%d */
+		warning(304, rts, lts, arg);
+		break;
+	default:
+		/* ANSI C forbids conversion of %s to %s, op %s */
+		warning(305, rts, lts, op_name(op));
+		break;
 	}
+}
 
-	if (lt == PTR && rt == PTR && (lst == VOID || rst == VOID ||
-				       eqtype(lstp, rstp, true, false, NULL))) {
-		/* compatible pointer types (qualifiers ignored) */
-		if (!tflag &&
-		    ((!lstp->t_const && rstp->t_const) ||
-		     (!lstp->t_volatile && rstp->t_volatile))) {
-			/* left side has not all qualifiers of right */
-			switch (op) {
-			case INIT:
-			case RETURN:
-				/* incompatible pointer types (%s != %s) */
-				warning(182, type_name(lstp), type_name(rstp));
-				break;
-			case FARG:
-				/* converting '%s' to incompatible '%s' ... */
-				warning(153,
-				    type_name(rtp), type_name(ltp), arg);
-				break;
-			default:
-				/* operands have incompatible pointer type... */
-				warning(128, mp->m_name,
-				    type_name(lstp), type_name(rstp));
-				break;
-			}
-		}
+static bool
+check_assign_void_pointer_compat(op_t op, int arg,
+				 const type_t *const ltp, tspec_t const lt,
+				 const type_t *const lstp, tspec_t const lst,
+				 const tnode_t *const rn,
+				 const type_t *const rtp, tspec_t const rt,
+				 const type_t *const rstp, tspec_t const rst)
+{
+	if (!(lt == PTR && rt == PTR && (lst == VOID || rst == VOID ||
+					 eqtype(lstp, rstp, true, false, NULL))))
+		return false;
 
-		if (!tflag)
-			check_unconst_function(lstp, rn, rstp);
-
-		return true;
-	}
-
-	if ((lt == PTR && is_integer(rt)) || (is_integer(lt) && rt == PTR)) {
-		const char *lx = lt == PTR ? "pointer" : "integer";
-		const char *rx = rt == PTR ? "pointer" : "integer";
-
+	/* compatible pointer types (qualifiers ignored) */
+	if (!tflag &&
+	    ((!lstp->t_const && rstp->t_const) ||
+	     (!lstp->t_volatile && rstp->t_volatile))) {
+		/* left side has not all qualifiers of right */
 		switch (op) {
 		case INIT:
 		case RETURN:
-			/* illegal combination of %s (%s) and %s (%s) */
-			warning(183, lx, type_name(ltp), rx, type_name(rtp));
+			/* incompatible pointer types (%s != %s) */
+			warning(182, type_name(lstp), type_name(rstp));
 			break;
 		case FARG:
-			/* illegal comb. of %s (%s) and %s (%s), arg #%d */
-			warning(154,
-			    lx, type_name(ltp), rx, type_name(rtp), arg);
+			/* converting '%s' to incompatible '%s' ... */
+			warning(153,
+			    type_name(rtp), type_name(ltp), arg);
 			break;
 		default:
-			/* illegal combination of %s (%s) and %s (%s), op %s */
-			warning(123,
-			    lx, type_name(ltp), rx, type_name(rtp), mp->m_name);
+			/* operands have incompatible pointer type... */
+			warning(128, op_name(op),
+			    type_name(lstp), type_name(rstp));
 			break;
 		}
-		return true;
 	}
 
-	if (lt == PTR && rt == PTR) {
-		switch (op) {
-		case RETURN:
-			warn_incompatible_pointers(NULL, ltp, rtp);
-			break;
-		case FARG:
-			/* converting '%s' to incompatible '%s' for ... */
-			warning(153, type_name(rtp), type_name(ltp), arg);
-			break;
-		default:
-			warn_incompatible_pointers(mp, ltp, rtp);
-			break;
-		}
-		return true;
-	}
+	if (!tflag)
+		check_unconst_function(lstp, rn);
 
+	return true;
+}
+
+static bool
+check_assign_pointer_integer(op_t op, int arg,
+			     const type_t *const ltp, tspec_t const lt,
+			     const type_t *const rtp, tspec_t const rt)
+{
+	if (!((lt == PTR && is_integer(rt)) || (is_integer(lt) && rt == PTR)))
+		return false;
+
+	const char *lx = lt == PTR ? "pointer" : "integer";
+	const char *rx = rt == PTR ? "pointer" : "integer";
+
+	switch (op) {
+	case INIT:
+	case RETURN:
+		/* illegal combination of %s (%s) and %s (%s) */
+		warning(183, lx, type_name(ltp), rx, type_name(rtp));
+		break;
+	case FARG:
+		/* illegal combination of %s (%s) and %s (%s), arg #%d */
+		warning(154,
+		    lx, type_name(ltp), rx, type_name(rtp), arg);
+		break;
+	default:
+		/* illegal combination of %s (%s) and %s (%s), op %s */
+		warning(123,
+		    lx, type_name(ltp), rx, type_name(rtp), op_name(op));
+		break;
+	}
+	return true;
+}
+
+static bool
+check_assign_pointer(op_t op, int arg,
+		     const type_t *ltp, tspec_t lt,
+		     const type_t *rtp, tspec_t rt)
+{
+	if (!(lt == PTR && rt == PTR))
+		return false;
+
+	switch (op) {
+	case RETURN:
+		warn_incompatible_pointers(NULL, ltp, rtp);
+		break;
+	case FARG:
+		/* converting '%s' to incompatible '%s' for ... */
+		warning(153, type_name(rtp), type_name(ltp), arg);
+		break;
+	default:
+		warn_incompatible_pointers(&modtab[op], ltp, rtp);
+		break;
+	}
+	return true;
+}
+
+static void
+warn_assign(op_t op, int arg,
+	    const type_t *ltp, tspec_t lt,
+	    const type_t *rtp, tspec_t rt)
+{
 	switch (op) {
 	case INIT:
 		/* cannot initialize '%s' from '%s' */
@@ -1591,7 +1592,52 @@ check_assign_types_compatible(op_t op, int arg,
 		warn_incompatible_types(op, ltp, lt, rtp, rt);
 		break;
 	}
+}
 
+/*
+ * Checks type compatibility for ASSIGN, INIT, FARG and RETURN
+ * and prints warnings/errors if necessary.
+ * Returns whether the types are (almost) compatible.
+ */
+static bool
+check_assign_types_compatible(op_t op, int arg,
+			      const tnode_t *ln, const tnode_t *rn)
+{
+	tspec_t	lt, rt, lst = NOTSPEC, rst = NOTSPEC;
+	type_t	*ltp, *rtp, *lstp = NULL, *rstp = NULL;
+
+	if ((lt = (ltp = ln->tn_type)->t_tspec) == PTR)
+		lst = (lstp = ltp->t_subt)->t_tspec;
+	if ((rt = (rtp = rn->tn_type)->t_tspec) == PTR)
+		rst = (rstp = rtp->t_subt)->t_tspec;
+
+	if (lt == BOOL && is_scalar(rt))	/* C99 6.3.1.2 */
+		return true;
+
+	if (is_arithmetic(lt) && (is_arithmetic(rt) || rt == BOOL))
+		return true;
+
+	if ((lt == STRUCT || lt == UNION) && (rt == STRUCT || rt == UNION))
+		/* both are struct or union */
+		return ltp->t_str == rtp->t_str;
+
+	/* a null pointer may be assigned to any pointer */
+	if (lt == PTR && is_null_pointer(rn))
+		return true;
+
+	check_assign_void_pointer(op, arg, lt, lst, rt, rst);
+
+	if (check_assign_void_pointer_compat(op, arg,
+	    ltp, lt, lstp, lst, rn, rtp, rt, rstp, rst))
+		return true;
+
+	if (check_assign_pointer_integer(op, arg, ltp, lt, rtp, rt))
+		return true;
+
+	if (check_assign_pointer(op, arg, ltp, lt, rtp, rt))
+		return true;
+
+	warn_assign(op, arg, ltp, lt, rtp, rt);
 	return false;
 }
 
@@ -1973,21 +2019,27 @@ convert(op_t op, int arg, type_t *tp, tnode_t *tn)
 	return ntn;
 }
 
-/*
- * The types differ in sign or base type (char, short, int, long, long long,
- * float, double, long double).
- *
- * If they differ only in sign and the argument is representable in both
- * types, print no warning.
- */
-static void
-check_prototype_conversion_integer(const tnode_t *tn, const tnode_t *ptn,
-				   const type_t *tp, tspec_t nt, tspec_t ot,
-				   int arg)
+static bool
+should_warn_about_prototype_conversion(tspec_t nt,
+				       tspec_t ot, const tnode_t *ptn)
 {
 
+	if (nt == ot)
+		return false;
+
+	if (nt == ENUM && ot == INT)
+		return false;
+
+	if (is_floating(nt) != is_floating(ot) ||
+	    portable_size_in_bits(nt) != portable_size_in_bits(ot)) {
+		/* representation and/or width change */
+		if (!is_integer(ot))
+			return true;
+		return portable_size_in_bits(ot) > portable_size_in_bits(INT);
+	}
+
 	if (!hflag)
-		return;
+		return false;
 
 	/*
 	 * If the types differ only in sign and the argument has the same
@@ -1996,17 +2048,15 @@ check_prototype_conversion_integer(const tnode_t *tn, const tnode_t *ptn,
 	if (ptn->tn_op == CON && is_integer(nt) &&
 	    signed_type(nt) == signed_type(ot) &&
 	    !msb(ptn->tn_val->v_quad, ot))
-		return;
+		return false;
 
-	/* argument #%d is converted from '%s' to '%s' ... */
-	warning(259,
-	    arg, type_name(tn->tn_type), type_name(tp));
+	return true;
 }
 
 /*
- * Print a warning if a prototype causes a type conversion that is
- * different from what would happen to the same argument in the
- * absence of a prototype.
+ * Warn if a prototype causes a type conversion that is different from what
+ * would happen to the same argument in the absence of a prototype.  This
+ * check is intended for code that needs to stay compatible with pre-C90 C.
  *
  * Errors/warnings about illegal type combinations are already printed
  * in check_assign_types_compatible().
@@ -2025,29 +2075,18 @@ check_prototype_conversion(int arg, tspec_t nt, tspec_t ot, type_t *tp,
 	 * would be useless, because functions declared the old style
 	 * can't expect char/short arguments.
 	 */
-	/* XXX: what about SCHAR? */
-	if (nt == CHAR || nt == UCHAR || nt == SHORT || nt == USHORT)
+	if (nt == CHAR || nt == SCHAR || nt == UCHAR ||
+	    nt == SHORT || nt == USHORT)
 		return;
 
-	/* get default promotion */
+	/* apply the default promotion */
 	ptn = promote(NOOP, true, tn);
 	ot = ptn->tn_type->t_tspec;
 
-	/* return if types are the same with and without prototype */
-	if (nt == ot || (nt == ENUM && ot == INT))
-		return;
-
-	if (is_floating(nt) != is_floating(ot) ||
-	    portable_size_in_bits(nt) != portable_size_in_bits(ot)) {
-		/* representation and/or width change */
-		if (!is_integer(ot) ||
-		    portable_size_in_bits(ot) > portable_size_in_bits(INT)) {
-			/* argument #%d is converted from '%s' to '%s' ... */
-			warning(259,
-			    arg, type_name(tn->tn_type), type_name(tp));
-		}
-	} else
-		check_prototype_conversion_integer(tn, ptn, tp, nt, ot, arg);
+	if (should_warn_about_prototype_conversion(nt, ot, ptn)) {
+		/* argument #%d is converted from '%s' to '%s' ... */
+		warning(259, arg, type_name(tn->tn_type), type_name(tp));
+	}
 }
 
 /*
@@ -2101,11 +2140,11 @@ check_integer_conversion(op_t op, int arg, tspec_t nt, tspec_t ot, type_t *tp,
 		/* conversion from '%s' may lose accuracy */
 		if (aflag > 0) {
 			if (op == FARG) {
-				/* conv. from '%s' to '%s' may lose ... */
+				/* conversion from '%s' to '%s' may ... */
 				warning(298,
 				    type_name(tn->tn_type), type_name(tp), arg);
 			} else {
-				/* conv. from '%s' to '%s' may lose accuracy */
+				/* conversion from '%s' to '%s' may ... */
 				warning(132,
 				    type_name(tn->tn_type), type_name(tp));
 			}
@@ -2250,14 +2289,15 @@ convert_constant_floating(op_t op, int arg, tspec_t ot, const type_t *tp,
 		/* Got already an error because of float --> ptr */
 	case LDOUBLE:
 	case LCOMPLEX:
-		max = LDBL_MAX;		min = -LDBL_MAX;	break;
+		/* LINTED 248 */
+		max = LDBL_MAX;		min = -max;		break;
 	default:
 		lint_assert(/*CONSTCOND*/false);
 	}
 	if (v->v_ldbl > max || v->v_ldbl < min) {
 		lint_assert(nt != LDOUBLE);
 		if (op == FARG) {
-			/* conv. of '%s' to '%s' is out of range, ... */
+			/* conversion of '%s' to '%s' is out of range, ... */
 			warning(295,
 			    type_name(gettyp(ot)), type_name(tp), arg);
 		} else {
@@ -2306,7 +2346,7 @@ convert_constant_check_range_bitor(size_t nsz, size_t osz, const val_t *v,
 				   uint64_t xmask, op_t op)
 {
 	if (nsz < osz && (v->v_quad & xmask) != 0) {
-		/* constant truncated by conv., op %s */
+		/* constant truncated by conversion, op %s */
 		warning(306, op_name(op));
 	}
 }
@@ -2323,7 +2363,7 @@ convert_constant_check_range_bitand(size_t nsz, size_t osz,
 				    const type_t *tp, op_t op)
 {
 	if (nsz > osz &&
-	    (nv->v_quad & bit(osz - 1)) != 0 &&
+	    (nv->v_quad & bit((unsigned int)(osz - 1))) != 0 &&
 	    (nv->v_quad & xmask) != xmask) {
 		/* extra bits set to 0 in conversion of '%s' to '%s', ... */
 		warning(309, type_name(gettyp(ot)),
@@ -2430,8 +2470,8 @@ static void
 convert_constant_check_range(tspec_t ot, const type_t *tp, tspec_t nt,
 			     op_t op, int arg, const val_t *v, val_t *nv)
 {
-	int	osz, nsz;
-	int64_t	xmask, xmsk1;
+	unsigned int osz, nsz;
+	uint64_t xmask, xmsk1;
 
 	osz = size_in_bits(ot);
 	nsz = tp->t_bitfield ? tp->t_flen : size_in_bits(nt);
@@ -2471,9 +2511,9 @@ convert_constant_check_range(tspec_t ot, const type_t *tp, tspec_t nt,
 void
 convert_constant(op_t op, int arg, const type_t *tp, val_t *nv, val_t *v)
 {
-	tspec_t	ot, nt;
-	int	sz;
-	bool	range_check;
+	tspec_t ot, nt;
+	unsigned int sz;
+	bool range_check;
 
 	/*
 	 * TODO: make 'v' const; the name of this function does not suggest
@@ -3083,7 +3123,7 @@ fold(tnode_t *tn)
 		if (sr == 0) {
 			/* division by 0 */
 			error(139);
-			q = utyp ? UQUAD_MAX : QUAD_MAX;
+			q = utyp ? -1 : INT64_MAX;
 		} else {
 			q = utyp ? (int64_t)(ul / ur) : sl / sr;
 		}
@@ -3209,6 +3249,20 @@ fold_test(tnode_t *tn)
 	return build_constant(tn->tn_type, v);
 }
 
+static ldbl_t
+floating_error_value(tspec_t t, ldbl_t lv)
+{
+	if (t == FLOAT) {
+		return lv < 0 ? -FLT_MAX : FLT_MAX;
+	} else if (t == DOUBLE) {
+		return lv < 0 ? -DBL_MAX : DBL_MAX;
+	} else {
+		/* LINTED 248: floating-point constant out of range */
+		ldbl_t max = LDBL_MAX;
+		return lv < 0 ? -max : max;
+	}
+}
+
 /*
  * Fold constant nodes having operands with floating point type.
  */
@@ -3245,13 +3299,7 @@ fold_float(tnode_t *tn)
 		if (rv == 0.0) {
 			/* division by 0 */
 			error(139);
-			if (t == FLOAT) {
-				v->v_ldbl = lv < 0 ? -FLT_MAX : FLT_MAX;
-			} else if (t == DOUBLE) {
-				v->v_ldbl = lv < 0 ? -DBL_MAX : DBL_MAX;
-			} else {
-				v->v_ldbl = lv < 0 ? -LDBL_MAX : LDBL_MAX;
-			}
+			v->v_ldbl = floating_error_value(t, lv);
 		} else {
 			v->v_ldbl = lv / rv;
 		}
@@ -3292,13 +3340,7 @@ fold_float(tnode_t *tn)
 	     (v->v_ldbl > DBL_MAX || v->v_ldbl < -DBL_MAX))) {
 		/* floating point overflow detected, op %s */
 		warning(142, op_name(tn->tn_op));
-		if (t == FLOAT) {
-			v->v_ldbl = v->v_ldbl < 0 ? -FLT_MAX : FLT_MAX;
-		} else if (t == DOUBLE) {
-			v->v_ldbl = v->v_ldbl < 0 ? -DBL_MAX : DBL_MAX;
-		} else {
-			v->v_ldbl = v->v_ldbl < 0 ? -LDBL_MAX : LDBL_MAX;
-		}
+		v->v_ldbl = floating_error_value(t, v->v_ldbl);
 		fpe = 0;
 	}
 
@@ -3321,6 +3363,7 @@ build_sizeof(const type_t *tp)
 /*
  * Create a constant node for offsetof.
  */
+/* ARGSUSED */ /* See implementation comments. */
 tnode_t *
 build_offsetof(const type_t *tp, const sym_t *sym)
 {
@@ -3868,40 +3911,92 @@ check_null_effect(const tnode_t *tn)
 	warning(129);
 }
 
-/* ARGSUSED */
-void
-check_expr_misc(const tnode_t *tn, bool vctx, bool tctx,
-		bool eqwarn, bool fcall, bool rvdisc, bool szof)
+static void
+check_expr_addr(const tnode_t *ln, bool szof, bool fcall)
 {
-	tnode_t	*ln, *rn;
-	const mod_t *mp;
-	op_t	op;
-	scl_t	sc;
-	dinfo_t	*di;
+	/* XXX: Taking warn_about_unreachable into account here feels wrong. */
+	if (ln->tn_op == NAME && (reached || !warn_about_unreachable)) {
+		if (!szof)
+			mark_as_set(ln->tn_sym);
+		mark_as_used(ln->tn_sym, fcall, szof);
+	}
+	if (ln->tn_op == INDIR && ln->tn_left->tn_op == PLUS)
+		/* check the range of array indices */
+		check_array_index(ln->tn_left, true);
+}
 
-	if (tn == NULL)
-		return;
+static void
+check_expr_load(const tnode_t *ln)
+{
+	if (ln->tn_op == INDIR && ln->tn_left->tn_op == PLUS)
+		/* check the range of array indices */
+		check_array_index(ln->tn_left, false);
+}
 
-	ln = tn->tn_left;
-	rn = tn->tn_right;
-	mp = &modtab[op = tn->tn_op];
+static void
+check_expr_side_effect(const tnode_t *ln, bool szof)
+{
+	scl_t sc;
+	dinfo_t *di;
 
+	/* XXX: Taking warn_about_unreachable into account here feels wrong. */
+	if (ln->tn_op == NAME && (reached || !warn_about_unreachable)) {
+		sc = ln->tn_sym->s_scl;
+		/*
+		 * Look if there was a asm statement in one of the
+		 * compound statements we are in. If not, we don't
+		 * print a warning.
+		 */
+		for (di = dcs; di != NULL; di = di->d_next) {
+			if (di->d_asm)
+				break;
+		}
+		if (sc != EXTERN && sc != STATIC &&
+		    !ln->tn_sym->s_set && !szof && di == NULL) {
+			/* %s may be used before set */
+			warning(158, ln->tn_sym->s_name);
+			mark_as_set(ln->tn_sym);
+		}
+		mark_as_used(ln->tn_sym, false, false);
+	}
+}
+
+static void
+check_expr_assign(const tnode_t *ln, bool szof)
+{
+	/* XXX: Taking warn_about_unreachable into account here feels wrong. */
+	if (ln->tn_op == NAME && !szof && (reached || !warn_about_unreachable)) {
+		mark_as_set(ln->tn_sym);
+		if (ln->tn_sym->s_scl == EXTERN)
+			outusg(ln->tn_sym);
+	}
+	if (ln->tn_op == INDIR && ln->tn_left->tn_op == PLUS)
+		/* check the range of array indices */
+		check_array_index(ln->tn_left, false);
+}
+
+static void
+check_expr_call(const tnode_t *tn, const tnode_t *ln,
+		bool szof, bool vctx, bool tctx, bool rvdisc)
+{
+	lint_assert(ln->tn_op == ADDR);
+	lint_assert(ln->tn_left->tn_op == NAME);
+	if (!szof &&
+	    !is_compiler_builtin(ln->tn_left->tn_sym->s_name))
+		outcall(tn, vctx || tctx, rvdisc);
+}
+
+static bool
+check_expr_op(const tnode_t *tn, op_t op, const tnode_t *ln,
+	      bool szof, bool fcall, bool vctx, bool tctx, bool rvdisc,
+	      bool eqwarn)
+{
 	switch (op) {
 	case ADDR:
-		/* XXX: Taking warn_about_unreachable into account here feels wrong. */
-		if (ln->tn_op == NAME && (reached || !warn_about_unreachable)) {
-			if (!szof)
-				mark_as_set(ln->tn_sym);
-			mark_as_used(ln->tn_sym, fcall, szof);
-		}
-		if (ln->tn_op == INDIR && ln->tn_left->tn_op == PLUS)
-			/* check the range of array indices */
-			check_array_index(ln->tn_left, true);
+		check_expr_addr(ln, szof, fcall);
 		break;
 	case LOAD:
-		if (ln->tn_op == INDIR && ln->tn_left->tn_op == PLUS)
-			/* check the range of array indices */
-			check_array_index(ln->tn_left, false);
+		check_expr_load(ln);
 		/* FALLTHROUGH */
 	case PUSH:
 	case INCBEF:
@@ -3920,44 +4015,13 @@ check_expr_misc(const tnode_t *tn, bool vctx, bool tctx,
 	case SHRASS:
 	case REAL:
 	case IMAG:
-		/* XXX: Taking warn_about_unreachable into account here feels wrong. */
-		if (ln->tn_op == NAME && (reached || !warn_about_unreachable)) {
-			sc = ln->tn_sym->s_scl;
-			/*
-			 * Look if there was a asm statement in one of the
-			 * compound statements we are in. If not, we don't
-			 * print a warning.
-			 */
-			for (di = dcs; di != NULL; di = di->d_next) {
-				if (di->d_asm)
-					break;
-			}
-			if (sc != EXTERN && sc != STATIC &&
-			    !ln->tn_sym->s_set && !szof && di == NULL) {
-				/* %s may be used before set */
-				warning(158, ln->tn_sym->s_name);
-				mark_as_set(ln->tn_sym);
-			}
-			mark_as_used(ln->tn_sym, false, false);
-		}
+		check_expr_side_effect(ln, szof);
 		break;
 	case ASSIGN:
-		/* XXX: Taking warn_about_unreachable into account here feels wrong. */
-		if (ln->tn_op == NAME && !szof && (reached || !warn_about_unreachable)) {
-			mark_as_set(ln->tn_sym);
-			if (ln->tn_sym->s_scl == EXTERN)
-				outusg(ln->tn_sym);
-		}
-		if (ln->tn_op == INDIR && ln->tn_left->tn_op == PLUS)
-			/* check the range of array indices */
-			check_array_index(ln->tn_left, false);
+		check_expr_assign(ln, szof);
 		break;
 	case CALL:
-		lint_assert(ln->tn_op == ADDR);
-		lint_assert(ln->tn_left->tn_op == NAME);
-		if (!szof &&
-		    !is_compiler_builtin(ln->tn_left->tn_sym->s_name))
-			outcall(tn, vctx || tctx, rvdisc);
+		check_expr_call(tn, ln, szof, vctx, tctx, rvdisc);
 		break;
 	case EQ:
 		if (hflag && eqwarn)
@@ -3967,7 +4031,7 @@ check_expr_misc(const tnode_t *tn, bool vctx, bool tctx,
 	case CON:
 	case NAME:
 	case STRING:
-		return;
+		return false;
 		/* LINTED206: (enumeration values not handled in switch) */
 	case BITOR:
 	case BITXOR:
@@ -4008,6 +4072,28 @@ check_expr_misc(const tnode_t *tn, bool vctx, bool tctx,
 	case LOGAND:
 		break;
 	}
+	return true;
+}
+
+/* ARGSUSED */
+void
+check_expr_misc(const tnode_t *tn, bool vctx, bool tctx,
+		bool eqwarn, bool fcall, bool rvdisc, bool szof)
+{
+	tnode_t	*ln, *rn;
+	const mod_t *mp;
+	op_t	op;
+
+	if (tn == NULL)
+		return;
+
+	ln = tn->tn_left;
+	rn = tn->tn_right;
+	mp = &modtab[op = tn->tn_op];
+
+	if (!check_expr_op(tn, op, ln,
+	    szof, fcall, vctx, tctx, rvdisc, eqwarn))
+		return;
 
 	bool cvctx = mp->m_left_value_context;
 	bool ctctx = mp->m_left_test_context;
@@ -4146,7 +4232,7 @@ check_integer_comparison(op_t op, tnode_t *ln, tnode_t *rn)
 			/* comparison of %s with %s, op %s */
 			warning(162, type_name(ln->tn_type),
 			    "negative constant", op_name(op));
-		} else if (op == LT || op == GE || (hflag && op == LE)) {
+		} else if (op == LT || op == GE) {
 			/* comparison of %s with %s, op %s */
 			warning(162, type_name(ln->tn_type), "0", op_name(op));
 		}
@@ -4158,7 +4244,7 @@ check_integer_comparison(op_t op, tnode_t *ln, tnode_t *rn)
 			/* comparison of %s with %s, op %s */
 			warning(162, "negative constant",
 			    type_name(rn->tn_type), op_name(op));
-		} else if (op == GT || op == LE || (hflag && op == GE)) {
+		} else if (op == GT || op == LE) {
 			/* comparison of %s with %s, op %s */
 			warning(162, "0", type_name(rn->tn_type), op_name(op));
 		}
@@ -4235,7 +4321,7 @@ constant_addr(const tnode_t *tn, const sym_t **symp, ptrdiff_t *offsp)
 		    (!is_integer(ot) && ot != PTR)) {
 			return false;
 		}
-#ifdef notdef
+#if 0
 		/*
 		 * consider:
 		 *	struct foo {

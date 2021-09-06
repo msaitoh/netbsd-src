@@ -1,4 +1,4 @@
-/* $NetBSD: decl.c,v 1.228 2021/08/29 15:49:04 rillig Exp $ */
+/* $NetBSD: decl.c,v 1.235 2021/09/05 16:15:05 rillig Exp $ */
 
 /*
  * Copyright (c) 1996 Christopher G. Demetriou.  All Rights Reserved.
@@ -38,7 +38,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: decl.c,v 1.228 2021/08/29 15:49:04 rillig Exp $");
+__RCSID("$NetBSD: decl.c,v 1.235 2021/09/05 16:15:05 rillig Exp $");
 #endif
 
 #include <sys/param.h>
@@ -140,6 +140,7 @@ initdecl(void)
 	typetab[LCOMPLEX].t_tspec = LCOMPLEX;
 }
 
+#ifdef DEBUG
 /* Return the name of the "storage class" in the wider sense. */
 const char *
 scl_name(scl_t scl)
@@ -153,6 +154,7 @@ scl_name(scl_t scl)
 
 	return names[scl];
 }
+#endif
 
 /*
  * Returns a shared type structure for arithmetic types and void.
@@ -443,88 +445,51 @@ tdeferr(type_t *td, tspec_t t)
 
 	t2 = td->t_tspec;
 
-	switch (t) {
-	case SIGNED:
-	case UNSIGN:
-		if (t2 == CHAR || t2 == SHORT || t2 == INT || t2 == LONG ||
-		    t2 == QUAD) {
-			if (!tflag)
-				/* modifying typedef with '%s'; only ... */
-				warning(5, ttab[t].tt_name);
-			td = dup_type(gettyp(merge_signedness(t2, t)));
-			td->t_typedef = true;
-			return td;
-		}
-		break;
-	case SHORT:
-		if (t2 == INT || t2 == UINT) {
-			/* modifying typedef with '%s'; only qualifiers ... */
-			warning(5, "short");
-			td = dup_type(gettyp(t2 == INT ? SHORT : USHORT));
-			td->t_typedef = true;
-			return td;
-		}
-		break;
-	case LONG:
-		if (t2 == INT || t2 == UINT || t2 == LONG || t2 == ULONG ||
-		    t2 == FLOAT || t2 == DOUBLE || t2 == DCOMPLEX) {
-			/* modifying typedef with '%s'; only qualifiers ... */
-			warning(5, "long");
-			if (t2 == INT) {
-				td = gettyp(LONG);
-			} else if (t2 == UINT) {
-				td = gettyp(ULONG);
-			} else if (t2 == LONG) {
-				td = gettyp(QUAD);
-			} else if (t2 == ULONG) {
-				td = gettyp(UQUAD);
-			} else if (t2 == FLOAT) {
-				td = gettyp(DOUBLE);
-			} else if (t2 == DOUBLE) {
-				td = gettyp(LDOUBLE);
-			} else if (t2 == DCOMPLEX) {
-				td = gettyp(LCOMPLEX);
-			}
-			td = dup_type(td);
-			td->t_typedef = true;
-			return td;
-		}
-		break;
-		/* LINTED206: (enumeration values not handled in switch) */
-	case NOTSPEC:
-	case USHORT:
-	case UCHAR:
-	case SCHAR:
-	case CHAR:
-	case BOOL:
-	case FUNC:
-	case ARRAY:
-	case PTR:
-	case ENUM:
-	case UNION:
-	case STRUCT:
-	case VOID:
-	case LDOUBLE:
-	case FLOAT:
-	case DOUBLE:
-	case UQUAD:
-	case QUAD:
-#ifdef INT128_SIZE
-	case UINT128:
-	case INT128:
-#endif
-	case ULONG:
-	case UINT:
-	case INT:
-	case FCOMPLEX:
-	case DCOMPLEX:
-	case LCOMPLEX:
-	case COMPLEX:
-		break;
+	if ((t == SIGNED || t == UNSIGN) &&
+	    (t2 == CHAR || t2 == SHORT || t2 == INT ||
+	     t2 == LONG || t2 == QUAD)) {
+		if (!tflag)
+			/* modifying typedef with '%s'; only qualifiers... */
+			warning(5, tspec_name(t));
+		td = dup_type(gettyp(merge_signedness(t2, t)));
+		td->t_typedef = true;
+		return td;
 	}
 
-	/* Anything other is not accepted. */
+	if (t == SHORT && (t2 == INT || t2 == UINT)) {
+		/* modifying typedef with '%s'; only qualifiers allowed */
+		warning(5, "short");
+		td = dup_type(gettyp(t2 == INT ? SHORT : USHORT));
+		td->t_typedef = true;
+		return td;
+	}
 
+	if (t == LONG &&
+	    (t2 == INT || t2 == UINT || t2 == LONG || t2 == ULONG ||
+	     t2 == FLOAT || t2 == DOUBLE || t2 == DCOMPLEX)) {
+		/* modifying typedef with '%s'; only qualifiers allowed */
+		warning(5, "long");
+		if (t2 == INT) {
+			td = gettyp(LONG);
+		} else if (t2 == UINT) {
+			td = gettyp(ULONG);
+		} else if (t2 == LONG) {
+			td = gettyp(QUAD);
+		} else if (t2 == ULONG) {
+			td = gettyp(UQUAD);
+		} else if (t2 == FLOAT) {
+			td = gettyp(DOUBLE);
+		} else if (t2 == DOUBLE) {
+			td = gettyp(LDOUBLE);
+		} else if (t2 == DCOMPLEX) {
+			td = gettyp(LCOMPLEX);
+		}
+		td = dup_type(td);
+		td->t_typedef = true;
+		return td;
+	}
+
+	/* Anything else is not accepted. */
 	dcs->d_invalid_type_combination = true;
 	return td;
 }
@@ -913,7 +878,7 @@ end_type(void)
 int
 length(const type_t *tp, const char *name)
 {
-	int	elem, elsz;
+	unsigned int elem, elsz;
 
 	elem = 1;
 	while (tp != NULL && tp->t_tspec == ARRAY) {
@@ -944,18 +909,17 @@ length(const type_t *tp, const char *name)
 		/* FALLTHROUGH */
 	default:
 		elsz = size_in_bits(tp->t_tspec);
-		if (elsz <= 0)
-			INTERNAL_ERROR("length(%d)", elsz);
+		lint_assert(elsz > 0);
 		break;
 	}
-	return elem * elsz;
+	return (int)(elem * elsz);
 }
 
 unsigned int
 alignment_in_bits(const type_t *tp)
 {
-	size_t	a;
-	tspec_t	t;
+	unsigned int a;
+	tspec_t t;
 
 	while (tp->t_tspec == ARRAY)
 		tp = tp->t_subt;
@@ -1070,7 +1034,7 @@ check_type(sym_t *sym)
 			if (dcs->d_ctx == PROTO_ARG) {
 				if (sym->s_scl != ABSTRACT) {
 					lint_assert(sym->s_name != unnamed);
-					/* void param. cannot have name: %s */
+					/* void parameter cannot have ... */
 					error(61, sym->s_name);
 					*tpp = gettyp(INT);
 				}
@@ -1136,7 +1100,7 @@ check_bit_field_type(sym_t *dsym,  type_t **const inout_tp, tspec_t *inout_t)
 		if (!(bitfieldtype_ok || gflag) || !is_integer(t)) {
 			/* illegal bit-field type '%s' */
 			warning(35, type_name(tp));
-			int sz = tp->t_flen;
+			unsigned int sz = tp->t_flen;
 			dsym->s_type = tp = dup_type(gettyp(t = INT));
 			if ((tp->t_flen = sz) > size_in_bits(t))
 				tp->t_flen = size_in_bits(t);
@@ -1741,7 +1705,7 @@ newtag(sym_t *tag, scl_t scl, bool decl, bool semi)
 			/* "struct a;" */
 			if (!tflag) {
 				if (!sflag)
-					/* decl. introduces new type ... */
+					/* declaration introduces new ... */
 					warning(44, storage_class_name(scl),
 					    tag->s_name);
 				tag = pushdown(tag);
@@ -1762,9 +1726,8 @@ newtag(sym_t *tag, scl_t scl, bool decl, bool semi)
 			/* base type is really '%s %s' */
 			warning(45, storage_class_name(tag->s_scl),
 			    tag->s_name);
-			/* declaration introduces new type in ANSI C: %s %s */
 			if (!sflag) {
-				/* decl. introduces new type in ANSI C: %s %s */
+				/* declaration introduces new type in ... */
 				warning(44, storage_class_name(scl),
 				    tag->s_name);
 			}
@@ -1772,14 +1735,8 @@ newtag(sym_t *tag, scl_t scl, bool decl, bool semi)
 			dcs->d_next->d_nonempty_decl = true;
 		}
 	} else {
-		if (tag->s_scl != scl) {
-			/* %s tag '%s' redeclared as %s */
-			error(46, storage_class_name(tag->s_scl),
-			    tag->s_name, storage_class_name(scl));
-			print_previous_declaration(-1, tag);
-			tag = pushdown(tag);
-			dcs->d_next->d_nonempty_decl = true;
-		} else if (decl && !is_incomplete(tag->s_type)) {
+		if (tag->s_scl != scl ||
+		    (decl && !is_incomplete(tag->s_type))) {
 			/* %s tag '%s' redeclared as %s */
 			error(46, storage_class_name(tag->s_scl),
 			    tag->s_name, storage_class_name(scl));
@@ -2360,7 +2317,7 @@ check_old_style_definition(sym_t *rdsym, sym_t *dsym)
 		 */
 		if (!eqtype(arg->s_type, parg->s_type, true, true, &dowarn) ||
 		    dowarn) {
-			/* prototype does not match old style defn., arg #%d */
+			/* prototype does not match old style ... */
 			error(299, n);
 			msg = true;
 		}
@@ -2542,7 +2499,7 @@ check_func_lint_directives(void)
 		if (arg->s_type->t_tspec != PTR ||
 		    ((t = arg->s_type->t_subt->t_tspec) != CHAR &&
 		     t != UCHAR && t != SCHAR)) {
-			/* arg. %d must be 'char *' for PRINTFLIKE/SCANFLIKE */
+			/* argument %d must be 'char *' for PRINTFLIKE/... */
 			warning(293, narg);
 			printflike_argnum = scanflike_argnum = -1;
 		}
@@ -2656,6 +2613,66 @@ check_prototype_declaration(sym_t *arg, sym_t *parg)
 	return msg;
 }
 
+static void
+check_local_hiding(const sym_t *dsym)
+{
+	switch (dsym->s_scl) {
+	case AUTO:
+		/* automatic hides external declaration: %s */
+		warning(86, dsym->s_name);
+		break;
+	case STATIC:
+		/* static hides external declaration: %s */
+		warning(87, dsym->s_name);
+		break;
+	case TYPEDEF:
+		/* typedef hides external declaration: %s */
+		warning(88, dsym->s_name);
+		break;
+	case EXTERN:
+		/* Already checked in declare_external_in_block. */
+		break;
+	default:
+		lint_assert(/*CONSTCOND*/false);
+	}
+}
+
+static void
+check_local_redeclaration(const sym_t *dsym, sym_t *rsym)
+{
+	if (rsym->s_block_level == 0) {
+		if (hflag)
+			check_local_hiding(dsym);
+
+	} else if (rsym->s_block_level == block_level) {
+
+		/* no hflag, because it's illegal! */
+		if (rsym->s_arg) {
+			/*
+			 * if !tflag, a "redeclaration of %s" error
+			 * is produced below
+			 */
+			if (tflag) {
+				if (hflag)
+					/* declaration hides parameter: %s */
+					warning(91, dsym->s_name);
+				rmsym(rsym);
+			}
+		}
+
+	} else if (rsym->s_block_level < block_level) {
+		if (hflag)
+			/* declaration hides earlier one: %s */
+			warning(95, dsym->s_name);
+	}
+
+	if (rsym->s_block_level == block_level) {
+		/* redeclaration of %s */
+		error(27, dsym->s_name);
+		rmsym(rsym);
+	}
+}
+
 /*
  * Completes a single local declaration/definition.
  */
@@ -2717,71 +2734,8 @@ declare_local(sym_t *dsym, bool initflg)
 		}
 	}
 
-	if (dcs->d_redeclared_symbol != NULL) {
-
-		if (dcs->d_redeclared_symbol->s_block_level == 0) {
-
-			switch (dsym->s_scl) {
-			case AUTO:
-				if (hflag)
-					/* automatic hides external decl.: %s */
-					warning(86, dsym->s_name);
-				break;
-			case STATIC:
-				if (hflag)
-					/* static hides external decl.: %s */
-					warning(87, dsym->s_name);
-				break;
-			case TYPEDEF:
-				if (hflag)
-					/* typedef hides external decl.: %s */
-					warning(88, dsym->s_name);
-				break;
-			case EXTERN:
-				/*
-				 * Warnings and errors are printed in
-				 * declare_external_in_block()
-				 */
-				break;
-			default:
-				lint_assert(/*CONSTCOND*/false);
-			}
-
-		} else if (dcs->d_redeclared_symbol->s_block_level ==
-			   block_level) {
-
-			/* no hflag, because it's illegal! */
-			if (dcs->d_redeclared_symbol->s_arg) {
-				/*
-				 * if !tflag, a "redeclaration of %s" error
-				 * is produced below
-				 */
-				if (tflag) {
-					if (hflag)
-						/* decl. hides parameter: %s */
-						warning(91, dsym->s_name);
-					rmsym(dcs->d_redeclared_symbol);
-				}
-			}
-
-		} else if (dcs->d_redeclared_symbol->s_block_level <
-			   block_level) {
-
-			if (hflag)
-				/* declaration hides earlier one: %s */
-				warning(95, dsym->s_name);
-
-		}
-
-		if (dcs->d_redeclared_symbol->s_block_level == block_level) {
-
-			/* redeclaration of %s */
-			error(27, dsym->s_name);
-			rmsym(dcs->d_redeclared_symbol);
-
-		}
-
-	}
+	if (dcs->d_redeclared_symbol != NULL)
+		check_local_redeclaration(dsym, dcs->d_redeclared_symbol);
 
 	if (initflg && !check_init(dsym)) {
 		dsym->s_def = DEF;

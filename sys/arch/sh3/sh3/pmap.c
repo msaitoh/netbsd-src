@@ -1,4 +1,4 @@
-/*	$NetBSD: pmap.c,v 1.85 2021/07/26 21:43:11 andvar Exp $	*/
+/*	$NetBSD: pmap.c,v 1.87 2021/09/02 08:02:33 rin Exp $	*/
 
 /*-
  * Copyright (c) 2002 The NetBSD Foundation, Inc.
@@ -30,7 +30,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: pmap.c,v 1.85 2021/07/26 21:43:11 andvar Exp $");
+__KERNEL_RCSID(0, "$NetBSD: pmap.c,v 1.87 2021/09/02 08:02:33 rin Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -77,7 +77,7 @@ struct pv_entry {
 };
 #define	__pmap_pv_alloc()	pool_get(&__pmap_pv_pool, PR_NOWAIT)
 #define	__pmap_pv_free(pv)	pool_put(&__pmap_pv_pool, (pv))
-STATIC void __pmap_pv_enter(pmap_t, struct vm_page *, vaddr_t);
+STATIC int __pmap_pv_enter(pmap_t, struct vm_page *, vaddr_t);
 STATIC void __pmap_pv_remove(pmap_t, struct vm_page *, vaddr_t);
 STATIC void *__pmap_pv_page_alloc(struct pool *, int);
 STATIC void __pmap_pv_page_free(struct pool *, void *);
@@ -365,8 +365,11 @@ pmap_enter(pmap_t pmap, vaddr_t va, paddr_t pa, vm_prot_t prot, u_int flags)
 			return (0);
 
 		/* Add to physical-virtual map list of this page */
-		__pmap_pv_enter(pmap, pg, va);
-
+		if (__pmap_pv_enter(pmap, pg, va)) {
+			if (flags & PMAP_CANFAIL)
+				return ENOMEM;
+			panic("%s: __pmap_pv_enter failed", __func__);
+		}
 	} else {	/* bus-space (always uncached map) */
 		if (kva) {
 			entry |= PG_V | PG_SH |
@@ -385,9 +388,12 @@ pmap_enter(pmap_t pmap, vaddr_t va, paddr_t pa, vm_prot_t prot, u_int flags)
 	else {
 		pte = __pmap_pte_alloc(pmap, va);
 		if (pte == NULL) {
-			if (flags & PMAP_CANFAIL)
+			if (flags & PMAP_CANFAIL) {
+				if (pg != NULL)
+					__pmap_pv_remove(pmap, pg, va);
 				return ENOMEM;
-			panic("pmap_enter: cannot allocate pte");
+			}
+			panic("%s: __pmap_pte_alloc failed", __func__);
 		}
 	}
 
@@ -455,11 +461,11 @@ __pmap_map_change(pmap_t pmap, vaddr_t va, paddr_t pa, vm_prot_t prot,
 }
 
 /*
- * void __pmap_pv_enter(pmap_t pmap, struct vm_page *pg, vaddr_t vaddr):
+ * int __pmap_pv_enter(pmap_t pmap, struct vm_page *pg, vaddr_t vaddr):
  *	Insert physical-virtual map to vm_page.
  *	Assume pre-existed mapping is already removed.
  */
-void
+int
 __pmap_pv_enter(pmap_t pmap, struct vm_page *pg, vaddr_t va)
 {
 	struct vm_page_md *pvh;
@@ -492,11 +498,16 @@ __pmap_pv_enter(pmap_t pmap, struct vm_page *pg, vaddr_t va)
 	/* Register pv map */
 	pvh = VM_PAGE_TO_MD(pg);
 	pv = __pmap_pv_alloc();
+	if (pv == NULL) {
+		splx(s);
+		return ENOMEM;
+	}
 	pv->pv_pmap = pmap;
 	pv->pv_va = va;
 
 	SLIST_INSERT_HEAD(&pvh->pvh_head, pv, pv_link);
 	splx(s);
+	return 0;
 }
 
 void
@@ -724,8 +735,14 @@ pmap_page_protect(struct vm_page *pg, vm_prot_t prot)
 		/* Remove all */
 		s = splvm();
 		while ((pv = SLIST_FIRST(&pvh->pvh_head)) != NULL) {
+			pmap = pv->pv_pmap;
 			va = pv->pv_va;
-			pmap_remove(pv->pv_pmap, va, va + PAGE_SIZE);
+#ifdef DIAGNOSTIC
+			pt_entry_t *pte = __pmap_pte_lookup(pmap, va);
+			KASSERT(pte != NULL);
+			KASSERT(*pte != 0);
+#endif
+			pmap_remove(pmap, va, va + PAGE_SIZE);
 		}
 		splx(s);
 	}

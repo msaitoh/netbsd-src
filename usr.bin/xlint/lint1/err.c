@@ -1,4 +1,4 @@
-/*	$NetBSD: err.c,v 1.141 2021/08/27 20:19:45 rillig Exp $	*/
+/*	$NetBSD: err.c,v 1.144 2021/09/05 16:15:05 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -37,7 +37,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: err.c,v 1.141 2021/08/27 20:19:45 rillig Exp $");
+__RCSID("$NetBSD: err.c,v 1.144 2021/09/05 16:15:05 rillig Exp $");
 #endif
 
 #include <sys/types.h>
@@ -462,8 +462,12 @@ msglist(void)
 {
 	size_t i;
 
-	for (i = 0; i < sizeof(msgs) / sizeof(msgs[0]); i++)
-		printf("%zu\t%s\n", i, msgs[i]);
+	for (i = 0; i < sizeof(msgs) / sizeof(msgs[0]); i++) {
+		if (msgs[i][0] != '\0')
+			printf("%zu\t%s\n", i, msgs[i]);
+		else
+			printf("---\t(no longer used)\n");
+	}
 }
 
 /*
@@ -568,7 +572,7 @@ internal_error(const char *file, int line, const char *msg, ...)
 	const	char *fn;
 
 	fn = lbasename(curr_pos.p_file);
-	fflush(stdout);
+	(void)fflush(stdout);
 	(void)fprintf(stderr, "lint: internal error in %s:%d near %s:%d: ",
 	    file, line, fn, curr_pos.p_line);
 	va_start(ap, msg);
@@ -585,7 +589,7 @@ assert_failed(const char *file, int line, const char *func, const char *cond)
 	const	char *fn;
 
 	fn = lbasename(curr_pos.p_file);
-	fflush(stdout);
+	(void)fflush(stdout);
 	(void)fprintf(stderr,
 	    "lint: assertion \"%s\" failed in %s at %s:%d near %s:%d\n",
 	    cond, func, file, line, fn, curr_pos.p_line);
@@ -620,16 +624,6 @@ void
 
 	va_start(ap, pos);
 	vmessage_at(msgid, pos, ap);
-	va_end(ap);
-}
-
-void
-(message)(int msgid, ...)
-{
-	va_list	ap;
-
-	va_start(ap, msgid);
-	vmessage_at(msgid, &curr_pos, ap);
 	va_end(ap);
 }
 

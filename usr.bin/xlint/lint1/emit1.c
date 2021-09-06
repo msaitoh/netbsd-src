@@ -1,4 +1,4 @@
-/* $NetBSD: emit1.c,v 1.51 2021/08/28 12:21:53 rillig Exp $ */
+/* $NetBSD: emit1.c,v 1.58 2021/09/04 18:58:57 rillig Exp $ */
 
 /*
  * Copyright (c) 1996 Christopher G. Demetriou.  All Rights Reserved.
@@ -38,7 +38,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: emit1.c,v 1.51 2021/08/28 12:21:53 rillig Exp $");
+__RCSID("$NetBSD: emit1.c,v 1.58 2021/09/04 18:58:57 rillig Exp $");
 #endif
 
 #include "lint1.h"
@@ -92,54 +92,30 @@ static	void	outfstrg(strg_t *);
 void
 outtype(const type_t *tp)
 {
-	int	t, s, na;
+	/* Available letters: ------GH--K-MNO--R--U-W-YZ */
+#ifdef INT128_SIZE
+	static const char tt[NTSPEC] = "???BCCCSSIILLQQJJDDDVTTTPAF?XXX";
+	static const char ss[NTSPEC] = "???  su u u u u us l sue   ?s l";
+#else
+	static const char tt[NTSPEC] = "???BCCCSSIILLQQDDDVTTTPAF?XXX";
+	static const char ss[NTSPEC] = "???  su u u u us l sue   ?s l";
+#endif
+	int	na;
 	sym_t	*arg;
 	tspec_t	ts;
 
 	while (tp != NULL) {
 		if ((ts = tp->t_tspec) == INT && tp->t_is_enum)
 			ts = ENUM;
-		/* Available letters: ----E-GH--K-MNO--R--U-W-YZ */
-		switch (ts) {
-		case BOOL:	t = 'B';	s = '\0';	break;
-		case CHAR:	t = 'C';	s = '\0';	break;
-		case SCHAR:	t = 'C';	s = 's';	break;
-		case UCHAR:	t = 'C';	s = 'u';	break;
-		case SHORT:	t = 'S';	s = '\0';	break;
-		case USHORT:	t = 'S';	s = 'u';	break;
-		case INT:	t = 'I';	s = '\0';	break;
-		case UINT:	t = 'I';	s = 'u';	break;
-		case LONG:	t = 'L';	s = '\0';	break;
-		case ULONG:	t = 'L';	s = 'u';	break;
-		case QUAD:	t = 'Q';	s = '\0';	break;
-		case UQUAD:	t = 'Q';	s = 'u';	break;
-#ifdef INT128_SIZE
-		case INT128:	t = 'J';	s = '\0';	break;
-		case UINT128:	t = 'J';	s = 'u';	break;
-#endif
-		case FLOAT:	t = 'D';	s = 's';	break;
-		case DOUBLE:	t = 'D';	s = '\0';	break;
-		case LDOUBLE:	t = 'D';	s = 'l';	break;
-		case VOID:	t = 'V';	s = '\0';	break;
-		case STRUCT:	t = 'T';	s = 's';	break;
-		case UNION:	t = 'T';	s = 'u';	break;
-		case ENUM:	t = 'T';	s = 'e';	break;
-		case PTR:	t = 'P';	s = '\0';	break;
-		case ARRAY:	t = 'A';	s = '\0';	break;
-		case FUNC:	t = 'F';	s = '\0';	break;
-		case FCOMPLEX:	t = 'X';	s = 's';	break;
-		case DCOMPLEX:	t = 'X';	s = '\0';	break;
-		case LCOMPLEX:	t = 'X';	s = 'l';	break;
-		default:
-			lint_assert(/*CONSTCOND*/false);
-		}
+		lint_assert(tt[ts] != '?' && ss[ts] != '?');
 		if (tp->t_const)
 			outchar('c');
 		if (tp->t_volatile)
 			outchar('v');
-		if (s != '\0')
-			outchar(s);
-		outchar(t);
+		if (ss[ts] != ' ')
+			outchar(ss[ts]);
+		outchar(tt[ts]);
+
 		if (ts == ARRAY) {
 			outint(tp->t_dim);
 		} else if (ts == ENUM) {
@@ -435,7 +411,7 @@ outcall(const tnode_t *tn, bool rvused, bool rvdisc)
 
 	}
 	/* return value discarded/used/ignored */
-	outchar(rvdisc ? 'd' : (rvused ? 'u' : 'i'));
+	outchar((char)(rvdisc ? 'd' : (rvused ? 'u' : 'i')));
 
 	/* name of the called function */
 	outname(tn->tn_left->tn_left->tn_sym->s_name);
@@ -453,6 +429,56 @@ outcall(const tnode_t *tn, bool rvused, bool rvdisc)
 	outtype(tn->tn_type);
 }
 
+/* write a character to the output buffer, quoted if necessary */
+static void
+outqchar(char c)
+{
+
+	if (ch_isprint(c) && c != '\\' && c != '"' && c != '\'') {
+		outchar(c);
+		return;
+	}
+
+	outchar('\\');
+	switch (c) {
+	case '\\':
+		outchar('\\');
+		break;
+	case '"':
+		outchar('"');
+		break;
+	case '\'':
+		outchar('\'');
+		break;
+	case '\b':
+		outchar('b');
+		break;
+	case '\t':
+		outchar('t');
+		break;
+	case '\n':
+		outchar('n');
+		break;
+	case '\f':
+		outchar('f');
+		break;
+	case '\r':
+		outchar('r');
+		break;
+	case '\v':
+		outchar('v');
+		break;
+	case '\a':
+		outchar('a');
+		break;
+	default:
+		outchar((char)((((unsigned char)c >> 6) & 07) + '0'));
+		outchar((char)((((unsigned char)c >> 3) & 07) + '0'));
+		outchar((char)((c & 07) + '0'));
+		break;
+	}
+}
+
 /*
  * extracts potential format specifiers for printf() and scanf() and
  * writes them, enclosed in "" and quoted if necessary, to the output buffer
@@ -460,13 +486,13 @@ outcall(const tnode_t *tn, bool rvused, bool rvdisc)
 static void
 outfstrg(strg_t *strg)
 {
-	unsigned char c, oc;
+	char c, oc;
 	bool	first;
-	unsigned char *cp;
+	const char *cp;
 
 	lint_assert(strg->st_tspec == CHAR);
 
-	cp = strg->st_cp;
+	cp = (const char *)strg->st_cp;
 
 	outchar('"');
 
@@ -479,44 +505,45 @@ outfstrg(strg_t *strg)
 			continue;
 		}
 
-		outqchar('%');
+		outchar('%');
 		c = *cp++;
 
 		/* flags for printf and scanf and *-fieldwidth for printf */
-		while (c != '\0' && (c == '-' || c == '+' || c == ' ' ||
-				     c == '#' || c == '0' || c == '*')) {
-			outqchar(c);
+		while (c == '-' || c == '+' || c == ' ' ||
+		       c == '#' || c == '0' || c == '*') {
+			outchar(c);
 			c = *cp++;
 		}
 
 		/* numeric field width */
-		while (c != '\0' && ch_isdigit((char)c)) {
-			outqchar(c);
+		while (ch_isdigit(c)) {
+			outchar(c);
 			c = *cp++;
 		}
 
 		/* precision for printf */
 		if (c == '.') {
-			outqchar(c);
-			if ((c = *cp++) == '*') {
-				outqchar(c);
+			outchar(c);
+			c = *cp++;
+			if (c == '*') {
+				outchar(c);
 				c = *cp++;
 			} else {
-				while (c != '\0' && ch_isdigit((char)c)) {
-					outqchar(c);
+				while (ch_isdigit(c)) {
+					outchar(c);
 					c = *cp++;
 				}
 			}
 		}
 
-		/* h, l, L and q flags fpr printf and scanf */
+		/* h, l, L and q flags for printf and scanf */
 		if (c == 'h' || c == 'l' || c == 'L' || c == 'q') {
-			outqchar(c);
+			outchar(c);
 			c = *cp++;
 		}
 
 		/*
-		 * The last character. It is always written so we can detect
+		 * The last character. It is always written, so we can detect
 		 * invalid format specifiers.
 		 */
 		if (c != '\0') {
@@ -536,13 +563,13 @@ outfstrg(strg_t *strg)
 				while (c != '\0' && c != ']') {
 					if (c == '-') {
 						if (!first && *cp != ']')
-							outqchar(c);
+							outchar(c);
 					}
 					first = false;
 					c = *cp++;
 				}
 				if (c == ']') {
-					outqchar(c);
+					outchar(c);
 					c = *cp++;
 				}
 			}

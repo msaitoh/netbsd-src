@@ -1,4 +1,4 @@
-/*	$NetBSD: emit.c,v 1.13 2021/08/22 15:06:49 rillig Exp $	*/
+/*	$NetBSD: emit.c,v 1.16 2021/09/04 14:48:27 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -37,7 +37,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: emit.c,v 1.13 2021/08/22 15:06:49 rillig Exp $");
+__RCSID("$NetBSD: emit.c,v 1.16 2021/09/04 14:48:27 rillig Exp $");
 #endif
 
 #include <stdio.h>
@@ -50,7 +50,7 @@ static	const	char *loname;
 static	FILE	*lout;
 
 /* output buffer data */
-ob_t	ob;
+static	ob_t	ob;
 
 static	void	outxbuf(void);
 
@@ -123,66 +123,13 @@ outclr(void)
  * write a character to the output buffer
  */
 void
-outchar(int c)
+outchar(char c)
 {
 
 	if (ob.o_next == ob.o_end)
 		outxbuf();
-	*ob.o_next++ = (char)c;
+	*ob.o_next++ = c;
 }
-
-#if defined(IS_LINT1)
-/*
- * write a character to the output buffer, quoted if necessary
- */
-void
-outqchar(int c)
-{
-
-	if (ch_isprint(c) && c != '\\' && c != '"' && c != '\'') {
-		outchar(c);
-	} else {
-		outchar('\\');
-		switch (c) {
-		case '\\':
-			outchar('\\');
-			break;
-		case '"':
-			outchar('"');
-			break;
-		case '\'':
-			outchar('\'');
-			break;
-		case '\b':
-			outchar('b');
-			break;
-		case '\t':
-			outchar('t');
-			break;
-		case '\n':
-			outchar('n');
-			break;
-		case '\f':
-			outchar('f');
-			break;
-		case '\r':
-			outchar('r');
-			break;
-		case '\v':
-			outchar('v');
-			break;
-		case '\a':
-			outchar('a');
-			break;
-		default:
-			outchar((((unsigned char)c >> 6) & 07) + '0');
-			outchar((((unsigned char)c >> 3) & 07) + '0');
-			outchar((c & 07) + '0');
-			break;
-		}
-	}
-}
-#endif
 
 /*
  * write a string to the output buffer
@@ -200,9 +147,7 @@ outstrg(const char *s)
 	}
 }
 
-/*
- * write an integer value to the output buffer
- */
+/* write an integer value to the output buffer */
 void
 outint(int i)
 {
@@ -212,23 +157,15 @@ outint(int i)
 	ob.o_next += sprintf(ob.o_next, "%d", i);
 }
 
-/*
- * write the name of a symbol to the output buffer
- * the name is preceded by its length
- */
+/* write a name to the output buffer, preceded by its length */
 void
-outname1(const char *file, size_t line, const char *name)
+outname(const char *name)
 {
-
-	if (name == NULL)
-		errx(1, "%s, %zu: internal error: outname(NULL)", file, line);
 	outint((int)strlen(name));
 	outstrg(name);
 }
 
-/*
- * write the name of the .c source
- */
+/* write the name of the .c source */
 void
 outsrc(const char *name)
 {

@@ -1,4 +1,4 @@
-/* $NetBSD: ix_txrx.c,v 1.88 2021/08/26 09:03:47 msaitoh Exp $ */
+/* $NetBSD: ix_txrx.c,v 1.90 2021/09/03 08:57:58 msaitoh Exp $ */
 
 /******************************************************************************
 
@@ -64,7 +64,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: ix_txrx.c,v 1.88 2021/08/26 09:03:47 msaitoh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: ix_txrx.c,v 1.90 2021/09/03 08:57:58 msaitoh Exp $");
 
 #include "opt_inet.h"
 #include "opt_inet6.h"
@@ -1568,6 +1568,7 @@ ixgbe_setup_receive_ring(struct rx_ring *rxr)
 	rxr->next_to_check = 0;
 	rxr->next_to_refresh = adapter->num_rx_desc - 1; /* Fully allocated */
 	rxr->lro_enabled = FALSE;
+	rxr->discard_multidesc = false;
 	rxr->rx_copies.ev_count = 0;
 #if 0 /* NetBSD */
 	rxr->rx_bytes.ev_count = 0;
@@ -1803,9 +1804,9 @@ ixgbe_rxeof(struct ix_queue *que)
 	struct ixgbe_rx_buf	*rbuf, *nbuf;
 	int			i, nextp, processed = 0;
 	u32			staterr = 0;
-	u32			count = 0;
+	u32			loopcount = 0;
 	u32			limit = adapter->rx_process_limit;
-	bool			discard_multidesc = false;
+	bool			discard_multidesc = rxr->discard_multidesc;
 #ifdef RSS
 	u16			pkt_info;
 #endif
@@ -1828,7 +1829,7 @@ ixgbe_rxeof(struct ix_queue *que)
 	 * layer.
 	 */
 	for (i = rxr->next_to_check;
-	     (count < limit) || (discard_multidesc == true);) {
+	     (loopcount < limit) || (discard_multidesc == true);) {
 
 		struct mbuf *sendmp, *mp;
 		struct mbuf *newmp;
@@ -1850,7 +1851,7 @@ ixgbe_rxeof(struct ix_queue *que)
 		if ((staterr & IXGBE_RXD_STAT_DD) == 0)
 			break;
 
-		count++;
+		loopcount++;
 		sendmp = NULL;
 		nbuf = NULL;
 		rsc = 0;
@@ -2113,6 +2114,9 @@ next_desc:
 			processed = 0;
 		}
 	}
+
+	/* Save the current status */
+	rxr->discard_multidesc = discard_multidesc;
 
 	/* Refresh any remaining buf structs */
 	if (ixgbe_rx_unrefreshed(rxr))

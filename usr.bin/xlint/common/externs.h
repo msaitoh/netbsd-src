@@ -1,4 +1,4 @@
-/*	$NetBSD: externs.h,v 1.20 2021/08/22 15:06:49 rillig Exp $	*/
+/*	$NetBSD: externs.h,v 1.24 2021/09/04 14:48:27 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -45,6 +45,7 @@ extern	const	char *tspec_name(tspec_t);
 /*
  * mem.c
  */
+extern	size_t	mem_block_size(void);
 extern	void	*xmalloc(size_t);
 extern	void	*xcalloc(size_t, size_t);
 extern	void	*xrealloc(void *, size_t);
@@ -55,16 +56,12 @@ extern  char	*xasprintf(const char *, ...) __printflike(1, 2);
  * emit.c
  */
 #if defined(IS_LINT1) || defined(IS_LINT2)
-extern	ob_t	ob;
-
 extern	void	outopen(const char *);
 extern	void	outclose(void);
 extern	void	outclr(void);
-extern	void	outchar(int);
-extern	void	outqchar(int);
+extern	void	outchar(char);
 extern	void	outstrg(const char *);
 extern	void	outint(int);
-#define outname(a)	outname1(__FILE__, __LINE__, a);
-extern	void	outname1(const char *, size_t, const char *);
+extern	void	outname(const char *);
 extern	void	outsrc(const char *);
 #endif

@@ -1,4 +1,4 @@
-/* $NetBSD: siotty.c,v 1.47 2020/12/29 17:17:14 tsutsui Exp $ */
+/* $NetBSD: siotty.c,v 1.50 2021/09/04 12:54:19 tsutsui Exp $ */
 
 /*-
  * Copyright (c) 2000 The NetBSD Foundation, Inc.
@@ -31,9 +31,10 @@
 
 #include <sys/cdefs.h>			/* RCS ID & Copyright macro defns */
 
-__KERNEL_RCSID(0, "$NetBSD: siotty.c,v 1.47 2020/12/29 17:17:14 tsutsui Exp $");
+__KERNEL_RCSID(0, "$NetBSD: siotty.c,v 1.50 2021/09/04 12:54:19 tsutsui Exp $");
 
 #include "opt_ddb.h"
+#include "siotty.h"
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -49,6 +50,7 @@ __KERNEL_RCSID(0, "$NetBSD: siotty.c,v 1.47 2020/12/29 17:17:14 tsutsui Exp $");
 #include <sys/kauth.h>
 #include <sys/kmem.h>
 
+#include <machine/board.h>
 #include <machine/cpu.h>
 
 #include <luna68k/dev/sioreg.h>
@@ -104,7 +106,6 @@ u_int siotty_rbuf_size = SIOTTY_RING_SIZE;
 
 static struct cnm_state	siotty_cnm_state;
 
-#include "siotty.h"
 static void siostart(struct tty *);
 static int  sioparam(struct tty *, struct termios *);
 static void siottyintr(void *);
@@ -414,14 +415,16 @@ sioparam(struct tty *tp, struct termios *t)
 	tp->t_ospeed = t->c_ospeed;
 	tp->t_cflag = t->c_cflag;
 
-	sc->sc_wr[WR3] &= 0x3f;
-	sc->sc_wr[WR5] &= 0x9f;
+	sc->sc_wr[WR3] &= ~WR3_RX8BIT;
+	sc->sc_wr[WR5] &= ~WR5_TX8BIT;
 	switch (tp->t_cflag & CSIZE) {
 	case CS7:
-		sc->sc_wr[WR3] |= WR3_RX7BIT; sc->sc_wr[WR5] |= WR5_TX7BIT;
+		sc->sc_wr[WR3] |= WR3_RX7BIT;
+		sc->sc_wr[WR5] |= WR5_TX7BIT;
 		break;
 	case CS8:
-		sc->sc_wr[WR3] |= WR3_RX8BIT; sc->sc_wr[WR5] |= WR5_TX8BIT;
+		sc->sc_wr[WR3] |= WR3_RX8BIT;
+		sc->sc_wr[WR5] |= WR5_TX8BIT;
 		break;
 	}
 	if ((tp->t_cflag & PARENB) != 0) {
@@ -523,9 +526,9 @@ sioopen(dev_t dev, int flag, int mode, struct lwp *l)
 		/* raise RTS and DTR here; but, DTR lead is not wired */
 		/* then check DCD condition; but, DCD lead is not wired */
 #if 0
-		if ((sc->sc_flags & TIOCFLAG_SOFTCAR) != 0
-		    || (tp->t_cflag & MDMBUF) != 0
-		    || (getsiocsr(sc->sc_ctl) & RR_DCD) != 0)
+		if ((sc->sc_flags & TIOCFLAG_SOFTCAR) != 0 ||
+		    (tp->t_cflag & MDMBUF) != 0 ||
+		    (getsiocsr(sc->sc_ctl) & RR_DCD) != 0)
 			tp->t_state |= TS_CARR_ON;
 		else
 			tp->t_state &= ~TS_CARR_ON;
@@ -557,8 +560,8 @@ sioclose(dev_t dev, int flag, int mode, struct lwp *l)
 	s = splserial();
 	siomctl(sc, TIOCM_BREAK, DMBIC);
 #if 0 /* because unable to feed DTR signal */
-	if ((tp->t_cflag & HUPCL) != 0
-	    || tp->t_wopen || (tp->t_state & TS_ISOPEN) == 0) {
+	if ((tp->t_cflag & HUPCL) != 0 ||
+	    tp->t_wopen || (tp->t_state & TS_ISOPEN) == 0) {
 		siomctl(sc, TIOCM_DTR, DMBIC);
 		/* Yield CPU time to others for 1 second, then ... */
 		siomctl(sc, TIOCM_DTR, DMBIS);
@@ -691,16 +694,16 @@ getsiocsr(struct sioreg *sio)
 /*---------------------  console interface ----------------------*/
 
 struct consdev syscons = {
-	NULL,
-	NULL,
-	syscngetc,
-	syscnputc,
-	nullcnpollc,
-	NULL,
-	NULL,
-	NULL,
-	NODEV,
-	CN_REMOTE,
+	.cn_probe = NULL,
+	.cn_init  = NULL,
+	.cn_getc  = syscngetc,
+	.cn_putc  = syscnputc,
+	.cn_pollc = nullcnpollc,
+	.cn_bell  = NULL,
+	.cn_halt  = NULL,
+	.cn_flush = NULL,
+	.cn_dev   = NODEV,
+	.cn_pri   = CN_REMOTE,
 };
 
 /* EXPORT */ void
@@ -711,7 +714,7 @@ syscninit(int channel)
  * boot/reset/poweron.  ROM monitor emits one line message on CH.A.
  */
 	struct sioreg *sio;
-	sio = (struct sioreg *)0x51000000 + channel;
+	sio = (struct sioreg *)OBIO_SIO + channel;
 
 	syscons.cn_dev = makedev(cdevsw_lookup_major(&siotty_cdevsw),
 				 channel);
@@ -735,7 +738,7 @@ syscngetc(dev_t dev)
 	struct sioreg *sio;
 	int s, c;
 
-	sio = (struct sioreg *)0x51000000 + ((int)dev & 0x1);
+	sio = (struct sioreg *)OBIO_SIO + ((int)dev & 0x1);
 	s = splhigh();
 	while ((getsiocsr(sio) & RR_RXRDY) == 0)
 		continue;
@@ -751,7 +754,7 @@ syscnputc(dev_t dev, int c)
 	struct sioreg *sio;
 	int s;
 
-	sio = (struct sioreg *)0x51000000 + ((int)dev & 0x1);
+	sio = (struct sioreg *)OBIO_SIO + ((int)dev & 0x1);
 	s = splhigh();
 	while ((getsiocsr(sio) & RR_TXRDY) == 0)
 		continue;

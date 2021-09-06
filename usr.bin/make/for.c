@@ -1,4 +1,4 @@
-/*	$NetBSD: for.c,v 1.144 2021/06/25 16:10:07 rillig Exp $	*/
+/*	$NetBSD: for.c,v 1.147 2021/09/02 07:02:07 rillig Exp $	*/
 
 /*
  * Copyright (c) 1992, The Regents of the University of California.
@@ -58,7 +58,7 @@
 #include "make.h"
 
 /*	"@(#)for.c	8.1 (Berkeley) 6/6/93"	*/
-MAKE_RCSID("$NetBSD: for.c,v 1.144 2021/06/25 16:10:07 rillig Exp $");
+MAKE_RCSID("$NetBSD: for.c,v 1.147 2021/09/02 07:02:07 rillig Exp $");
 
 
 /* One of the variables to the left of the "in" in a .for loop. */
@@ -72,10 +72,6 @@ typedef struct ForLoop {
 	Vector /* of ForVar */ vars; /* Iteration variables */
 	Words items;		/* Substitution items */
 	Buffer curBody;		/* Expanded body of the current iteration */
-	/* Is any of the names 1 character long? If so, when the variable
-	 * values are substituted, the parser must handle $V expressions as
-	 * well, not only ${V} and $(V). */
-	bool short_var;
 	unsigned int sub_next;	/* Where to continue iterating */
 } ForLoop;
 
@@ -94,7 +90,6 @@ ForLoop_New(void)
 	f->items.words = NULL;
 	f->items.freeIt = NULL;
 	Buf_Init(&f->curBody);
-	f->short_var = false;
 	f->sub_next = 0;
 
 	return f;
@@ -150,8 +145,6 @@ ForLoop_ParseVarnames(ForLoop *f, const char **pp)
 			p += 2;
 			break;
 		}
-		if (len == 1)
-			f->short_var = true;
 
 		ForLoop_AddVar(f, p, len);
 		p += len;
@@ -285,33 +278,33 @@ For_Accum(const char *line)
 
 
 static size_t
-for_var_len(const char *var)
+ExprLen(const char *expr)
 {
-	char ch, var_start, var_end;
+	char ch, expr_open, expr_close;
 	int depth;
 	size_t len;
 
-	var_start = *var;
-	if (var_start == '\0')
+	expr_open = expr[0];
+	if (expr_open == '\0')
 		/* just escape the $ */
 		return 0;
 
-	if (var_start == '(')
-		var_end = ')';
-	else if (var_start == '{')
-		var_end = '}';
+	if (expr_open == '(')
+		expr_close = ')';
+	else if (expr_open == '{')
+		expr_close = '}';
 	else
 		return 1;	/* Single char variable */
 
 	depth = 1;
-	for (len = 1; (ch = var[len++]) != '\0';) {
-		if (ch == var_start)
+	for (len = 1; (ch = expr[len++]) != '\0';) {
+		if (ch == expr_open)
 			depth++;
-		else if (ch == var_end && --depth == 0)
+		else if (ch == expr_close && --depth == 0)
 			return len;
 	}
 
-	/* Variable end not found, escape the $ */
+	/* Expression end not found, escape the $ */
 	return 0;
 }
 
@@ -352,8 +345,12 @@ Buf_AddEscaped(Buffer *cmds, const char *item, char endc)
 	 * :U processing, see ApplyModifier_Defined. */
 	while ((ch = *item++) != '\0') {
 		if (ch == '$') {
-			size_t len = for_var_len(item);
+			size_t len = ExprLen(item);
 			if (len != 0) {
+				/*
+				 * XXX: Should a '\' be added here?
+				 * See directive-for-escape.mk, ExprLen.
+				 */
 				Buf_AddBytes(cmds, item - 1, len + 1);
 				item += len;
 				continue;
@@ -370,7 +367,7 @@ Buf_AddEscaped(Buffer *cmds, const char *item, char endc)
 }
 
 /*
- * While expanding the body of a .for loop, replace the variable name of an
+ * When expanding the body of a .for loop, replace the variable name of an
  * expression like ${i} or ${i:...} or $(i) or $(i:...) with ":Uvalue".
  */
 static void
@@ -411,7 +408,7 @@ ForLoop_SubstVarLong(ForLoop *f, const char **pp, const char *bodyEnd,
 }
 
 /*
- * While expanding the body of a .for loop, replace single-character
+ * When expanding the body of a .for loop, replace single-character
  * variable expressions like $i with their ${:U...} expansion.
  */
 static void
@@ -422,7 +419,7 @@ ForLoop_SubstVarShort(ForLoop *f, const char *p, const char **inout_mark)
 	size_t i;
 
 	/* Skip $$ and stupid ones. */
-	if (!f->short_var || strchr("}):$", ch) != NULL)
+	if (ch == '}' || ch == ')' || ch == ':' || ch == '$')
 		return;
 
 	vars = Vector_Get(&f->vars, 0);
@@ -434,8 +431,10 @@ ForLoop_SubstVarShort(ForLoop *f, const char *p, const char **inout_mark)
 	return;
 
 found:
+	Buf_AddBytesBetween(&f->curBody, *inout_mark, p);
+	*inout_mark = p + 1;
+
 	/* Replace $<ch> with ${:U<value>} */
-	Buf_AddBytesBetween(&f->curBody, *inout_mark, p), *inout_mark = p + 1;
 	Buf_AddStr(&f->curBody, "{:U");
 	Buf_AddEscaped(&f->curBody, f->items.words[f->sub_next + i], '}');
 	Buf_AddByte(&f->curBody, '}');
@@ -451,14 +450,14 @@ found:
  * defined, see unit-tests/varname-empty.mk for more details.
  *
  * The detection of substitutions of the loop control variables is naive.
- * Many of the modifiers use '\' to escape '$' (not '$'), so it is possible
- * to contrive a makefile where an unwanted substitution happens.
+ * Many of the modifiers use '\$' instead of '$$' to escape '$', so it is
+ * possible to contrive a makefile where an unwanted substitution happens.
  */
 static void
 ForLoop_SubstBody(ForLoop *f)
 {
 	const char *p, *bodyEnd;
-	const char *mark;	/* where the last replacement left off */
+	const char *mark;	/* where the last substitution left off */
 
 	Buf_Empty(&f->curBody);
 
@@ -466,9 +465,9 @@ ForLoop_SubstBody(ForLoop *f)
 	bodyEnd = f->body.data + f->body.len;
 	for (p = mark; (p = strchr(p, '$')) != NULL;) {
 		if (p[1] == '{' || p[1] == '(') {
+			char endc = p[1] == '{' ? '}' : ')';
 			p += 2;
-			ForLoop_SubstVarLong(f, &p, bodyEnd,
-			    p[-1] == '{' ? '}' : ')', &mark);
+			ForLoop_SubstVarLong(f, &p, bodyEnd, endc, &mark);
 		} else if (p[1] != '\0') {
 			ForLoop_SubstVarShort(f, p + 1, &mark);
 			p += 2;

@@ -1,4 +1,4 @@
-/*	$NetBSD: if_bge.c,v 1.346 2020/07/02 09:07:10 msaitoh Exp $	*/
+/*	$NetBSD: if_bge.c,v 1.348 2021/09/03 21:55:00 andvar Exp $	*/
 
 /*
  * Copyright (c) 2001 Wind River Systems
@@ -79,7 +79,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_bge.c,v 1.346 2020/07/02 09:07:10 msaitoh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_bge.c,v 1.348 2021/09/03 21:55:00 andvar Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -3305,7 +3305,7 @@ bge_attach(device_t parent, device_t self, void *aux)
 		pm_ctl &= ~(PCI_PWR_D0 | PCI_PWR_D1 | PCI_PWR_D2 | PCI_PWR_D3);
 		pm_ctl |= (1 << 8) | PCI_PWR_D0 ; /* D0 state */
 		pci_conf_write(pc, sc->sc_pcitag, BGE_PCI_PWRMGMT_CMD, pm_ctl);
-		DELAY(1000);	/* 27 usec is allegedly sufficent */
+		DELAY(1000);	/* 27 usec is allegedly sufficient */
 	}
 
 	/* Save chipset family. */
@@ -4430,9 +4430,11 @@ bge_rxeof(struct bge_softc *sc)
 		tosync = -tosync;
 	}
 
-	bus_dmamap_sync(sc->bge_dmatag, sc->bge_ring_map,
-	    offset, tosync * sizeof (struct bge_rx_bd),
-	    BUS_DMASYNC_POSTREAD);
+	if (tosync != 0) {
+		bus_dmamap_sync(sc->bge_dmatag, sc->bge_ring_map,
+		    offset, tosync * sizeof (struct bge_rx_bd),
+		    BUS_DMASYNC_POSTREAD);
+	}
 
 	while (rx_cons != rx_prod) {
 		struct bge_rx_bd	*cur_rx;
@@ -4603,9 +4605,11 @@ bge_txeof(struct bge_softc *sc)
 		tosync = -tosync;
 	}
 
-	bus_dmamap_sync(sc->bge_dmatag, sc->bge_ring_map,
-	    offset, tosync * sizeof (struct bge_tx_bd),
-	    BUS_DMASYNC_POSTREAD | BUS_DMASYNC_POSTWRITE);
+	if (tosync != 0) {
+		bus_dmamap_sync(sc->bge_dmatag, sc->bge_ring_map,
+		    offset, tosync * sizeof (struct bge_tx_bd),
+		    BUS_DMASYNC_POSTREAD | BUS_DMASYNC_POSTWRITE);
+	}
 
 	/*
 	 * Go through our tx ring and free mbufs for those

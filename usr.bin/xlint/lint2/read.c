@@ -1,4 +1,4 @@
-/* $NetBSD: read.c,v 1.58 2021/08/29 10:18:17 rillig Exp $ */
+/* $NetBSD: read.c,v 1.67 2021/09/05 19:58:53 rillig Exp $ */
 
 /*
  * Copyright (c) 1996 Christopher G. Demetriou.  All Rights Reserved.
@@ -38,7 +38,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: read.c,v 1.58 2021/08/29 10:18:17 rillig Exp $");
+__RCSID("$NetBSD: read.c,v 1.67 2021/09/05 19:58:53 rillig Exp $");
 #endif
 
 #include <ctype.h>
@@ -72,7 +72,7 @@ static	size_t	nfnames;
 /*
  * Types are shared (to save memory for the types itself) and accessed
  * via indices (to save memory for references to types (indices are short)).
- * To share types, a equal type must be located fast. This is done by a
+ * To share types, an equal type must be located fast. This is done by a
  * hash table. Access by indices is done via an array of pointers to the
  * types.
  */
@@ -91,16 +91,15 @@ static	hte_t **renametab;
 static	int	csrcfile;
 
 
-#define		inperr(fmt, args...) \
-	inperror(__FILE__, __LINE__, fmt, ##args)
-static	void	inperror(const char *, size_t, const char *, ...);
+static	void	inperr(const char *, ...)
+    __attribute__((format(printf, 1, 2), noreturn));
 static	void	setsrc(const char *);
 static	void	setfnid(int, const char *);
 static	void	funccall(pos_t *, const char *);
 static	void	decldef(pos_t *, const char *);
 static	void	usedsym(pos_t *, const char *);
 static	unsigned short inptype(const char *, const char **);
-static	int	gettlen(const char *, const char **);
+static	size_t	gettlen(const char *, const char **);
 static	unsigned short findtype(const char *, size_t, int);
 static	unsigned short storetyp(type_t *, const char *, size_t, int);
 static	int	thash(const char *, size_t);
@@ -136,8 +135,74 @@ parse_int(const char **p)
 static short
 parse_short(const char **p)
 {
-
 	return (short)parse_int(p);
+}
+
+static void
+read_ln_line(char *line, size_t len)
+{
+	const char *cp;
+	int cline, isrc, iline;
+	char rt;
+	pos_t pos;
+
+	flines[srcfile]++;
+
+	if (len == 0 || line[len - 1] != '\n')
+		inperr("%s", &line[len - 1]);
+	line[len - 1] = '\0';
+	cp = line;
+
+	/* line number in csrcfile */
+	if (!try_parse_int(&cp, &cline))
+		cline = -1;
+
+	/* record type */
+	if (*cp == '\0')
+		inperr("missing record type");
+	rt = *cp++;
+
+	if (rt == 'S') {
+		setsrc(cp);
+		return;
+	}
+	if (rt == 's') {
+		setfnid(cline, cp);
+		return;
+	}
+
+	/*
+	 * Index of (included) source file. If this index is
+	 * different from csrcfile, it refers to an included
+	 * file.
+	 */
+	isrc = parse_int(&cp);
+	isrc = inpfns[isrc];
+
+	/* line number in isrc */
+	if (*cp++ != '.')
+		inperr("bad line number");
+	iline = parse_int(&cp);
+
+	pos.p_src = (unsigned short)csrcfile;
+	pos.p_line = (unsigned short)cline;
+	pos.p_isrc = (unsigned short)isrc;
+	pos.p_iline = (unsigned short)iline;
+
+	/* process rest of this record */
+	switch (rt) {
+	case 'c':
+		funccall(&pos, cp);
+		break;
+	case 'd':
+		decldef(&pos, cp);
+		break;
+	case 'u':
+		usedsym(&pos, cp);
+		break;
+	default:
+		inperr("bad record type %c", rt);
+	}
 }
 
 void
@@ -145,10 +210,7 @@ readfile(const char *name)
 {
 	FILE	*inp;
 	size_t	len;
-	const	char *cp;
-	char	*line, rt = '\0';
-	int	cline, isrc, iline;
-	pos_t	pos;
+	char	*line;
 
 	if (inpfns == NULL)
 		inpfns = xcalloc(ninpfns = 128, sizeof(*inpfns));
@@ -168,65 +230,8 @@ readfile(const char *name)
 	if ((inp = fopen(name, "r")) == NULL)
 		err(1, "cannot open %s", name);
 
-	while ((line = fgetln(inp, &len)) != NULL) {
-		flines[srcfile]++;
-
-		if (len == 0 || line[len - 1] != '\n')
-			inperr("%s", &line[len - 1]);
-		line[len - 1] = '\0';
-		cp = line;
-
-		/* line number in csrcfile */
-		if (!try_parse_int(&cp, &cline))
-			cline = -1;
-
-		/* record type */
-		if (*cp == '\0')
-			inperr("missing record type");
-		rt = *cp++;
-
-		if (rt == 'S') {
-			setsrc(cp);
-			continue;
-		} else if (rt == 's') {
-			setfnid(cline, cp);
-			continue;
-		}
-
-		/*
-		 * Index of (included) source file. If this index is
-		 * different from csrcfile, it refers to an included
-		 * file.
-		 */
-		isrc = parse_int(&cp);
-		isrc = inpfns[isrc];
-
-		/* line number in isrc */
-		if (*cp++ != '.')
-			inperr("bad line number");
-		iline = parse_int(&cp);
-
-		pos.p_src = (unsigned short)csrcfile;
-		pos.p_line = (unsigned short)cline;
-		pos.p_isrc = (unsigned short)isrc;
-		pos.p_iline = (unsigned short)iline;
-
-		/* process rest of this record */
-		switch (rt) {
-		case 'c':
-			funccall(&pos, cp);
-			break;
-		case 'd':
-			decldef(&pos, cp);
-			break;
-		case 'u':
-			usedsym(&pos, cp);
-			break;
-		default:
-			inperr("bad record type %c", rt);
-		}
-
-	}
+	while ((line = fgetln(inp, &len)) != NULL)
+		read_ln_line(line, len);
 
 	_destroyhash(renametab);
 
@@ -237,8 +242,8 @@ readfile(const char *name)
 }
 
 
-static void __attribute__((format(printf, 3, 4))) __attribute__((noreturn))
-inperror(const char *file, size_t line, const char *fmt, ...)
+static void
+inperr(const char *fmt, ...)
 {
 	va_list ap;
 	char buf[1024];
@@ -247,7 +252,7 @@ inperror(const char *file, size_t line, const char *fmt, ...)
 	(void)vsnprintf(buf, sizeof(buf), fmt, ap);
 	va_end(ap);
 
-	errx(1, "%s,%zu: input file error: %s,%zu (%s)", file, line,
+	errx(1, "input file error: %s,%zu (%s)",
 	    fnames[srcfile], flines[srcfile], buf);
 }
 
@@ -308,45 +313,47 @@ funccall(pos_t *posp, const char *cp)
 	/* read flags */
 	rused = rdisc = false;
 	lai = &fcall->f_args;
-	while ((c = *cp) == 'u' || c == 'i' || c == 'd' ||
-	       c == 'z' || c == 'p' || c == 'n' || c == 's') {
-		cp++;
-		switch (c) {
-		case 'u':
-			if (rused || rdisc)
-				inperr("used or discovered: %c", c);
-			rused = true;
-			break;
-		case 'i':
-			if (rused || rdisc)
-				inperr("used or discovered: %c", c);
-			break;
-		case 'd':
-			if (rused || rdisc)
-				inperr("used or discovered: %c", c);
-			rdisc = true;
-			break;
-		case 'z':
-		case 'p':
-		case 'n':
-		case 's':
-			ai = xalloc(sizeof(*ai));
-			ai->a_num = parse_int(&cp);
-			if (c == 'z') {
-				ai->a_pcon = ai->a_zero = true;
-			} else if (c == 'p') {
-				ai->a_pcon = true;
-			} else if (c == 'n') {
-				ai->a_ncon = true;
-			} else {
-				ai->a_fmt = true;
-				ai->a_fstrg = inpqstrg(cp, &cp);
-			}
-			*lai = ai;
-			lai = &ai->a_next;
-			break;
+
+again:
+	c = *cp++;
+	switch (c) {
+	case 'u':
+		if (rused || rdisc)
+			inperr("used or discovered: %c", c);
+		rused = true;
+		goto again;
+	case 'i':
+		if (rused || rdisc)
+			inperr("used or discovered: %c", c);
+		goto again;
+	case 'd':
+		if (rused || rdisc)
+			inperr("used or discovered: %c", c);
+		rdisc = true;
+		goto again;
+	case 'z':
+	case 'p':
+	case 'n':
+	case 's':
+		ai = xalloc(sizeof(*ai));
+		ai->a_num = parse_int(&cp);
+		if (c == 'z') {
+			ai->a_pcon = ai->a_zero = true;
+		} else if (c == 'p') {
+			ai->a_pcon = true;
+		} else if (c == 'n') {
+			ai->a_ncon = true;
+		} else {
+			ai->a_fmt = true;
+			ai->a_fstrg = inpqstrg(cp, &cp);
 		}
+		*lai = ai;
+		lai = &ai->a_next;
+		goto again;
+	default:
+		cp--;
 	}
+
 	fcall->f_rused = rused;
 	fcall->f_rdisc = rdisc;
 
@@ -370,6 +377,76 @@ funccall(pos_t *posp, const char *cp)
 		inperr("trailing line data: %s", cp);
 }
 
+static bool
+parse_function_attribute(const char **pp, sym_t *sym, bool *used)
+{
+
+	switch (*(*pp)++) {
+	case 'd':
+		if (sym->s_def != NODECL)
+			inperr("def");
+		sym->s_def = DEF;
+		break;
+	case 'e':
+		if (sym->s_def != NODECL)
+			inperr("decl");
+		sym->s_def = DECL;
+		break;
+	case 'i':
+		if (sym->s_inline)
+			inperr("inline");
+		sym->s_inline = true;
+		break;
+	case 'o':
+		if (sym->s_old_style_function)
+			inperr("osdef");
+		sym->s_old_style_function = true;
+		break;
+	case 'r':
+		if (sym->s_function_has_return_value)
+			inperr("r");
+		sym->s_function_has_return_value = true;
+		break;
+	case 's':
+		if (sym->s_static)
+			inperr("static");
+		sym->s_static = true;
+		break;
+	case 't':
+		if (sym->s_def != NODECL)
+			inperr("tdef");
+		sym->s_def = TDEF;
+		break;
+	case 'u':
+		if (*used)
+			inperr("used");
+		*used = true;
+		break;
+	case 'v':
+		if (sym->s_check_only_first_args)
+			inperr("v");
+		sym->s_check_only_first_args = true;
+		sym->s_check_num_args = parse_short(pp);
+		break;
+	case 'P':
+		if (sym->s_printflike)
+			inperr("P");
+		sym->s_printflike = true;
+		sym->s_printflike_arg = parse_short(pp);
+		break;
+	case 'S':
+		if (sym->s_scanflike)
+			inperr("S");
+		sym->s_scanflike = true;
+		sym->s_scanflike_arg = parse_short(pp);
+		break;
+	default:
+		(*pp)--;
+		return false;
+	}
+	return true;
+}
+
 /*
  * Process a declaration or definition (d-record).
  */
@@ -377,7 +454,7 @@ static void
 decldef(pos_t *posp, const char *cp)
 {
 	sym_t	*symp, sym;
-	char	c, *pos1, *tname;
+	char	*pos1, *tname;
 	bool	used, renamed;
 	hte_t	*hte, *renamehte = NULL;
 	const char *name, *newname;
@@ -388,69 +465,8 @@ decldef(pos_t *posp, const char *cp)
 
 	used = false;
 
-	for (; (c = *cp) != '\0'; cp++) {
-		switch (c) {
-		case 'd':
-			if (sym.s_def != NODECL)
-				inperr("def");
-			sym.s_def = DEF;
-			continue;
-		case 'e':
-			if (sym.s_def != NODECL)
-				inperr("decl");
-			sym.s_def = DECL;
-			continue;
-		case 'i':
-			if (sym.s_inline)
-				inperr("inline");
-			sym.s_inline = true;
-			continue;
-		case 'o':
-			if (sym.s_old_style_function)
-				inperr("osdef");
-			sym.s_old_style_function = true;
-			continue;
-		case 'r':
-			if (sym.s_function_has_return_value)
-				inperr("r");
-			sym.s_function_has_return_value = true;
-			continue;
-		case 's':
-			if (sym.s_static)
-				inperr("static");
-			sym.s_static = true;
-			continue;
-		case 't':
-			if (sym.s_def != NODECL)
-				inperr("tdef");
-			sym.s_def = TDEF;
-			continue;
-		case 'u':
-			if (used)
-				inperr("used");
-			used = true;
-			continue;
-		case 'v':
-			if (sym.s_check_only_first_args)
-				inperr("v");
-			sym.s_check_only_first_args = true;
-			sym.s_check_num_args = parse_short(&cp);
-			continue;
-		case 'P':
-			if (sym.s_printflike)
-				inperr("P");
-			sym.s_printflike = true;
-			sym.s_printflike_arg = parse_short(&cp);
-			continue;
-		case 'S':
-			if (sym.s_scanflike)
-				inperr("S");
-			sym.s_scanflike = true;
-			sym.s_scanflike_arg = parse_short(&cp);
-			continue;
-		}
-		break;
-	}
+	while (parse_function_attribute(&cp, &sym, &used))
+		continue;
 
 	/* read symbol name, doing renaming if necessary */
 	name = inpname(cp, &cp);
@@ -611,6 +627,7 @@ parse_tspec(const char **pp, char c, bool *osdef)
 				       : (s == 'l' ? LCOMPLEX : DCOMPLEX);
 	default:
 		inperr("tspec '%c'", c);
+		/* NOTREACHED */
 	}
 }
 
@@ -720,7 +737,7 @@ inptype(const char *cp, const char **epp)
 /*
  * Get the length of a type string.
  */
-static int
+static size_t
 gettlen(const char *cp, const char **epp)
 {
 	const	char *cp1;
@@ -903,7 +920,7 @@ gettlen(const char *cp, const char **epp)
 	}
 
 	*epp = cp;
-	return cp - cp1;
+	return (size_t)(cp - cp1);
 }
 
 /*
@@ -1097,7 +1114,7 @@ getfnidx(const char *fn)
 	/* 0 is reserved */
 	for (i = 1; fnames[i] != NULL; i++) {
 		if (strcmp(fnames[i], fn) == 0)
-			return i;
+			return (int)i;
 	}
 
 	if (i == nfnames - 1) {
@@ -1111,7 +1128,7 @@ getfnidx(const char *fn)
 
 	fnames[i] = xstrdup(fn);
 	flines[i] = 0;
-	return i;
+	return (int)i;
 }
 
 /*
