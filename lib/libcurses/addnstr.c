@@ -1,4 +1,4 @@
-/*	$NetBSD: addnstr.c,v 1.17 2019/06/09 07:40:14 blymn Exp $	*/
+/*	$NetBSD: addnstr.c,v 1.19 2021/09/06 07:45:48 rin Exp $	*/
 
 /*
  * Copyright (c) 1993, 1994
@@ -34,7 +34,7 @@
 #if 0
 static char sccsid[] = "@(#)addnstr.c	8.2 (Berkeley) 5/4/94";
 #else
-__RCSID("$NetBSD: addnstr.c,v 1.17 2019/06/09 07:40:14 blymn Exp $");
+__RCSID("$NetBSD: addnstr.c,v 1.19 2021/09/06 07:45:48 rin Exp $");
 #endif
 #endif				/* not lint */
 
@@ -135,10 +135,7 @@ waddnstr(WINDOW *win, const char *s, int n)
 	size_t  len;
 	const char *p;
 
-#ifdef DEBUG
-		__CTRACE(__CTRACE_INPUT, "ADDNSTR: win %p, length %d\n",
-			 win, n);
-#endif
+	__CTRACE(__CTRACE_INPUT, "ADDNSTR: win %p, length %d\n", win, n);
 	/*
 	 * behavior changed from traditional BSD curses, for better XCURSES
 	 * conformance.
