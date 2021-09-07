@@ -1857,6 +1857,7 @@ ixgbe_rxeof(struct ix_queue *que)
 		u16         len;
 		u16         vtag = 0;
 		bool        eop;
+		bool        discard = false;
 
 		if (wraparound) {
 			/* Sync the last half. */
@@ -1885,7 +1886,7 @@ ixgbe_rxeof(struct ix_queue *que)
 			break;
 
 		loopcount++;
-		sendmp = NULL;
+		sendmp = newmp = NULL;
 		nbuf = NULL;
 		rsc = 0;
 		cur->wb.upper.status_error = 0;
@@ -1909,13 +1910,28 @@ ixgbe_rxeof(struct ix_queue *que)
 			goto next_desc;
 		}
 
-		/* pre-alloc new mbuf */
-		if (__predict_true(!discard_multidesc))
-			newmp = ixgbe_getcl();
-		else
-			newmp = NULL;
-		if (__predict_false(newmp == NULL)) {
-			rxr->no_mbuf.ev_count++;
+		if (__predict_false(discard_multidesc))
+			discard = true;
+		else {
+			/* Pre-alloc new mbuf. */
+
+			/* For small packet. See below. */
+			if ((rbuf->fmp == NULL) &&
+			    eop && (len <= adapter->rx_copy_len)) {
+				sendmp = m_gethdr(M_NOWAIT, MT_DATA);
+			}
+
+			/* For long packet or the above m_gethdr() failed */
+			if (sendmp == NULL) {
+				newmp = ixgbe_getcl();
+				if (newmp == NULL) {
+					rxr->no_mbuf.ev_count++;
+					discard = true;
+				}
+			}
+		}
+
+		if (__predict_false(discard)) {
 			/*
 			 * Descriptor initialization is already done by the
 			 * above code (cur->wb.upper.status_error = 0).
@@ -1981,8 +1997,10 @@ ixgbe_rxeof(struct ix_queue *que)
 		 * See if there is a stored head
 		 * that determines what we are
 		 */
-		sendmp = rbuf->fmp;
-		if (sendmp != NULL) {  /* secondary frag */
+		if (rbuf->fmp != NULL) {
+			/* Secondary frag */
+			sendmp = rbuf->fmp;
+
 			/* Update new (used in future) mbuf */
 			newmp->m_pkthdr.len = newmp->m_len = rxr->mbuf_sz;
 			IXGBE_M_ADJ(adapter, rxr, newmp);
@@ -2007,22 +2025,13 @@ ixgbe_rxeof(struct ix_queue *que)
 			 * a TCP ACK. Copy into a new mbuf, and Leave the old
 			 * mbuf+cluster for re-use.
 			 */
-			if (eop && len <= adapter->rx_copy_len) {
-				sendmp = m_gethdr(M_NOWAIT, MT_DATA);
-				if (sendmp != NULL) {
-					sendmp->m_data += ETHER_ALIGN;
-					memcpy(mtod(sendmp, void *),
-					    mtod(mp, void *), len);
-					rxr->rx_copies.ev_count++;
-					rbuf->flags |= IXGBE_RX_COPY;
-
-					/*
-					 * Free pre-allocated mbuf anymore
-					 * because we recycle the current
-					 * buffer.
-					 */
-					m_freem(newmp);
-				}
+			if (eop && (len <= adapter->rx_copy_len) &&
+			    (sendmp != NULL)) {
+				sendmp->m_data += ETHER_ALIGN;
+				memcpy(mtod(sendmp, void *),
+				    mtod(mp, void *), len);
+				rxr->rx_copies.ev_count++;
+				rbuf->flags |= IXGBE_RX_COPY;
 			}
 
 			/*
