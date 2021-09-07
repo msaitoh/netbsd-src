@@ -1804,9 +1804,11 @@ ixgbe_rxeof(struct ix_queue *que)
 	struct ixgbe_rx_buf	*rbuf, *nbuf;
 	int			i, nextp, processed = 0;
 	u32			staterr = 0;
-	u32			loopcount = 0;
+	u32			loopcount = 0, numdesc;
 	u32			limit = adapter->rx_process_limit;
 	bool			discard_multidesc = rxr->discard_multidesc;
+	bool			wraparound = false;
+	unsigned int		syncremain;
 #ifdef RSS
 	u16			pkt_info;
 #endif
@@ -1823,6 +1825,24 @@ ixgbe_rxeof(struct ix_queue *que)
 	}
 #endif /* DEV_NETMAP */
 
+	/* Sync the ring. The size is rx_process_limit or the first half */
+	if ((rxr->next_to_check + limit) <= rxr->num_desc) {
+		/* Non-wraparound */
+		numdesc = limit;
+		syncremain = 0;
+	} else {
+		/* Wraparound. Sync the first half. */
+		numdesc = rxr->num_desc - rxr->next_to_check;
+
+		/* Set the size of the last half */
+		syncremain = limit - numdesc;
+	}
+	bus_dmamap_sync(rxr->rxdma.dma_tag->dt_dmat,
+	    rxr->rxdma.dma_map,
+	    sizeof(union ixgbe_adv_rx_desc) * rxr->next_to_check,
+	    sizeof(union ixgbe_adv_rx_desc) * numdesc,
+	    BUS_DMASYNC_POSTREAD | BUS_DMASYNC_POSTWRITE);
+
 	/*
 	 * The max number of loop is rx_process_limit. If discard_multidesc is
 	 * true, continue processing to not to send broken packet to the upper
@@ -1838,9 +1858,22 @@ ixgbe_rxeof(struct ix_queue *que)
 		u16         vtag = 0;
 		bool        eop;
 
-		/* Sync the ring. */
-		ixgbe_dmamap_sync(rxr->rxdma.dma_tag, rxr->rxdma.dma_map,
-		    BUS_DMASYNC_POSTREAD | BUS_DMASYNC_POSTWRITE);
+		if (wraparound) {
+			/* Sync the last half. */
+			KASSERT(syncremain != 0);
+			numdesc = syncremain;
+			wraparound = false;
+		} else if (__predict_false(loopcount >= limit)) {
+			KASSERT(discard_multidesc == true);
+			numdesc = 1;
+		} else
+			numdesc = 0;
+
+		if (numdesc != 0)
+			bus_dmamap_sync(rxr->rxdma.dma_tag->dt_dmat,
+			    rxr->rxdma.dma_map, 0,
+			    sizeof(union ixgbe_adv_rx_desc) * numdesc,
+			    BUS_DMASYNC_POSTREAD | BUS_DMASYNC_POSTWRITE);
 
 		cur = &rxr->rx_base[i];
 		staterr = le32toh(cur->wb.upper.status_error);
@@ -1877,7 +1910,7 @@ ixgbe_rxeof(struct ix_queue *que)
 		}
 
 		/* pre-alloc new mbuf */
-		if (!discard_multidesc)
+		if (__predict_true(!discard_multidesc))
 			newmp = ixgbe_getcl();
 		else
 			newmp = NULL;
@@ -2100,8 +2133,10 @@ next_desc:
 		    BUS_DMASYNC_PREREAD | BUS_DMASYNC_PREWRITE);
 
 		/* Advance our pointers to the next descriptor. */
-		if (++i == rxr->num_desc)
+		if (++i == rxr->num_desc) {
+			wraparound = true;
 			i = 0;
+		}
 		rxr->next_to_check = i;
 
 		/* Now send to the stack or do LRO */
