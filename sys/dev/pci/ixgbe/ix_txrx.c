@@ -1931,7 +1931,7 @@ ixgbe_rxeof(struct ix_queue *que)
 			}
 		}
 
-		if (discard) {
+		if (__predict_false(discard)) {
 			/*
 			 * Descriptor initialization is already done by the
 			 * above code (cur->wb.upper.status_error = 0).
