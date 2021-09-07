@@ -1924,7 +1924,7 @@ ixgbe_rxeof(struct ix_queue *que)
 			/* For long packet or the above m_gethdr() failed */
 			if (sendmp == NULL) {
 				newmp = ixgbe_getcl();
-				if (newmp == NULL) {
+				if (__predict_false(newmp == NULL)) {
 					rxr->no_mbuf.ev_count++;
 					discard = true;
 				}
