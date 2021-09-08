@@ -1,4 +1,4 @@
-/*	$NetBSD: subr_csan.c,v 1.10 2020/09/10 14:04:45 maxv Exp $	*/
+/*	$NetBSD: subr_csan.c,v 1.12 2021/09/07 16:56:13 riastradh Exp $	*/
 
 /*
  * Copyright (c) 2019-2020 Maxime Villard, m00nbsd.net
@@ -29,7 +29,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: subr_csan.c,v 1.10 2020/09/10 14:04:45 maxv Exp $");
+__KERNEL_RCSID(0, "$NetBSD: subr_csan.c,v 1.12 2021/09/07 16:56:13 riastradh Exp $");
 
 #include <sys/param.h>
 #include <sys/device.h>

@@ -1,4 +1,4 @@
-/*	$NetBSD: ksyms.h,v 1.39 2020/09/24 09:37:07 mrg Exp $	*/
+/*	$NetBSD: ksyms.h,v 1.41 2021/09/07 16:56:13 riastradh Exp $	*/
 
 /*
  * Copyright (c) 2001, 2003 Anders Magnusson (ragge@ludd.luth.se).

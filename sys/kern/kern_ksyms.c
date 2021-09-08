@@ -1,4 +1,4 @@
-/*	$NetBSD: kern_ksyms.c,v 1.98 2021/07/18 06:57:28 mlelstv Exp $	*/
+/*	$NetBSD: kern_ksyms.c,v 1.102 2021/09/07 16:56:25 riastradh Exp $	*/
 
 /*-
  * Copyright (c) 2008 The NetBSD Foundation, Inc.
@@ -73,7 +73,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: kern_ksyms.c,v 1.98 2021/07/18 06:57:28 mlelstv Exp $");
+__KERNEL_RCSID(0, "$NetBSD: kern_ksyms.c,v 1.102 2021/09/07 16:56:25 riastradh Exp $");
 
 #if defined(_KERNEL) && defined(_KERNEL_OPT)
 #include "opt_copy_symtab.h"

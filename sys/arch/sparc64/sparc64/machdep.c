@@ -1,4 +1,4 @@
-/*	$NetBSD: machdep.c,v 1.300 2021/08/09 21:08:06 andvar Exp $ */
+/*	$NetBSD: machdep.c,v 1.302 2021/09/07 16:56:13 riastradh Exp $ */
 
 /*-
  * Copyright (c) 1996, 1997, 1998, 2019 The NetBSD Foundation, Inc.
@@ -71,7 +71,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: machdep.c,v 1.300 2021/08/09 21:08:06 andvar Exp $");
+__KERNEL_RCSID(0, "$NetBSD: machdep.c,v 1.302 2021/09/07 16:56:13 riastradh Exp $");
 
 #include "opt_ddb.h"
 #include "opt_multiprocessor.h"
