@@ -1915,16 +1915,18 @@ ixgbe_rxeof(struct ix_queue *que)
 		else {
 			/* Pre-alloc new mbuf. */
 
-			/* For small packet. See below. */
 			if ((rbuf->fmp == NULL) &&
 			    eop && (len <= adapter->rx_copy_len)) {
+				/* For short packet. See below. */
 				sendmp = m_gethdr(M_NOWAIT, MT_DATA);
-			}
-
-			/* For long packet or the above m_gethdr() failed */
-			if (sendmp == NULL) {
+				if (__predict_false(sendmp == NULL)) {
+					rxr->no_mbuf.ev_count++;
+					discard = true;
+				}
+			} else {
+				/* For long packet. */
 				newmp = ixgbe_getcl();
-				if (newmp == NULL) {
+				if (__predict_false(newmp == NULL)) {
 					rxr->no_mbuf.ev_count++;
 					discard = true;
 				}
@@ -2025,8 +2027,7 @@ ixgbe_rxeof(struct ix_queue *que)
 			 * a TCP ACK. Copy into a new mbuf, and Leave the old
 			 * mbuf+cluster for re-use.
 			 */
-			if (eop && (len <= adapter->rx_copy_len) &&
-			    (sendmp != NULL)) {
+			if (eop && (len <= adapter->rx_copy_len)) {
 				sendmp->m_data += ETHER_ALIGN;
 				memcpy(mtod(sendmp, void *),
 				    mtod(mp, void *), len);
