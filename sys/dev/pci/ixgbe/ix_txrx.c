@@ -1,4 +1,4 @@
-/* $NetBSD: ix_txrx.c,v 1.92 2021/09/07 08:17:20 msaitoh Exp $ */
+/* $NetBSD: ix_txrx.c,v 1.94 2021/09/08 09:09:47 msaitoh Exp $ */
 
 /******************************************************************************
 
@@ -64,7 +64,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: ix_txrx.c,v 1.92 2021/09/07 08:17:20 msaitoh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: ix_txrx.c,v 1.94 2021/09/08 09:09:47 msaitoh Exp $");
 
 #include "opt_inet.h"
 #include "opt_inet6.h"
@@ -1804,9 +1804,11 @@ ixgbe_rxeof(struct ix_queue *que)
 	struct ixgbe_rx_buf	*rbuf, *nbuf;
 	int			i, nextp, processed = 0;
 	u32			staterr = 0;
-	u32			loopcount = 0;
+	u32			loopcount = 0, numdesc;
 	u32			limit = adapter->rx_process_limit;
 	bool			discard_multidesc = rxr->discard_multidesc;
+	bool			wraparound = false;
+	unsigned int		syncremain;
 #ifdef RSS
 	u16			pkt_info;
 #endif
@@ -1823,6 +1825,24 @@ ixgbe_rxeof(struct ix_queue *que)
 	}
 #endif /* DEV_NETMAP */
 
+	/* Sync the ring. The size is rx_process_limit or the first half */
+	if ((rxr->next_to_check + limit) <= rxr->num_desc) {
+		/* Non-wraparound */
+		numdesc = limit;
+		syncremain = 0;
+	} else {
+		/* Wraparound. Sync the first half. */
+		numdesc = rxr->num_desc - rxr->next_to_check;
+
+		/* Set the size of the last half */
+		syncremain = limit - numdesc;
+	}
+	bus_dmamap_sync(rxr->rxdma.dma_tag->dt_dmat,
+	    rxr->rxdma.dma_map,
+	    sizeof(union ixgbe_adv_rx_desc) * rxr->next_to_check,
+	    sizeof(union ixgbe_adv_rx_desc) * numdesc,
+	    BUS_DMASYNC_POSTREAD | BUS_DMASYNC_POSTWRITE);
+
 	/*
 	 * The max number of loop is rx_process_limit. If discard_multidesc is
 	 * true, continue processing to not to send broken packet to the upper
@@ -1837,10 +1857,24 @@ ixgbe_rxeof(struct ix_queue *que)
 		u16         len;
 		u16         vtag = 0;
 		bool        eop;
+		bool        discard = false;
 
-		/* Sync the ring. */
-		ixgbe_dmamap_sync(rxr->rxdma.dma_tag, rxr->rxdma.dma_map,
-		    BUS_DMASYNC_POSTREAD | BUS_DMASYNC_POSTWRITE);
+		if (wraparound) {
+			/* Sync the last half. */
+			KASSERT(syncremain != 0);
+			numdesc = syncremain;
+			wraparound = false;
+		} else if (__predict_false(loopcount >= limit)) {
+			KASSERT(discard_multidesc == true);
+			numdesc = 1;
+		} else
+			numdesc = 0;
+
+		if (numdesc != 0)
+			bus_dmamap_sync(rxr->rxdma.dma_tag->dt_dmat,
+			    rxr->rxdma.dma_map, 0,
+			    sizeof(union ixgbe_adv_rx_desc) * numdesc,
+			    BUS_DMASYNC_POSTREAD | BUS_DMASYNC_POSTWRITE);
 
 		cur = &rxr->rx_base[i];
 		staterr = le32toh(cur->wb.upper.status_error);
@@ -1852,7 +1886,7 @@ ixgbe_rxeof(struct ix_queue *que)
 			break;
 
 		loopcount++;
-		sendmp = NULL;
+		sendmp = newmp = NULL;
 		nbuf = NULL;
 		rsc = 0;
 		cur->wb.upper.status_error = 0;
@@ -1876,15 +1910,30 @@ ixgbe_rxeof(struct ix_queue *que)
 			goto next_desc;
 		}
 
-		/* pre-alloc new mbuf */
-		if (!discard_multidesc) {
-			newmp = ixgbe_getcl();
-			if (__predict_false(newmp == NULL))
-				rxr->no_mbuf.ev_count++;
-		} else
-			newmp = NULL;
+		if (__predict_false(discard_multidesc))
+			discard = true;
+		else {
+			/* Pre-alloc new mbuf. */
 
-		if (__predict_false(newmp == NULL)) {
+			if ((rbuf->fmp == NULL) &&
+			    eop && (len <= adapter->rx_copy_len)) {
+				/* For short packet. See below. */
+				sendmp = m_gethdr(M_NOWAIT, MT_DATA);
+				if (__predict_false(sendmp == NULL)) {
+					rxr->no_mbuf.ev_count++;
+					discard = true;
+				}
+			} else {
+				/* For long packet. */
+				newmp = ixgbe_getcl();
+				if (__predict_false(newmp == NULL)) {
+					rxr->no_mbuf.ev_count++;
+					discard = true;
+				}
+			}
+		}
+
+		if (__predict_false(discard)) {
 			/*
 			 * Descriptor initialization is already done by the
 			 * above code (cur->wb.upper.status_error = 0).
@@ -1950,8 +1999,10 @@ ixgbe_rxeof(struct ix_queue *que)
 		 * See if there is a stored head
 		 * that determines what we are
 		 */
-		sendmp = rbuf->fmp;
-		if (sendmp != NULL) {  /* secondary frag */
+		if (rbuf->fmp != NULL) {
+			/* Secondary frag */
+			sendmp = rbuf->fmp;
+
 			/* Update new (used in future) mbuf */
 			newmp->m_pkthdr.len = newmp->m_len = rxr->mbuf_sz;
 			IXGBE_M_ADJ(adapter, rxr, newmp);
@@ -1971,35 +2022,20 @@ ixgbe_rxeof(struct ix_queue *que)
 			 * packet.
 			 */
 
-			/*
-			 * Optimize.  This might be a small packet, maybe just
-			 * a TCP ACK. Copy into a new mbuf, and Leave the old
-			 * mbuf+cluster for re-use.
-			 */
-			if (eop && len <= adapter->rx_copy_len) {
-				sendmp = m_gethdr(M_NOWAIT, MT_DATA);
-				if (sendmp != NULL) {
-					sendmp->m_data += ETHER_ALIGN;
-					memcpy(mtod(sendmp, void *),
-					    mtod(mp, void *), len);
-					rxr->rx_copies.ev_count++;
-					rbuf->flags |= IXGBE_RX_COPY;
+			if (eop && (len <= adapter->rx_copy_len)) {
+				/*
+				 * Optimize.  This might be a small packet, may
+				 * be just a TCP ACK. Copy into a new mbuf, and
+				 * Leave the old mbuf+cluster for re-use.
+				 */
+				sendmp->m_data += ETHER_ALIGN;
+				memcpy(mtod(sendmp, void *),
+				    mtod(mp, void *), len);
+				rxr->rx_copies.ev_count++;
+				rbuf->flags |= IXGBE_RX_COPY;
+			} else {
+				/* Non short packet */
 
-					/*
-					 * Free pre-allocated mbuf anymore
-					 * because we recycle the current
-					 * buffer.
-					 */
-					m_freem(newmp);
-				}
-			}
-
-			/*
-			 * Two cases:
-			 * a) non small packet(i.e. !IXGBE_RX_COPY).
-			 * b) a small packet but the above m_gethdr() failed.
-			 */
-			if (sendmp == NULL) {
 				/* Update new (used in future) mbuf */
 				newmp->m_pkthdr.len = newmp->m_len
 				    = rxr->mbuf_sz;
@@ -2102,8 +2138,10 @@ next_desc:
 		    BUS_DMASYNC_PREREAD | BUS_DMASYNC_PREWRITE);
 
 		/* Advance our pointers to the next descriptor. */
-		if (++i == rxr->num_desc)
+		if (++i == rxr->num_desc) {
+			wraparound = true;
 			i = 0;
+		}
 		rxr->next_to_check = i;
 
 		/* Now send to the stack or do LRO */

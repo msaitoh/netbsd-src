@@ -1,4 +1,4 @@
-/*	$NetBSD: pmap.c,v 1.108 2021/05/29 06:54:20 skrll Exp $	*/
+/*	$NetBSD: pmap.c,v 1.112 2021/09/15 07:49:54 skrll Exp $	*/
 
 /*
  * Copyright (c) 2017 Ryo Shimizu <ryo@nerv.org>
@@ -27,7 +27,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: pmap.c,v 1.108 2021/05/29 06:54:20 skrll Exp $");
+__KERNEL_RCSID(0, "$NetBSD: pmap.c,v 1.112 2021/09/15 07:49:54 skrll Exp $");
 
 #include "opt_arm_debug.h"
 #include "opt_ddb.h"
@@ -38,10 +38,11 @@ __KERNEL_RCSID(0, "$NetBSD: pmap.c,v 1.108 2021/05/29 06:54:20 skrll Exp $");
 
 #include <sys/param.h>
 #include <sys/types.h>
+
+#include <sys/asan.h>
+#include <sys/atomic.h>
 #include <sys/kmem.h>
 #include <sys/vmem.h>
-#include <sys/atomic.h>
-#include <sys/asan.h>
 
 #include <uvm/uvm.h>
 #include <uvm/pmap/pmap_pvt.h>
@@ -966,23 +967,24 @@ pmap_icache_sync_range(pmap_t pm, vaddr_t sva, vaddr_t eva)
 		}
 
 		pte = *ptep;
-		if (lxpde_valid(pte)) {
-			vaddr_t eob = (va + blocksize) & ~(blocksize - 1);
-			vsize_t len = ulmin(eva, eob) - va;
+		if (!lxpde_valid(pte))
+			continue;
 
-			if (l3pte_readable(pte)) {
-				cpu_icache_sync_range(va, len);
-			} else {
-				/*
-				 * change to accessible temporally
-				 * to do cpu_icache_sync_range()
-				 */
-				atomic_swap_64(ptep, pte | LX_BLKPAG_AF);
-				AARCH64_TLBI_BY_ASID_VA(pm->pm_asid, va, true);
-				cpu_icache_sync_range(va, len);
-				atomic_swap_64(ptep, pte);
-				AARCH64_TLBI_BY_ASID_VA(pm->pm_asid, va, true);
-			}
+		vaddr_t eob = (va + blocksize) & ~(blocksize - 1);
+		vsize_t len = ulmin(eva, eob) - va;
+
+		if (l3pte_readable(pte)) {
+			cpu_icache_sync_range(va, len);
+		} else {
+			/*
+			 * change to accessible temporally
+			 * to do cpu_icache_sync_range()
+			 */
+			atomic_swap_64(ptep, pte | LX_BLKPAG_AF);
+			AARCH64_TLBI_BY_ASID_VA(pm->pm_asid, va, true);
+			cpu_icache_sync_range(va, len);
+			atomic_swap_64(ptep, pte);
+			AARCH64_TLBI_BY_ASID_VA(pm->pm_asid, va, true);
 		}
 	}
 
@@ -1447,7 +1449,9 @@ pmap_activate(struct lwp *l)
 	if (pm->pm_asid == -1)
 		pm->pm_asid = l->l_proc->p_pid;
 
-	ttbr0 = ((uint64_t)pm->pm_asid << 48) | pm->pm_l0table_pa;
+	ttbr0 =
+	     __SHIFTIN(pm->pm_asid, TTBR_ASID) |
+	     __SHIFTIN(pm->pm_l0table_pa, TTBR_BADDR);
 	cpu_set_ttbr0(ttbr0);
 
 	/* Re-enable translation table walks using TTBR0 */
@@ -2211,19 +2215,19 @@ pmap_page_remove(struct pmap_page *pp, vm_prot_t prot)
 			continue;
 		}
 		opte = atomic_swap_64(pv->pv_ptep, 0);
+		const vaddr_t va = trunc_page(pv->pv_va);
 		if (lxpde_valid(opte)) {
-			_pmap_pdp_delref(pv->pv_pmap,
+			_pmap_pdp_delref(pm,
 			    AARCH64_KVA_TO_PA(trunc_page(
 			    (vaddr_t)pv->pv_ptep)), false);
-			AARCH64_TLBI_BY_ASID_VA(pv->pv_pmap->pm_asid,
-			    trunc_page(pv->pv_va), true);
+			AARCH64_TLBI_BY_ASID_VA(pm->pm_asid, va, true);
 
 			if ((opte & LX_BLKPAG_OS_WIRED) != 0) {
-				_pmap_adj_wired_count(pv->pv_pmap, -1);
+				_pmap_adj_wired_count(pm, -1);
 			}
-			_pmap_adj_resident_count(pv->pv_pmap, -1);
+			_pmap_adj_resident_count(pm, -1);
 		}
-		pvtmp = _pmap_remove_pv(pp, pm, trunc_page(pv->pv_va), opte);
+		pvtmp = _pmap_remove_pv(pp, pm, va, opte);
 		if (pvtmp == NULL) {
 			KASSERT(pv == &pp->pp_pv);
 		} else {

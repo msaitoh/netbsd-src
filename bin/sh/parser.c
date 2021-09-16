@@ -1,4 +1,4 @@
-/*	$NetBSD: parser.c,v 1.171 2020/08/19 22:41:47 kre Exp $	*/
+/*	$NetBSD: parser.c,v 1.174 2021/09/15 18:29:45 kre Exp $	*/
 
 /*-
  * Copyright (c) 1991, 1993
@@ -37,7 +37,7 @@
 #if 0
 static char sccsid[] = "@(#)parser.c	8.7 (Berkeley) 5/16/95";
 #else
-__RCSID("$NetBSD: parser.c,v 1.171 2020/08/19 22:41:47 kre Exp $");
+__RCSID("$NetBSD: parser.c,v 1.174 2021/09/15 18:29:45 kre Exp $");
 #endif
 #endif /* not lint */
 
@@ -55,6 +55,7 @@ __RCSID("$NetBSD: parser.c,v 1.171 2020/08/19 22:41:47 kre Exp $");
 #include "options.h"
 #include "input.h"
 #include "output.h"
+#include "redir.h"	/* defines max_user_fd */
 #include "var.h"
 #include "error.h"
 #include "memalloc.h"
@@ -422,6 +423,8 @@ command(void)
 			n1->nfor.args = ap;
 			if (lasttoken != TNL && lasttoken != TSEMI)
 				synexpect(TSEMI, 0);
+			if (lasttoken == TNL)
+				readheredocs();
 		} else {
 			static char argvars[5] = {
 			    CTLVAR, VSNORMAL|VSQUOTE, '@', '=', '\0'
@@ -743,9 +746,12 @@ fixredir(union node *n, const char *text, int err)
 	if (!err)
 		n->ndup.vname = NULL;
 
-	if (is_number(text))
+	if (is_number(text)) {
 		n->ndup.dupfd = number(text);
-	else if (text[0] == '-' && text[1] == '\0')
+		if (n->ndup.dupfd < user_fd_limit &&
+		    n->ndup.dupfd > max_user_fd)
+			max_user_fd = n->ndup.dupfd;
+	} else if (text[0] == '-' && text[1] == '\0')
 		n->ndup.dupfd = -1;
 	else {
 
@@ -1587,7 +1593,10 @@ parseredir(const char *out,  int c)
 	fd = (*out == '\0') ? -1 : number(out);		/* number(out) >= 0 */
 	np->nfile.fd = fd;	/* do this again later with updated fd */
 	if (fd != np->nfile.fd)
-		error("file descriptor (%d) out of range", fd);
+		error("file descriptor (%d) out of range (max %ld)",
+		    fd, user_fd_limit - 1);
+	if (fd < user_fd_limit && fd > max_user_fd)
+		max_user_fd = fd;
 
 	VTRACE(DBG_LEXER, ("parseredir after '%s%c' ", out, c));
 	if (c == '>') {
@@ -2506,7 +2515,7 @@ STATIC void
 linebreak(void)
 {
 	while (readtoken() == TNL)
-		;
+		readheredocs();
 }
 
 /*

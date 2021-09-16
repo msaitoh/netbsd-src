@@ -1,4 +1,4 @@
-/*	$NetBSD: redir.c,v 1.66 2019/03/01 06:15:01 kre Exp $	*/
+/*	$NetBSD: redir.c,v 1.69 2021/09/15 20:21:47 kre Exp $	*/
 
 /*-
  * Copyright (c) 1991, 1993
@@ -37,7 +37,7 @@
 #if 0
 static char sccsid[] = "@(#)redir.c	8.2 (Berkeley) 5/4/95";
 #else
-__RCSID("$NetBSD: redir.c,v 1.66 2019/03/01 06:15:01 kre Exp $");
+__RCSID("$NetBSD: redir.c,v 1.69 2021/09/15 20:21:47 kre Exp $");
 #endif
 #endif /* not lint */
 
@@ -121,6 +121,7 @@ STATIC int big_sh_fd = 0;
 
 STATIC const struct renamelist *is_renamed(const struct renamelist *, int);
 STATIC void fd_rename(struct redirtab *, int, int);
+STATIC int * saved_redirected_fd(int);
 STATIC void free_rl(struct redirtab *, int);
 STATIC void openredirect(union node *, char[10], int);
 STATIC int openhere(const union node *);
@@ -136,6 +137,7 @@ struct shell_fds {		/* keep track of internal shell fds */
 
 STATIC struct shell_fds *sh_fd_list;
 
+STATIC int pick_new_fd(int);
 STATIC void renumber_sh_fd(struct shell_fds *);
 STATIC struct shell_fds *sh_fd(int);
 
@@ -146,6 +148,21 @@ is_renamed(const struct renamelist *rl, int fd)
 		if (rl->orig == fd)
 			return rl;
 		rl = rl->next;
+	}
+	return NULL;
+}
+
+STATIC int *
+saved_redirected_fd(int fd)
+{
+	struct redirtab *rt;
+	struct renamelist *rl;
+
+	for (rt = redirlist; rt != NULL; rt = rt->next) {
+		for (rl =  rt->renamed; rl != NULL; rl = rl->next) {
+			if (rl->into == fd)
+				return &rl->into;
+		}
 	}
 	return NULL;
 }
@@ -221,26 +238,45 @@ redirect(union node *redir, int flags)
 		redirlist = sv;
 	}
 	for (n = redir ; n ; n = n->nfile.next) {
+		int *renamed;
+
 		fd = n->nfile.fd;
-		VTRACE(DBG_REDIR, ("redir %d (max=%d) ", fd, max_user_fd));
-		if (fd > max_user_fd)
+		VTRACE(DBG_REDIR, ("redir %d (max=%d limit=%ld) ",
+		    fd, max_user_fd, user_fd_limit));
+		if (fd < user_fd_limit && fd > max_user_fd)
 			max_user_fd = fd;
-		renumber_sh_fd(sh_fd(fd));
 		if ((n->nfile.type == NTOFD || n->nfile.type == NFROMFD) &&
 		    n->ndup.dupfd == fd) {
+			VTRACE(DBG_REDIR, ("!cloexec\n"));
+			if (sh_fd(fd) != NULL ||
+			    saved_redirected_fd(fd) != NULL)
+				error("fd %d: %s", fd, strerror(EBADF));
 			/* redirect from/to same file descriptor */
 			/* make sure it stays open */
 			if (fcntl(fd, F_SETFD, 0) < 0)
 				error("fd %d: %s", fd, strerror(errno));
-			VTRACE(DBG_REDIR, ("!cloexec\n"));
 			continue;
 		}
+		if ((renamed = saved_redirected_fd(fd)) != NULL) {
+			int to = pick_new_fd(fd);
+
+			VTRACE(DBG_REDIR,
+			    ("redirect: moved holding fd %d to %d\n", fd, to));
+			*renamed = to;
+			if (to != fd)	/* always... */
+				(void)close(fd);
+		}
+		renumber_sh_fd(sh_fd(fd));
 
 		if ((flags & REDIR_PUSH) && !is_renamed(sv->renamed, fd)) {
+			int bigfd;
+
 			INTOFF;
 			if (big_sh_fd < 10)
 				find_big_fd();
-			if ((i = fcntl(fd, F_DUPFD, big_sh_fd)) == -1) {
+			if ((bigfd = big_sh_fd) < max_user_fd)
+				bigfd = max_user_fd;
+			if ((i = fcntl(fd, F_DUPFD, bigfd + 1)) == -1) {
 				switch (errno) {
 				case EBADF:
 					i = CLOSED;
@@ -251,17 +287,20 @@ redirect(union node *redir, int flags)
 					i = fcntl(fd, F_DUPFD, big_sh_fd);
 					if (i >= 0)
 						break;
+					if (errno == EMFILE || errno == EINVAL)
+						i = fcntl(fd, F_DUPFD, 3);
+					if (i >= 0)
+						break;
 					/* FALLTHRU */
 				default:
-					i = errno;
-					error("%d: %s", fd, strerror(i));
+					error("%d: %s", fd, strerror(errno));
 					/* NOTREACHED */
 				}
 			}
 			if (i >= 0)
 				(void)fcntl(i, F_SETFD, FD_CLOEXEC);
 			fd_rename(sv, fd, i);
-			VTRACE(DBG_REDIR, ("saved as %d ", i));
+			VTRACE(DBG_REDIR, ("fd %d saved as %d ", fd, i));
 			INTON;
 		}
 		VTRACE(DBG_REDIR, ("%s\n", fd == 0 ? "STDIN" : ""));
@@ -350,6 +389,10 @@ openredirect(union node *redir, char memory[10], int flags)
 	case NTOFD:
 	case NFROMFD:
 		if (redir->ndup.dupfd >= 0) {	/* if not ">&-" */
+			if (sh_fd(redir->ndup.dupfd) != NULL ||
+			    saved_redirected_fd(redir->ndup.dupfd) != NULL)
+				error("Redirect (from %d to %d) failed: %s",
+				    redir->ndup.dupfd, fd, strerror(EBADF));
 			if (fd < 10 && redir->ndup.dupfd < 10 &&
 			    memory[redir->ndup.dupfd])
 				memory[fd] = 1;
@@ -381,6 +424,7 @@ openredirect(union node *redir, char memory[10], int flags)
 		if (copyfd(f, fd, cloexec) < 0) {
 			int e = errno;
 
+			VTRACE(DBG_REDIR, (" failed: %s\n", strerror(e)));
 			close(f);
 			error("redirect reassignment (fd %d) failed: %s", fd,
 			    strerror(e));
@@ -598,7 +642,7 @@ to_upper_fd(int fd)
 	int i;
 
 	VTRACE(DBG_REDIR|DBG_OUTPUT, ("to_upper_fd(%d)", fd));
-	if (big_sh_fd < 10)
+	if (big_sh_fd < 10 || big_sh_fd >= user_fd_limit)
 		find_big_fd();
 	do {
 		i = fcntl(fd, F_DUPFD_CLOEXEC, big_sh_fd);
@@ -666,6 +710,26 @@ sh_fd(int fd)
 	return NULL;
 }
 
+STATIC int
+pick_new_fd(int fd)
+{
+	int to;
+
+	to = fcntl(fd, F_DUPFD_CLOEXEC, big_sh_fd);
+	if (to == -1 && big_sh_fd >= 22)
+		to = fcntl(fd, F_DUPFD_CLOEXEC, big_sh_fd/2);
+	if (to == -1)
+		to = fcntl(fd, F_DUPFD_CLOEXEC, fd + 1);
+	if (to == -1)
+		to = fcntl(fd, F_DUPFD_CLOEXEC, 10);
+	if (to == -1)
+		to = fcntl(fd, F_DUPFD_CLOEXEC, 3);
+	if (to == -1)
+		error("insufficient file descriptors available");
+	CLOEXEC(to);
+	return to;
+}
+
 STATIC void
 renumber_sh_fd(struct shell_fds *fp)
 {
@@ -683,21 +747,13 @@ renumber_sh_fd(struct shell_fds *fp)
 	if (fp->fd >= big_sh_fd)
 		find_big_fd();
 
-	to = fcntl(fp->fd, F_DUPFD_CLOEXEC, big_sh_fd);
-	if (to == -1)
-		to = fcntl(fp->fd, F_DUPFD_CLOEXEC, big_sh_fd/2);
-	if (to == -1)
-		to = fcntl(fp->fd, F_DUPFD_CLOEXEC, fp->fd + 1);
-	if (to == -1)
-		to = fcntl(fp->fd, F_DUPFD_CLOEXEC, 10);
-	if (to == -1)
-		to = fcntl(fp->fd, F_DUPFD_CLOEXEC, 3);
-	if (to == -1)
-		error("insufficient file descriptors available");
-	CLOEXEC(to);
+	to = pick_new_fd(fp->fd);
 
 	if (fp->fd == to)	/* impossible? */
 		return;
+
+	VTRACE(DBG_REDIR, ("renumber_sh_fd: moved shell fd %d to %d\n",
+	    fp->fd, to));
 
 	(*fp->cb)(fp->fd, to);
 	(void)close(fp->fd);
@@ -825,11 +881,10 @@ getflags(int fd, int p)
 {
 	int c, f;
 
-	if (sh_fd(fd) != NULL) {
+	if (sh_fd(fd) != NULL || saved_redirected_fd(fd) != NULL) {
 		if (!p)
 			return -1;
-		error("Can't get status for fd=%d (%s)", fd,
-		    "Bad file descriptor");			/*XXX*/
+		error("Can't get status for fd=%d (%s)", fd, strerror(EBADF));
 	}
 
 	if ((c = fcntl(fd, F_GETFD)) == -1) {
@@ -986,8 +1041,9 @@ fdflagscmd(int argc, char *argv[])
 
 		while (num[0] == '0' && num[1] != '\0')		/* skip 0's */
 			num++;
-		if (strlen(num) > 5)
-			error("%s too big to be a file descriptor", num);
+		if (strlen(num) > 5 ||
+		    (fd >= user_fd_limit && fd > max_user_fd))
+			error("%s: too big to be a file descriptor", num);
 
 		if (setflags)
 			setone(fd, pos, neg, verbose);
