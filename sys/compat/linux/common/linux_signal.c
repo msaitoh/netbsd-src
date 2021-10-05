@@ -1,4 +1,4 @@
-/*	$NetBSD: linux_signal.c,v 1.84 2021/09/07 11:43:04 riastradh Exp $	*/
+/*	$NetBSD: linux_signal.c,v 1.86 2021/09/23 06:56:27 ryo Exp $	*/
 
 /*-
  * Copyright (c) 1995, 1998 The NetBSD Foundation, Inc.
@@ -48,7 +48,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: linux_signal.c,v 1.84 2021/09/07 11:43:04 riastradh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: linux_signal.c,v 1.86 2021/09/23 06:56:27 ryo Exp $");
 
 #define COMPAT_LINUX 1
 
@@ -268,6 +268,7 @@ linux_to_native_sigflags(const unsigned long lsf)
 	return bsf;
 }
 
+#if !defined(__aarch64__)
 /*
  * Convert between Linux and BSD sigaction structures.
  */
@@ -293,6 +294,7 @@ native_to_linux_old_sigaction(struct linux_old_sigaction *lsa, const struct siga
 	lsa->linux_sa_restorer = NULL;
 #endif
 }
+#endif
 
 /* ...and the new sigaction conversion funcs. */
 void
@@ -402,6 +404,7 @@ linux_sys_rt_sigaction(struct lwp *l, const struct linux_sys_rt_sigaction_args *
 	return 0;
 }
 
+#if !defined(__aarch64__)
 int
 linux_sigprocmask1(struct lwp *l, int how, const linux_old_sigset_t *set, linux_old_sigset_t *oset)
 {
@@ -444,6 +447,7 @@ linux_sigprocmask1(struct lwp *l, int how, const linux_old_sigset_t *set, linux_
 	}
 	return error;
 }
+#endif
 
 int
 linux_sys_rt_sigprocmask(struct lwp *l, const struct linux_sys_rt_sigprocmask_args *uap, register_t *retval)
@@ -515,7 +519,7 @@ linux_sys_rt_sigpending(struct lwp *l, const struct linux_sys_rt_sigpending_args
 	return copyout(&lss, SCARG(uap, set), sizeof(lss));
 }
 
-#ifndef __amd64__
+#if !defined(__aarch64__) && !defined(__amd64__)
 int
 linux_sys_sigpending(struct lwp *l, const struct linux_sys_sigpending_args *uap, register_t *retval)
 {
@@ -545,7 +549,7 @@ linux_sys_sigsuspend(struct lwp *l, const struct linux_sys_sigsuspend_args *uap,
 	linux_old_to_native_sigset(&bss, &lss);
 	return sigsuspend1(l, &bss);
 }
-#endif /* __amd64__ */
+#endif /* !__aarch64__ && !__amd64__ */
 
 int
 linux_sys_rt_sigsuspend(struct lwp *l, const struct linux_sys_rt_sigsuspend_args *uap, register_t *retval)
@@ -626,6 +630,7 @@ linux_sys_rt_sigtimedwait(struct lwp *l,
 	    retval, fetchss, storeinfo, fetchts, fakestorets);
 }
 
+#if !defined(__aarch64__)
 /*
  * Once more: only a signal conversion is needed.
  * Note: also used as sys_rt_queueinfo.  The info field is ignored.
@@ -651,6 +656,7 @@ linux_sys_rt_queueinfo(struct lwp *l, const struct linux_sys_rt_queueinfo_args *
 	/* XXX keep a list of queued signals somewhere.	*/
 	return linux_sys_kill(l, (const void *)uap, retval);
 }
+#endif
 
 int
 linux_sys_kill(struct lwp *l, const struct linux_sys_kill_args *uap, register_t *retval)
@@ -851,4 +857,51 @@ native_to_linux_si_status(int code, int status)
 	}
 
 	return sts;
+}
+
+int
+linux_to_native_sigevent(struct sigevent *nsep,
+    const struct linux_sigevent *lsep)
+{
+	memset(nsep, 0, sizeof(*nsep));
+
+	switch (lsep->sigev_notify) {
+	case LINUX_SIGEV_SIGNAL:
+		nsep->sigev_notify = SIGEV_SIGNAL;
+		break;
+
+	case LINUX_SIGEV_NONE:
+		nsep->sigev_notify = SIGEV_NONE;
+		break;
+
+	case LINUX_SIGEV_THREAD:
+	case LINUX_SIGEV_THREAD_ID:
+	default:
+		return ENOTSUP;
+	}
+
+	nsep->sigev_value = lsep->sigev_value;
+	if (lsep->sigev_signo < 0 || lsep->sigev_signo >= LINUX__NSIG) {
+		return EINVAL;
+	}
+	nsep->sigev_signo = linux_to_native_signo[lsep->sigev_signo];
+
+	return 0;
+}
+
+int
+linux_sigevent_copyin(const void *src, void *dst, size_t size)
+{
+	struct linux_sigevent lse;
+	struct sigevent *sep = dst;
+	int error;
+
+	KASSERT(size == sizeof(*sep));
+
+	error = copyin(src, &lse, sizeof(lse));
+	if (error) {
+		return error;
+	}
+
+	return linux_to_native_sigevent(sep, &lse);
 }

@@ -1,4 +1,4 @@
-/*	$NetBSD: kern_exec.c,v 1.506 2021/06/11 12:54:22 martin Exp $	*/
+/*	$NetBSD: kern_exec.c,v 1.509 2021/09/28 15:35:44 thorpej Exp $	*/
 
 /*-
  * Copyright (c) 2008, 2019, 2020 The NetBSD Foundation, Inc.
@@ -62,7 +62,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: kern_exec.c,v 1.506 2021/06/11 12:54:22 martin Exp $");
+__KERNEL_RCSID(0, "$NetBSD: kern_exec.c,v 1.509 2021/09/28 15:35:44 thorpej Exp $");
 
 #include "opt_exec.h"
 #include "opt_execfmt.h"
@@ -87,6 +87,7 @@ __KERNEL_RCSID(0, "$NetBSD: kern_exec.c,v 1.506 2021/06/11 12:54:22 martin Exp $
 #include <sys/acct.h>
 #include <sys/atomic.h>
 #include <sys/exec.h>
+#include <sys/futex.h>
 #include <sys/ktrace.h>
 #include <sys/uidinfo.h>
 #include <sys/wait.h>
@@ -1203,6 +1204,21 @@ execve_runproc(struct lwp *l, struct execve_data * restrict data,
 		mutex_exit(p->p_lock);
 	}
 	KDASSERT(p->p_nlwps == 1);
+
+	/*
+	 * All of the other LWPs got rid of their robust futexes
+	 * when they exited above, but we might still have some
+	 * to dispose of.  Do that now.
+	 */
+	if (__predict_false(l->l_robust_head != 0)) {
+		futex_release_all_lwp(l);
+		/*
+		 * Since this LWP will live on with a different
+		 * program image, we need to clear the robust
+		 * futex list pointer here.
+		 */
+		l->l_robust_head = 0;
+	}
 
 	/* Destroy any lwpctl info. */
 	if (p->p_lwpctl != NULL)

@@ -1,4 +1,4 @@
-/*	$NetBSD: indent.h,v 1.16 2021/03/14 00:33:25 rillig Exp $	*/
+/*	$NetBSD: indent.h,v 1.27 2021/10/03 18:44:51 rillig Exp $	*/
 
 /*-
  * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
@@ -29,10 +29,10 @@
  */
 
 #if 0
-#if defined(__FreeBSD__)
 __FBSDID("$FreeBSD: head/usr.bin/indent/indent.h 336333 2018-07-16 05:46:50Z pstef $");
 #endif
-#endif
+
+#include <stdbool.h>
 
 #include "indent_codes.h"
 #include "indent_globs.h"
@@ -42,12 +42,10 @@ __FBSDID("$FreeBSD: head/usr.bin/indent/indent.h 336333 2018-07-16 05:46:50Z pst
 #endif
 
 void		add_typename(const char *);
-void		alloc_typenames(void);
 int		compute_code_indent(void);
 int		compute_label_indent(void);
 int		indentation_after_range(int, const char *, const char *);
 int		indentation_after(int, const char *);
-void		init_constant_tt(void);
 #ifdef debug
 void		debug_vis_range(const char *, const char *, const char *,
 		    const char *);
@@ -65,6 +63,11 @@ void		dump_line(void);
 void		fill_buffer(void);
 void		parse(token_type);
 void		process_comment(void);
-void		set_defaults(void);
-void		set_option(char *);
-void		set_profile(const char *);
+void		set_option(const char *);
+void		load_profiles(const char *);
+
+void		*xmalloc(size_t);
+void		*xrealloc(void *, size_t);
+char		*xstrdup(const char *);
+
+void		buf_expand(struct buffer *, size_t);

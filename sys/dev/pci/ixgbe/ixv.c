@@ -1,4 +1,4 @@
-/* $NetBSD: ixv.c,v 1.166 2021/08/26 09:03:47 msaitoh Exp $ */
+/* $NetBSD: ixv.c,v 1.169 2021/09/30 04:02:27 yamaguchi Exp $ */
 
 /******************************************************************************
 
@@ -35,7 +35,7 @@
 /*$FreeBSD: head/sys/dev/ixgbe/if_ixv.c 331224 2018-03-19 20:55:05Z erj $*/
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: ixv.c,v 1.166 2021/08/26 09:03:47 msaitoh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: ixv.c,v 1.169 2021/09/30 04:02:27 yamaguchi Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_inet.h"
@@ -44,7 +44,6 @@ __KERNEL_RCSID(0, "$NetBSD: ixv.c,v 1.166 2021/08/26 09:03:47 msaitoh Exp $");
 #endif
 
 #include "ixgbe.h"
-#include "vlan.h"
 
 /************************************************************************
  * Driver version
@@ -431,7 +430,8 @@ ixv_attach(device_t parent, device_t dev, void *aux)
 	ixgbe_init_mbx_params_vf(hw);
 
 	/* Set the right number of segments */
-	adapter->num_segs = IXGBE_82599_SCATTER;
+	KASSERT(IXGBE_82599_SCATTER_MAX >= IXGBE_SCATTER_DEFAULT);
+	adapter->num_segs = IXGBE_SCATTER_DEFAULT;
 
 	/* Reset mbox api to 1.0 */
 	error = hw->mac.ops.reset_hw(hw);
@@ -602,17 +602,11 @@ ixv_detach(device_t dev, int flags)
 	/* Stop the interface. Callouts are stopped in it. */
 	ixv_ifstop(adapter->ifp, 1);
 
-#if NVLAN > 0
-	/* Make sure VLANs are not using driver */
-	if (!VLAN_ATTACHED(&adapter->osdep.ec))
-		;	/* nothing to do: no VLANs */
-	else if ((flags & (DETACH_SHUTDOWN | DETACH_FORCE)) != 0)
-		vlan_ifdetach(adapter->ifp);
-	else {
+	if (VLAN_ATTACHED(&adapter->osdep.ec) &&
+	    (flags & (DETACH_SHUTDOWN | DETACH_FORCE)) == 0) {
 		aprint_error_dev(dev, "VLANs in use, detach first\n");
 		return EBUSY;
 	}
-#endif
 
 	ether_ifdetach(adapter->ifp);
 	callout_halt(&adapter->timer, NULL);
@@ -1716,7 +1710,7 @@ ixv_initialize_transmit_units(struct adapter *adapter)
 
 		/* Set WTHRESH to 8, burst writeback */
 		txdctl = IXGBE_READ_REG(hw, IXGBE_VFTXDCTL(j));
-		txdctl |= (8 << 16);
+		txdctl |= IXGBE_TX_WTHRESH << IXGBE_TXDCTL_WTHRESH_SHIFT;
 		IXGBE_WRITE_REG(hw, IXGBE_VFTXDCTL(j), txdctl);
 
 		/* Set the HW Tx Head and Tail indices */

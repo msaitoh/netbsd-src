@@ -1,4 +1,4 @@
-/*	$NetBSD: event.h,v 1.40 2020/10/31 14:55:52 christos Exp $	*/
+/*	$NetBSD: event.h,v 1.43 2021/09/26 21:29:39 thorpej Exp $	*/
 
 /*-
  * Copyright (c) 1999,2000,2001 Jonathan Lemon <jlemon@FreeBSD.org>
@@ -209,7 +209,7 @@ struct kfilter_mapping {
  * Callback methods for each filter type.
  */
 struct filterops {
-	int	f_isfd;			/* true if ident == filedescriptor */
+	int	f_flags;		/* flags; see below */
 	int	(*f_attach)	(struct knote *);
 					/* called when knote is ADDed */
 	void	(*f_detach)	(struct knote *);
@@ -218,6 +218,10 @@ struct filterops {
 					/* called when event is triggered */
 	void	(*f_touch)	(struct knote *, struct kevent *, long);
 };
+
+/* filterops flags */
+#define	FILTEROP_ISFD	__BIT(0)	/* ident == file descriptor */
+#define	FILTEROP_MPSAFE	__BIT(1)	/* does not require KERNEL_LOCK */
 
 /*
  * Field locking:
@@ -267,7 +271,7 @@ struct knote {
 #define	kn_data		kn_kevent.data
 };
 
-#include <sys/systm.h> /* for copyin_t */
+#include <sys/systm.h>	/* for copyin_t */
 
 struct lwp;
 struct timespec;
@@ -302,8 +306,6 @@ int	kfilter_unregister(const char *);
 
 int	filt_seltrue(struct knote *, long);
 extern const struct filterops seltrue_filtops;
-
-extern struct klist fs_klist;	/* EVFILT_FS */
 
 #else 	/* !_KERNEL */
 

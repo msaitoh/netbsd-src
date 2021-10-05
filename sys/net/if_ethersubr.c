@@ -1,4 +1,4 @@
-/*	$NetBSD: if_ethersubr.c,v 1.293 2021/05/17 04:07:43 yamaguchi Exp $	*/
+/*	$NetBSD: if_ethersubr.c,v 1.300 2021/09/30 04:29:16 yamaguchi Exp $	*/
 
 /*
  * Copyright (C) 1995, 1996, 1997, and 1998 WIDE Project.
@@ -61,7 +61,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_ethersubr.c,v 1.293 2021/05/17 04:07:43 yamaguchi Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_ethersubr.c,v 1.300 2021/09/30 04:29:16 yamaguchi Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_inet.h"
@@ -78,7 +78,6 @@ __KERNEL_RCSID(0, "$NetBSD: if_ethersubr.c,v 1.293 2021/05/17 04:07:43 yamaguchi
 #include "bridge.h"
 #include "arp.h"
 #include "agr.h"
-#include "lagg.h"
 
 #include <sys/sysctl.h>
 #include <sys/mbuf.h>
@@ -90,6 +89,7 @@ __KERNEL_RCSID(0, "$NetBSD: if_ethersubr.c,v 1.293 2021/05/17 04:07:43 yamaguchi
 #include <sys/rndsource.h>
 #include <sys/cpu.h>
 #include <sys/kmem.h>
+#include <sys/hook.h>
 
 #include <net/if.h>
 #include <net/netisr.h>
@@ -651,6 +651,9 @@ ether_input(struct ifnet *ifp, struct mbuf *m)
 	size_t ehlen;
 	static int earlypkts;
 	int isr = 0;
+#if NAGR > 0
+	void *agrprivate;
+#endif
 
 	KASSERT(!cpu_intr_p());
 	KASSERT((m->m_flags & M_PKTHDR) != 0);
@@ -753,7 +756,12 @@ ether_input(struct ifnet *ifp, struct mbuf *m)
 	}
 
 #if NAGR > 0
-	if (ifp->if_agrprivate &&
+	if (ifp->if_type != IFT_IEEE8023ADLAG) {
+		agrprivate = ifp->if_lagg;
+	} else {
+		agrprivate = NULL;
+	}
+	if (agrprivate != NULL &&
 	    __predict_true(etype != ETHERTYPE_SLOWPROTOCOLS)) {
 		m->m_flags &= ~M_PROMISC;
 		agr_input(ifp, m);
@@ -843,14 +851,14 @@ ether_input(struct ifnet *ifp, struct mbuf *m)
 		switch (subtype) {
 #if NAGR > 0
 		case SLOWPROTOCOLS_SUBTYPE_LACP:
-			if (ifp->if_agrprivate) {
+			if (agrprivate != NULL) {
 				ieee8023ad_lacp_input(ifp, m);
 				return;
 			}
 			break;
 
 		case SLOWPROTOCOLS_SUBTYPE_MARKER:
-			if (ifp->if_agrprivate) {
+			if (agrprivate != NULL) {
 				ieee8023ad_marker_input(ifp, m);
 				return;
 			}
@@ -997,17 +1005,6 @@ ether_snprintf(char *buf, size_t len, const u_char *ap)
 	return buf;
 }
 
-static void
-ether_link_state_changed(struct ifnet *ifp, int link_state)
-{
-#if NVLAN > 0
-	struct ethercom *ec = (void *)ifp;
-
-	if (ec->ec_nvlans)
-		vlan_link_state_changed(ifp, link_state);
-#endif
-}
-
 /*
  * Perform common duties while attaching to interface list
  */
@@ -1015,6 +1012,7 @@ void
 ether_ifattach(struct ifnet *ifp, const uint8_t *lla)
 {
 	struct ethercom *ec = (struct ethercom *)ifp;
+	char xnamebuf[HOOKNAMSIZ];
 
 	ifp->if_type = IFT_ETHER;
 	ifp->if_hdrlen = ETHER_HDR_LEN;
@@ -1022,7 +1020,6 @@ ether_ifattach(struct ifnet *ifp, const uint8_t *lla)
 	ifp->if_mtu = ETHERMTU;
 	ifp->if_output = ether_output;
 	ifp->_if_input = ether_input;
-	ifp->if_link_state_changed = ether_link_state_changed;
 	if (ifp->if_baudrate == 0)
 		ifp->if_baudrate = IF_Mbps(10);		/* just a default */
 
@@ -1035,6 +1032,9 @@ ether_ifattach(struct ifnet *ifp, const uint8_t *lla)
 	ec->ec_flags = 0;
 	ifp->if_broadcastaddr = etherbroadcastaddr;
 	bpf_attach(ifp, DLT_EN10MB, sizeof(struct ether_header));
+	snprintf(xnamebuf, sizeof(xnamebuf),
+	    "%s-ether_ifdetachhooks", ifp->if_xname);
+	ec->ec_ifdetach_hooks = simplehook_create(IPL_NET, xnamebuf);
 #ifdef MBUFTRACE
 	mowner_init_owner(&ec->ec_tx_mowner, ifp->if_xname, "tx");
 	mowner_init_owner(&ec->ec_rx_mowner, ifp->if_xname, "rx");
@@ -1061,20 +1061,11 @@ ether_ifdetach(struct ifnet *ifp)
 	ifp->if_ioctl = __FPTRCAST(int (*)(struct ifnet *, u_long, void *),
 	    enxio);
 
-#if NBRIDGE > 0
-	if (ifp->if_bridge)
-		bridge_ifdetach(ifp);
-#endif
-	bpf_detach(ifp);
-#if NVLAN > 0
-	if (ec->ec_nvlans)
-		vlan_ifdetach(ifp);
-#endif
+	simplehook_dohooks(ec->ec_ifdetach_hooks);
+	KASSERT(!simplehook_has_hooks(ec->ec_ifdetach_hooks));
+	simplehook_destroy(ec->ec_ifdetach_hooks);
 
-#if NLAGG > 0
-	if (ifp->if_lagg)
-		lagg_ifdetach(ifp);
-#endif
+	bpf_detach(ifp);
 
 	ETHER_LOCK(ec);
 	KASSERT(ec->ec_nvlans == 0);
@@ -1091,6 +1082,36 @@ ether_ifdetach(struct ifnet *ifp)
 	ifp->if_mowner = NULL;
 	MOWNER_DETACH(&ec->ec_rx_mowner);
 	MOWNER_DETACH(&ec->ec_tx_mowner);
+}
+
+void *
+ether_ifdetachhook_establish(struct ifnet *ifp,
+    void (*fn)(void *), void *arg)
+{
+	struct ethercom *ec;
+	khook_t *hk;
+
+	if (ifp->if_type != IFT_ETHER)
+		return NULL;
+
+	ec = (struct ethercom *)ifp;
+	hk = simplehook_establish(ec->ec_ifdetach_hooks,
+	    fn, arg);
+
+	return (void *)hk;
+}
+
+void
+ether_ifdetachhook_disestablish(struct ifnet *ifp,
+    void *vhook, kmutex_t *lock)
+{
+	struct ethercom *ec;
+
+	if (vhook == NULL)
+		return;
+
+	ec = (struct ethercom *)ifp;
+	simplehook_disestablish(ec->ec_ifdetach_hooks, vhook, lock);
 }
 
 #if 0

@@ -1,4 +1,4 @@
-/*	$NetBSD: if.c,v 1.487 2021/07/01 22:08:13 blymn Exp $	*/
+/*	$NetBSD: if.c,v 1.496 2021/09/30 03:51:05 yamaguchi Exp $	*/
 
 /*-
  * Copyright (c) 1999, 2000, 2001, 2008 The NetBSD Foundation, Inc.
@@ -90,7 +90,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if.c,v 1.487 2021/07/01 22:08:13 blymn Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if.c,v 1.496 2021/09/30 03:51:05 yamaguchi Exp $");
 
 #if defined(_KERNEL_OPT)
 #include "opt_inet.h"
@@ -122,6 +122,7 @@ __KERNEL_RCSID(0, "$NetBSD: if.c,v 1.487 2021/07/01 22:08:13 blymn Exp $");
 #include <sys/module_hook.h>
 #include <sys/compat_stub.h>
 #include <sys/msan.h>
+#include <sys/hook.h>
 
 #include <net/if.h>
 #include <net/if_dl.h>
@@ -158,11 +159,6 @@ __KERNEL_RCSID(0, "$NetBSD: if.c,v 1.487 2021/07/01 22:08:13 blymn Exp $");
 #include "carp.h"
 #if NCARP > 0
 #include <netinet/ip_carp.h>
-#endif
-
-#include "lagg.h"
-#if NLAGG > 0
-#include <net/lagg/if_laggvar.h>
 #endif
 
 #include <compat/sys/sockio.h>
@@ -631,8 +627,13 @@ static void
 if_getindex(ifnet_t *ifp)
 {
 	bool hitlimit = false;
+	char xnamebuf[HOOKNAMSIZ];
 
 	ifp->if_index_gen = index_gen++;
+	snprintf(xnamebuf, sizeof(xnamebuf),
+	    "%s-lshk", ifp->if_xname);
+	ifp->if_linkstate_hooks = simplehook_create(IPL_NET,
+	    xnamebuf);
 
 	ifp->if_index = if_index;
 	if (ifindex2ifnet == NULL) {
@@ -1198,8 +1199,6 @@ if_deactivate(struct ifnet *ifp)
 	ifp->if_slowtimo = if_nullslowtimo;
 	ifp->if_drain	 = if_nulldrain;
 
-	ifp->if_link_state_changed = NULL;
-
 	/* No more packets may be enqueued. */
 	ifp->if_snd.ifq_maxlen = 0;
 
@@ -1326,7 +1325,7 @@ if_detach(struct ifnet *ifp)
 	/*
 	 * Unset all queued link states and pretend a
 	 * link state change is scheduled.
-	 * This stops any more link state changes occuring for this
+	 * This stops any more link state changes occurring for this
 	 * interface while it's being detached so it's safe
 	 * to drain the workqueue.
 	 */
@@ -1533,6 +1532,8 @@ restart:
 	ifp->if_ioctl_lock = NULL;
 	mutex_obj_free(ifp->if_snd.ifq_lock);
 	if_stats_fini(ifp);
+	KASSERT(!simplehook_has_hooks(ifp->if_linkstate_hooks));
+	simplehook_destroy(ifp->if_linkstate_hooks);
 
 	splx(s);
 
@@ -2394,23 +2395,7 @@ if_link_state_change_process(struct ifnet *ifp, int link_state)
 	/* Notify that the link state has changed. */
 	rt_ifmsg(ifp);
 
-#if NCARP > 0
-	if (ifp->if_carp)
-		carp_carpdev_state(ifp);
-#endif
-
-	if (ifp->if_link_state_changed != NULL)
-		ifp->if_link_state_changed(ifp, link_state);
-
-#if NBRIDGE > 0
-	if (ifp->if_bridge != NULL)
-		bridge_calc_link_state(ifp->if_bridge);
-#endif
-
-#if NLAGG > 0
-	if (ifp->if_lagg != NULL)
-		lagg_linkstate_changed(ifp);
-#endif
+	simplehook_dohooks(ifp->if_linkstate_hooks);
 
 	DOMAIN_FOREACH(dp) {
 		if (dp->dom_if_link_state_change != NULL)
@@ -2457,6 +2442,23 @@ if_link_state_change_work(struct work *work, void *arg)
 out:
 	splx(s);
 	KERNEL_UNLOCK_UNLESS_NET_MPSAFE();
+}
+
+void *
+if_linkstate_change_establish(struct ifnet *ifp, void (*fn)(void *), void *arg)
+{
+	khook_t *hk;
+
+	hk = simplehook_establish(ifp->if_linkstate_hooks, fn, arg);
+
+	return (void *)hk;
+}
+
+void
+if_linkstate_change_disestablish(struct ifnet *ifp, void *vhook, kmutex_t *lock)
+{
+
+	simplehook_disestablish(ifp->if_linkstate_hooks, vhook, lock);
 }
 
 /*
@@ -3163,7 +3165,7 @@ ifioctl_common(struct ifnet *ifp, u_long cmd, void *data)
 		ifp->if_mtu = ifr->ifr_mtu;
 		return ENETRESET;
 	case SIOCSIFDESCR:
-		error = kauth_authorize_network(curlwp->l_cred,
+		error = kauth_authorize_network(kauth_cred_get(),
 		    KAUTH_NETWORK_INTERFACE,
 		    KAUTH_REQ_NETWORK_INTERFACE_SETPRIV, ifp, KAUTH_ARG(cmd),
 		    NULL);
@@ -3232,7 +3234,7 @@ ifaddrpref_ioctl(struct socket *so, u_long cmd, void *data, struct ifnet *ifp)
 
 	switch (cmd) {
 	case SIOCSIFADDRPREF:
-		error = kauth_authorize_network(curlwp->l_cred,
+		error = kauth_authorize_network(kauth_cred_get(),
 		    KAUTH_NETWORK_INTERFACE,
 		    KAUTH_REQ_NETWORK_INTERFACE_SETPRIV, ifp, KAUTH_ARG(cmd),
 		    NULL);

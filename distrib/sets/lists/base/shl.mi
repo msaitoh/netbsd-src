@@ -1,4 +1,4 @@
-# $NetBSD: shl.mi,v 1.925 2021/09/02 11:28:45 christos Exp $
+# $NetBSD: shl.mi,v 1.928 2021/09/30 02:00:19 yamaguchi Exp $
 #
 # Note:	Don't delete entries from here - mark them as "obsolete" instead,
 #	unless otherwise stated below.
@@ -24,7 +24,7 @@
 ./lib/libblocklist.so.0.0			base-sys-shlib		dynamicroot
 ./lib/libc.so					base-sys-shlib		dynamicroot
 ./lib/libc.so.12				base-sys-shlib		dynamicroot
-./lib/libc.so.12.218				base-sys-shlib		dynamicroot
+./lib/libc.so.12.219				base-sys-shlib		dynamicroot
 ./lib/libcrypt.so				base-sys-shlib		dynamicroot
 ./lib/libcrypt.so.1				base-sys-shlib		dynamicroot
 ./lib/libcrypt.so.1.0				base-sys-shlib		dynamicroot
@@ -251,7 +251,7 @@
 ./usr/lib/libc++.so.1.0				base-sys-shlib		compatfile,libcxx
 ./usr/lib/libc.so				base-sys-shlib		compatfile
 ./usr/lib/libc.so.12				base-sys-shlib		compatfile
-./usr/lib/libc.so.12.218			base-sys-shlib		compatfile
+./usr/lib/libc.so.12.219			base-sys-shlib		compatfile
 ./usr/lib/libcbor.so				base-sys-shlib		compatfile
 ./usr/lib/libcbor.so.0				base-sys-shlib		compatfile
 ./usr/lib/libcbor.so.0.5			base-sys-shlib		compatfile
@@ -328,8 +328,8 @@
 ./usr/lib/libfetch.so.3				base-sys-shlib		compatfile
 ./usr/lib/libfetch.so.3.0			base-sys-shlib		compatfile
 ./usr/lib/libfido2.so				base-sys-shlib		compatfile
-./usr/lib/libfido2.so.3				base-sys-shlib		compatfile
-./usr/lib/libfido2.so.3.0			base-sys-shlib		compatfile
+./usr/lib/libfido2.so.4				base-sys-shlib		compatfile
+./usr/lib/libfido2.so.4.0			base-sys-shlib		compatfile
 ./usr/lib/libform.so				base-sys-shlib		compatfile
 ./usr/lib/libform.so.8				base-sys-shlib		compatfile
 ./usr/lib/libform.so.8.0			base-sys-shlib		compatfile
@@ -741,6 +741,9 @@
 ./usr/lib/librumpkern_nv.so			base-rump-shlib		rump
 ./usr/lib/librumpkern_nv.so.0			base-rump-shlib		rump
 ./usr/lib/librumpkern_nv.so.0.0			base-rump-shlib		rump
+./usr/lib/librumpkern_simplehook_tester.so	base-rump-shlib		rump
+./usr/lib/librumpkern_simplehook_tester.so.0	base-rump-shlib		rump
+./usr/lib/librumpkern_simplehook_tester.so.0.0	base-rump-shlib		rump
 ./usr/lib/librumpkern_sljit.so			base-rump-shlib		rump,sljit
 ./usr/lib/librumpkern_sljit.so.0		base-rump-shlib		rump,sljit
 ./usr/lib/librumpkern_sljit.so.0.0		base-rump-shlib		rump,sljit

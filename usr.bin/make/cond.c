@@ -1,4 +1,4 @@
-/*	$NetBSD: cond.c,v 1.270 2021/07/29 06:35:20 rillig Exp $	*/
+/*	$NetBSD: cond.c,v 1.280 2021/09/26 03:23:06 rillig Exp $	*/
 
 /*
  * Copyright (c) 1988, 1989, 1990 The Regents of the University of California.
@@ -95,14 +95,14 @@
 #include "dir.h"
 
 /*	"@(#)cond.c	8.2 (Berkeley) 1/2/94"	*/
-MAKE_RCSID("$NetBSD: cond.c,v 1.270 2021/07/29 06:35:20 rillig Exp $");
+MAKE_RCSID("$NetBSD: cond.c,v 1.280 2021/09/26 03:23:06 rillig Exp $");
 
 /*
  * The parsing of conditional expressions is based on this grammar:
- *	Or -> And '||' Or
  *	Or -> And
- *	And -> Term '&&' And
+ *	Or -> Or '||' And
  *	And -> Term
+ *	And -> And '&&' Term
  *	Term -> Function '(' Argument ')'
  *	Term -> Leaf Operator Leaf
  *	Term -> Leaf
@@ -154,6 +154,20 @@ typedef struct CondParser {
 	bool (*evalBare)(size_t, const char *);
 	bool negateEvalBare;
 
+	/*
+	 * Whether the left-hand side of a comparison may be an unquoted
+	 * string.  This is allowed for expressions of the form
+	 * ${condition:?:}, see ApplyModifier_IfElse.  Such a condition is
+	 * expanded before it is evaluated, due to ease of implementation.
+	 * This means that at the point where the condition is evaluated,
+	 * make cannot know anymore whether the left-hand side had originally
+	 * been a variable expression or a plain word.
+	 *
+	 * In all other contexts, the left-hand side must either be a
+	 * variable expression, a quoted string or a number.
+	 */
+	bool leftUnquotedOK;
+
 	const char *p;		/* The remaining condition to parse */
 	Token curr;		/* Single push-back token used in parsing */
 
@@ -172,24 +186,12 @@ static unsigned int cond_depth = 0;	/* current .if nesting level */
 static unsigned int cond_min_depth = 0;	/* depth at makefile open */
 
 /* Names for ComparisonOp. */
-static const char *opname[] = { "<", "<=", ">", ">=", "==", "!=" };
-
-/*
- * Indicate when we should be strict about lhs of comparisons.
- * In strict mode, the lhs must be a variable expression or a string literal
- * in quotes. In non-strict mode it may also be an unquoted string literal.
- *
- * True when CondEvalExpression is called from Cond_EvalLine (.if etc).
- * False when CondEvalExpression is called from ApplyModifier_IfElse
- * since lhs is already expanded, and at that point we cannot tell if
- * it was a variable reference or not.
- */
-static bool lhsStrict;
+static const char opname[][3] = { "<", "<=", ">", ">=", "==", "!=" };
 
 static bool
-is_token(const char *str, const char *tok, size_t len)
+is_token(const char *str, const char *tok, unsigned char len)
 {
-	return strncmp(str, tok, len) == 0 && !ch_isalpha(str[len]);
+	return strncmp(str, tok, (size_t)len) == 0 && !ch_isalpha(str[len]);
 }
 
 static Token
@@ -413,17 +415,16 @@ is_separator(char ch)
  */
 static bool
 CondParser_StringExpr(CondParser *par, const char *start,
-		      bool const doEval, bool const quoted,
-		      Buffer *buf, FStr *const inout_str)
+		      bool doEval, bool quoted,
+		      Buffer *buf, FStr *inout_str)
 {
 	VarEvalMode emode;
 	const char *nested_p;
 	bool atStart;
 	VarParseResult parseResult;
 
-	/* if we are in quotes, an undefined variable is ok */
-	emode = doEval && !quoted ? VARE_UNDEFERR
-	    : doEval ? VARE_WANTRES
+	emode = doEval && quoted ? VARE_WANTRES
+	    : doEval ? VARE_UNDEFERR
 	    : VARE_PARSE_ONLY;
 
 	nested_p = par->p;
@@ -478,7 +479,7 @@ CondParser_StringExpr(CondParser *par, const char *start,
  *	Sets out_quoted if the leaf was a quoted string literal.
  */
 static void
-CondParser_Leaf(CondParser *par, bool doEval, bool strictLHS,
+CondParser_Leaf(CondParser *par, bool doEval, bool unquotedOK,
 		  FStr *out_str, bool *out_quoted)
 {
 	Buffer buf;
@@ -526,11 +527,11 @@ CondParser_Leaf(CondParser *par, bool doEval, bool strictLHS,
 				goto cleanup;
 			continue;
 		default:
-			if (strictLHS && !quoted && *start != '$' &&
+			if (!unquotedOK && !quoted && *start != '$' &&
 			    !ch_isdigit(*start)) {
 				/*
 				 * The left-hand side must be quoted,
-				 * a variable reference or a number.
+				 * a variable expression or a number.
 				 */
 				str = FStr_InitRefer(NULL);
 				goto cleanup;
@@ -683,7 +684,7 @@ CondParser_Comparison(CondParser *par, bool doEval)
 	ComparisonOp op;
 	bool lhsQuoted, rhsQuoted;
 
-	CondParser_Leaf(par, doEval, lhsStrict, &lhs, &lhsQuoted);
+	CondParser_Leaf(par, doEval, par->leftUnquotedOK, &lhs, &lhsQuoted);
 	if (lhs.str == NULL)
 		goto done_lhs;
 
@@ -704,7 +705,7 @@ CondParser_Comparison(CondParser *par, bool doEval)
 		goto done_lhs;
 	}
 
-	CondParser_Leaf(par, doEval, false, &rhs, &rhsQuoted);
+	CondParser_Leaf(par, doEval, true, &rhs, &rhsQuoted);
 	if (rhs.str == NULL)
 		goto done_rhs;
 
@@ -777,8 +778,8 @@ static bool
 CondParser_FuncCall(CondParser *par, bool doEval, Token *out_token)
 {
 	static const struct fn_def {
-		const char *fn_name;
-		size_t fn_name_len;
+		const char fn_name[9];
+		unsigned char fn_name_len;
 		size_t (*fn_parse)(CondParser *, const char **, bool,
 				   const char *, char **);
 		bool (*fn_eval)(size_t, const char *);
@@ -794,32 +795,29 @@ CondParser_FuncCall(CondParser *par, bool doEval, Token *out_token)
 	char *arg = NULL;
 	size_t arglen;
 	const char *cp = par->p;
-	const struct fn_def *fns_end = fns + sizeof fns / sizeof fns[0];
+	const struct fn_def *last_fn = fns + sizeof fns / sizeof fns[0] - 1;
 
-	for (fn = fns; fn != fns_end; fn++) {
-		if (!is_token(cp, fn->fn_name, fn->fn_name_len))
-			continue;
+	for (fn = fns; !is_token(cp, fn->fn_name, fn->fn_name_len); fn++)
+		if (fn == last_fn)
+			return false;
 
-		cp += fn->fn_name_len;
-		cpp_skip_whitespace(&cp);
-		if (*cp != '(')
-			break;
+	cp += fn->fn_name_len;
+	cpp_skip_whitespace(&cp);
+	if (*cp != '(')
+		return false;
 
-		arglen = fn->fn_parse(par, &cp, doEval, fn->fn_name, &arg);
-		if (arglen == 0 || arglen == (size_t)-1) {
-			par->p = cp;
-			*out_token = arglen == 0 ? TOK_FALSE : TOK_ERROR;
-			return true;
-		}
-
-		/* Evaluate the argument using the required function. */
-		*out_token = ToToken(!doEval || fn->fn_eval(arglen, arg));
-		free(arg);
+	arglen = fn->fn_parse(par, &cp, doEval, fn->fn_name, &arg);
+	if (arglen == 0 || arglen == (size_t)-1) {
 		par->p = cp;
+		*out_token = arglen == 0 ? TOK_FALSE : TOK_ERROR;
 		return true;
 	}
 
-	return false;
+	/* Evaluate the argument using the required function. */
+	*out_token = ToToken(!doEval || fn->fn_eval(arglen, arg));
+	free(arg);
+	par->p = cp;
+	return true;
 }
 
 /*
@@ -977,8 +975,8 @@ CondParser_Term(CondParser *par, bool doEval)
 }
 
 /*
- * And -> Term '&&' And
  * And -> Term
+ * And -> And '&&' Term
  */
 static CondResult
 CondParser_And(CondParser *par, bool doEval)
@@ -1004,8 +1002,8 @@ CondParser_And(CondParser *par, bool doEval)
 }
 
 /*
- * Or -> And '||' Or
  * Or -> And
+ * Or -> Or '||' And
  */
 static CondResult
 CondParser_Or(CondParser *par, bool doEval)
@@ -1062,18 +1060,17 @@ CondParser_Eval(CondParser *par, bool *out_value)
 static CondEvalResult
 CondEvalExpression(const char *cond, bool *out_value, bool plain,
 		   bool (*evalBare)(size_t, const char *), bool negate,
-		   bool eprint, bool strictLHS)
+		   bool eprint, bool leftUnquotedOK)
 {
 	CondParser par;
 	CondEvalResult rval;
-
-	lhsStrict = strictLHS;
 
 	cpp_skip_hspace(&cond);
 
 	par.plain = plain;
 	par.evalBare = evalBare;
 	par.negateEvalBare = negate;
+	par.leftUnquotedOK = leftUnquotedOK;
 	par.p = cond;
 	par.curr = TOK_NONE;
 	par.printedError = false;
@@ -1094,7 +1091,7 @@ CondEvalResult
 Cond_EvalCondition(const char *cond, bool *out_value)
 {
 	return CondEvalExpression(cond, out_value, true,
-	    FuncDefined, false, false, false);
+	    FuncDefined, false, false, true);
 }
 
 static bool
@@ -1325,7 +1322,7 @@ Cond_EvalLine(const char *line)
 
 	/* And evaluate the conditional expression */
 	if (CondEvalExpression(p, &value, plain, evalBare, negate,
-	    true, true) == COND_INVALID) {
+	    true, false) == COND_INVALID) {
 		/* Syntax error in conditional, error message already output. */
 		/* Skip everything to matching .endif */
 		/* XXX: An extra '.else' is not detected in this case. */

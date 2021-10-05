@@ -1,5 +1,5 @@
-/*	$NetBSD: if_mcx.c,v 1.18 2021/07/24 22:30:59 andvar Exp $ */
-/*	$OpenBSD: if_mcx.c,v 1.99 2021/02/15 03:42:00 dlg Exp $ */
+/*	$NetBSD: if_mcx.c,v 1.22 2021/09/26 20:14:07 jmcneill Exp $ */
+/*	$OpenBSD: if_mcx.c,v 1.101 2021/06/02 19:16:11 patrick Exp $ */
 
 /*
  * Copyright (c) 2017 David Gwynne <dlg@openbsd.org>
@@ -23,7 +23,7 @@
 #endif
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_mcx.c,v 1.18 2021/07/24 22:30:59 andvar Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_mcx.c,v 1.22 2021/09/26 20:14:07 jmcneill Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -2743,6 +2743,7 @@ mcx_attach(device_t parent, device_t self, void *aux)
 	struct mcx_softc *sc = device_private(self);
 	struct ifnet *ifp = &sc->sc_ec.ec_if;
 	struct pci_attach_args *pa = aux;
+	struct ifcapreq ifcr;
 	uint8_t enaddr[ETHER_ADDR_LEN];
 	int counts[PCI_INTR_TYPE_SIZE];
 	char intrxname[32];
@@ -2764,7 +2765,12 @@ mcx_attach(device_t parent, device_t self, void *aux)
 	/* Map the PCI memory space */
 	memtype = pci_mapreg_type(sc->sc_pc, sc->sc_tag, MCX_HCA_BAR);
 	if (pci_mapreg_map(pa, MCX_HCA_BAR, memtype,
-	    0 /*BUS_SPACE_MAP_PREFETCHABLE*/, &sc->sc_memt, &sc->sc_memh,
+#ifdef __NetBSD__
+	    0,
+#else
+	    BUS_SPACE_MAP_PREFETCHABLE,
+#endif
+	    &sc->sc_memt, &sc->sc_memh,
 	    NULL, &sc->sc_mems)) {
 		aprint_error(": unable to map register memory\n");
 		return;
@@ -2988,6 +2994,12 @@ mcx_attach(device_t parent, device_t self, void *aux)
 	ifmedia_set(&sc->sc_media, IFM_ETHER | IFM_AUTO);
 
 	if_attach(ifp);
+
+	/* Enable hardware offload by default */
+	memset(&ifcr, 0, sizeof(ifcr));
+	ifcr.ifcr_capenable = ifp->if_capabilities;
+	ifioctl_common(ifp, SIOCSIFCAP, &ifcr);
+
 	if_deferred_start_init(ifp, NULL);
 
 	ether_ifattach(ifp, enaddr);
@@ -6921,21 +6933,21 @@ mcx_process_rx(struct mcx_softc *sc, struct mcx_rx *rx,
 	struct ifnet *ifp = &sc->sc_ec.ec_if;
 	struct mcx_slot *ms;
 	struct mbuf *m;
-	uint32_t flags;
+	uint32_t flags, len;
 	int slot;
 
+	len = be32dec(&cqe->cq_byte_cnt);
 	slot = be16toh(cqe->cq_wqe_count) % (1 << MCX_LOG_RQ_SIZE);
 
 	ms = &rx->rx_slots[slot];
-	bus_dmamap_sync(sc->sc_dmat, ms->ms_map, 0, ms->ms_map->dm_mapsize,
-	    BUS_DMASYNC_POSTREAD);
+	bus_dmamap_sync(sc->sc_dmat, ms->ms_map, 0, len, BUS_DMASYNC_POSTREAD);
 	bus_dmamap_unload(sc->sc_dmat, ms->ms_map);
 
 	m = ms->ms_m;
 	ms->ms_m = NULL;
 
 	m_set_rcvif(m, &sc->sc_ec.ec_if);
-	m->m_pkthdr.len = m->m_len = be32dec(&cqe->cq_byte_cnt);
+	m->m_pkthdr.len = m->m_len = len;
 
 #if 0
 	if (cqe->cq_rx_hash_type) {
@@ -8206,7 +8218,9 @@ mcx_wr(struct mcx_softc *sc, bus_size_t r, uint32_t v)
 static inline void
 mcx_bar(struct mcx_softc *sc, bus_size_t r, bus_size_t l, int f)
 {
+#ifndef __NetBSD__
 	bus_space_barrier(sc->sc_memt, sc->sc_memh, r, l, f);
+#endif
 }
 
 static uint64_t
@@ -8245,7 +8259,8 @@ mcx_dmamem_alloc(struct mcx_softc *sc, struct mcx_dmamem *mxm,
 	    BUS_DMA_WAITOK) != 0)
 		goto destroy;
 	if (bus_dmamem_map(sc->sc_dmat, &mxm->mxm_seg, mxm->mxm_nsegs,
-	    mxm->mxm_size, &mxm->mxm_kva, BUS_DMA_WAITOK) != 0)
+	    mxm->mxm_size, &mxm->mxm_kva,
+	    BUS_DMA_WAITOK | BUS_DMA_COHERENT) != 0)
 		goto free;
 	if (bus_dmamap_load(sc->sc_dmat, mxm->mxm_map, mxm->mxm_kva,
 	    mxm->mxm_size, NULL, BUS_DMA_WAITOK) != 0)

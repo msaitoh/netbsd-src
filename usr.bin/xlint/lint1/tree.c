@@ -1,4 +1,4 @@
-/*	$NetBSD: tree.c,v 1.381 2021/09/12 10:06:03 rillig Exp $	*/
+/*	$NetBSD: tree.c,v 1.383 2021/09/26 14:52:37 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -37,7 +37,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: tree.c,v 1.381 2021/09/12 10:06:03 rillig Exp $");
+__RCSID("$NetBSD: tree.c,v 1.383 2021/09/26 14:52:37 rillig Exp $");
 #endif
 
 #include <float.h>
@@ -2035,6 +2035,10 @@ should_warn_about_prototype_conversion(tspec_t nt,
 		/* representation and/or width change */
 		if (!is_integer(ot))
 			return true;
+		/*
+		 * XXX: Investigate whether this rule makes sense; see
+		 * tests/usr.bin/xlint/lint1/platform_long.c.
+		 */
 		return portable_size_in_bits(ot) > portable_size_in_bits(INT);
 	}
 
@@ -3333,7 +3337,7 @@ fold_float(tnode_t *tn)
 	}
 
 	lint_assert(fpe != 0 || isnan((double)v->v_ldbl) == 0);
-	if (fpe != 0 || finite((double)v->v_ldbl) == 0 ||
+	if (fpe != 0 || isfinite((double)v->v_ldbl) == 0 ||
 	    (t == FLOAT &&
 	     (v->v_ldbl > FLT_MAX || v->v_ldbl < -FLT_MAX)) ||
 	    (t == DOUBLE &&

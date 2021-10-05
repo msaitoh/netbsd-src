@@ -1,4 +1,4 @@
-# $NetBSD: cond-token-plain.mk,v 1.10 2021/01/21 14:08:09 rillig Exp $
+# $NetBSD: cond-token-plain.mk,v 1.12 2021/09/21 22:38:25 rillig Exp $
 #
 # Tests for plain tokens (that is, string literals without quotes)
 # in .if conditions.
@@ -183,6 +183,23 @@ ${:U\\\\}=	backslash
 .  error
 .else
 .  error
+.endif
+
+# In a condition in an .if directive, the left-hand side must not be an
+# unquoted string literal.
+# expect+1: Malformed conditional (left == right)
+.if left == right
+.endif
+# Before cond.c 1.276 from 2021-09-21, a variable expression containing the
+# modifier ':?:' allowed unquoted string literals for the rest of the
+# condition.  This was an unintended implementation mistake.
+# expect+1: Malformed conditional (${0:?:} || left == right)
+.if ${0:?:} || left == right
+.endif
+# This affected only the comparisons after the expression, so the following
+# was still a syntax error.
+# expect+1: Malformed conditional (left == right || ${0:?:})
+.if left == right || ${0:?:}
 .endif
 
 # See cond-token-string.mk for similar tests where the condition is enclosed

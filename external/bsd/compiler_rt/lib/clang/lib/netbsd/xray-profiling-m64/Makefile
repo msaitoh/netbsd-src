@@ -1,13 +1,7 @@
-#	$NetBSD: Makefile,v 1.1 2019/08/08 14:00:32 kamil Exp $
-
-NOSANITIZER=    # defined
+#	$NetBSD: Makefile,v 1.3 2021/09/17 02:18:05 christos Exp $
 
 .include "../common.mk"
 .include "../sources.mk"
-
-.include <bsd.own.mk>
-
-TOPDIR=	${NETBSDSRCDIR}/sys/external/bsd/compiler_rt/dist
 
 LIB=	libclang_rt.xray-profiling-x86_64
 
@@ -31,6 +25,7 @@ CPPFLAGS+=	-I${TOPDIR}/lib
 CPPFLAGS+=	-I${TOPDIR}/include
 
 CWARNFLAGS.clang+=	-Wno-error=cast-qual-unrelated
+CWARNFLAGS.gcc+=	-Wno-error=stringop-overflow
 
 COPTS+=		-fPIC
 

@@ -1,4 +1,4 @@
-/* $NetBSD: gicv3.c,v 1.47 2021/09/11 01:49:11 jmcneill Exp $ */
+/* $NetBSD: gicv3.c,v 1.49 2021/10/02 20:52:09 skrll Exp $ */
 
 /*-
  * Copyright (c) 2018 Jared McNeill <jmcneill@invisible.ca>
@@ -32,7 +32,7 @@
 #define	_INTR_PRIVATE
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: gicv3.c,v 1.47 2021/09/11 01:49:11 jmcneill Exp $");
+__KERNEL_RCSID(0, "$NetBSD: gicv3.c,v 1.49 2021/10/02 20:52:09 skrll Exp $");
 
 #include <sys/param.h>
 #include <sys/kernel.h>
@@ -185,8 +185,9 @@ gicv3_establish_irq(struct pic_softc *pic, struct intrsource *is)
 	const u_int icfg_shift = (is->is_irq & 0xf) * 2;
 
 	if (group == 0) {
-		/* SGIs and PPIs are always MP-safe */
+		/* SGIs and PPIs are per-CPU and always MP-safe */
 		is->is_mpsafe = true;
+		is->is_percpu = true;
 
 		/* Update interrupt configuration and priority on all redistributors */
 		for (n = 0; n < sc->sc_bsh_r_count; n++) {
@@ -836,7 +837,7 @@ gicv3_quirk_rockchip_rk3399(struct gicv3_softc *sc)
 	/*
 	 * If we see fewer PMR bits than IPRIORITYRn bits here, it means
 	 * we have a secure view of IPRIORITYRn (this is not supposed to
-	 * happen!). 
+	 * happen!).
 	 */
 	if (pmrbits < pribits) {
 		aprint_verbose_dev(sc->sc_dev,

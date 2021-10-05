@@ -1,4 +1,4 @@
-/*	$NetBSD: parse.c,v 1.18 2021/03/12 23:10:18 rillig Exp $	*/
+/*	$NetBSD: parse.c,v 1.27 2021/09/26 19:37:11 rillig Exp $	*/
 
 /*-
  * SPDX-License-Identifier: BSD-4-Clause
@@ -38,18 +38,14 @@
  */
 
 #if 0
-#ifndef lint
 static char sccsid[] = "@(#)parse.c	8.1 (Berkeley) 6/6/93";
-#endif /* not lint */
 #endif
 
 #include <sys/cdefs.h>
-#ifndef lint
 #if defined(__NetBSD__)
 __RCSID("$FreeBSD$");
 #else
 __FBSDID("$FreeBSD: head/usr.bin/indent/parse.c 337651 2018-08-11 19:20:06Z pstef $");
-#endif
 #endif
 
 #include <err.h>
@@ -60,15 +56,15 @@ __FBSDID("$FreeBSD: head/usr.bin/indent/parse.c 337651 2018-08-11 19:20:06Z pste
 static void reduce(void);
 
 void
-parse(token_type tk)		/* tk: the code for the construct scanned */
+parse(token_type ttype)
 {
-    int         i;
+    int i;
 
 #ifdef debug
-    printf("parse token: '%s' \"%s\"\n", token_type_name(tk), token);
+    printf("parse token: '%s' \"%s\"\n", token_type_name(ttype), token.s);
 #endif
 
-    while (ps.p_stack[ps.tos] == if_expr_stmt && tk != keyword_else) {
+    while (ps.p_stack[ps.tos] == if_expr_stmt && ttype != keyword_else) {
 	/* true if we have an if without an else */
 	ps.p_stack[ps.tos] = stmt;	/* apply the if(..) stmt ::= stmt
 					 * reduction */
@@ -76,7 +72,7 @@ parse(token_type tk)		/* tk: the code for the construct scanned */
     }
 
 
-    switch (tk) {		/* go on and figure out what to do with the
+    switch (ttype) {		/* go on and figure out what to do with the
 				 * input */
 
     case decl:			/* scanned a declaration word */
@@ -87,16 +83,16 @@ parse(token_type tk)		/* tk: the code for the construct scanned */
 	    break_comma = true;	/* while in declaration, newline should be
 				 * forced after comma */
 	    ps.p_stack[++ps.tos] = decl;
-	    ps.il[ps.tos] = ps.i_l_follow;
+	    ps.il[ps.tos] = ps.ind_level_follow;
 
-	    if (opt.ljust_decl) {/* only do if we want left justified
-				 * declarations */
+	    if (opt.ljust_decl) {	/* only do if we want left justified
+					 * declarations */
 		ps.ind_level = 0;
 		for (i = ps.tos - 1; i > 0; --i)
 		    if (ps.p_stack[i] == decl)
 			++ps.ind_level;	/* indentation is number of
 					 * declaration levels deep we are */
-		ps.i_l_follow = ps.ind_level;
+		ps.ind_level_follow = ps.ind_level;
 	    }
 	}
 	break;
@@ -105,18 +101,18 @@ parse(token_type tk)		/* tk: the code for the construct scanned */
 	if (ps.p_stack[ps.tos] == if_expr_stmt_else && opt.else_if) {
 	    /*
 	     * Note that the stack pointer here is decremented, effectively
-	     * reducing "else if" to "if". This saves a lot of stack space
-	     * in case of a long "if-else-if ... else-if" sequence.
+	     * reducing "else if" to "if". This saves a lot of stack space in
+	     * case of a long "if-else-if ... else-if" sequence.
 	     */
-	    ps.i_l_follow = ps.il[ps.tos--];
+	    ps.ind_level_follow = ps.il[ps.tos--];
 	}
 	/* the rest is the same as for keyword_do and for_exprs */
 	/* FALLTHROUGH */
     case keyword_do:		/* 'do' */
     case for_exprs:		/* 'for' (...) */
-	ps.p_stack[++ps.tos] = tk;
-	ps.il[ps.tos] = ps.ind_level = ps.i_l_follow;
-	++ps.i_l_follow;	/* subsequent statements should be indented 1 */
+	ps.p_stack[++ps.tos] = ttype;
+	ps.il[ps.tos] = ps.ind_level = ps.ind_level_follow;
+	++ps.ind_level_follow;	/* subsequent statements should be indented 1 */
 	ps.search_brace = opt.btype_2;
 	break;
 
@@ -124,10 +120,10 @@ parse(token_type tk)		/* tk: the code for the construct scanned */
 	break_comma = false;	/* don't break comma in an initial list */
 	if (ps.p_stack[ps.tos] == stmt || ps.p_stack[ps.tos] == decl
 		|| ps.p_stack[ps.tos] == stmt_list)
-	    ++ps.i_l_follow;	/* it is a random, isolated stmt group or a
-				 * declaration */
+	    ++ps.ind_level_follow;	/* it is a random, isolated stmt
+				 * group or a declaration */
 	else {
-	    if (s_code == e_code) {
+	    if (code.s == code.e) {
 		/*
 		 * only do this if there is nothing on the line
 		 */
@@ -147,19 +143,19 @@ parse(token_type tk)		/* tk: the code for the construct scanned */
 	ps.il[ps.tos] = ps.ind_level;
 	ps.p_stack[++ps.tos] = stmt;
 	/* allow null stmt between braces */
-	ps.il[ps.tos] = ps.i_l_follow;
+	ps.il[ps.tos] = ps.ind_level_follow;
 	break;
 
     case while_expr:		/* 'while' '(' <expr> ')' */
 	if (ps.p_stack[ps.tos] == do_stmt) {
 	    /* it is matched with do stmt */
-	    ps.ind_level = ps.i_l_follow = ps.il[ps.tos];
+	    ps.ind_level = ps.ind_level_follow = ps.il[ps.tos];
 	    ps.p_stack[++ps.tos] = while_expr;
-	    ps.il[ps.tos] = ps.ind_level = ps.i_l_follow;
+	    ps.il[ps.tos] = ps.ind_level = ps.ind_level_follow;
 	} else {		/* it is a while loop */
 	    ps.p_stack[++ps.tos] = while_expr;
-	    ps.il[ps.tos] = ps.i_l_follow;
-	    ++ps.i_l_follow;
+	    ps.il[ps.tos] = ps.ind_level_follow;
+	    ++ps.ind_level_follow;
 	    ps.search_brace = opt.btype_2;
 	}
 
@@ -171,8 +167,9 @@ parse(token_type tk)		/* tk: the code for the construct scanned */
 	else {
 	    ps.ind_level = ps.il[ps.tos];	/* indentation for else should
 						 * be same as for if */
-	    ps.i_l_follow = ps.ind_level + 1;	/* everything following should
-						 * be in 1 level */
+	    ps.ind_level_follow = ps.ind_level + 1;	/* everything following
+							 * should be 1 level
+							 * deeper */
 	    ps.p_stack[ps.tos] = if_expr_stmt_else;
 	    /* remember if with else */
 	    ps.search_brace = opt.btype_2 | opt.else_if;
@@ -182,7 +179,7 @@ parse(token_type tk)		/* tk: the code for the construct scanned */
     case rbrace:		/* scanned a } */
 	/* stack should have <lbrace> <stmt> or <lbrace> <stmt_list> */
 	if (ps.tos > 0 && ps.p_stack[ps.tos - 1] == lbrace) {
-	    ps.ind_level = ps.i_l_follow = ps.il[--ps.tos];
+	    ps.ind_level = ps.ind_level_follow = ps.il[--ps.tos];
 	    ps.p_stack[ps.tos] = stmt;
 	} else
 	    diag(1, "Statement nesting error");
@@ -192,12 +189,11 @@ parse(token_type tk)		/* tk: the code for the construct scanned */
 	ps.p_stack[++ps.tos] = switch_expr;
 	ps.cstk[ps.tos] = case_ind;
 	/* save current case indent level */
-	ps.il[ps.tos] = ps.i_l_follow;
-	case_ind = ps.i_l_follow + opt.case_indent;	/* cases should be one
-							 * level down from
-							 * switch */
-	ps.i_l_follow += opt.case_indent + 1;	/* statements should be two
-						 * levels in */
+	ps.il[ps.tos] = ps.ind_level_follow;
+	case_ind = ps.ind_level_follow + opt.case_indent; /* cases should be
+				 * one level deeper than the switch */
+	ps.ind_level_follow += opt.case_indent + 1; /* statements should be
+				 * two levels deeper */
 	ps.search_brace = opt.btype_2;
 	break;
 
@@ -225,7 +221,7 @@ parse(token_type tk)		/* tk: the code for the construct scanned */
     for (i = 1; i <= ps.tos; ++i)
 	printf(" ('%s' at %d)", token_type_name(ps.p_stack[i]), ps.il[i]);
     if (ps.tos == 0)
-        printf(" empty");
+	printf(" empty");
     printf("\n");
 #endif
 }
@@ -238,48 +234,48 @@ parse(token_type tk)		/* tk: the code for the construct scanned */
  * Try to combine the statement on the top of the parse stack with the symbol
  * directly below it, replacing these two symbols with a single symbol.
  */
-static int
+static bool
 reduce_stmt(void)
 {
     switch (ps.p_stack[ps.tos - 1]) {
 
-    case stmt:		/* stmt stmt */
-    case stmt_list:	/* stmt_list stmt */
+    case stmt:			/* stmt stmt */
+    case stmt_list:		/* stmt_list stmt */
 	ps.p_stack[--ps.tos] = stmt_list;
 	return true;
 
-    case keyword_do:	/* 'do' <stmt> */
+    case keyword_do:		/* 'do' <stmt> */
 	ps.p_stack[--ps.tos] = do_stmt;
-	ps.i_l_follow = ps.il[ps.tos];
+	ps.ind_level_follow = ps.il[ps.tos];
 	return true;
 
-    case if_expr:	/* 'if' '(' <expr> ')' <stmt> */
+    case if_expr:		/* 'if' '(' <expr> ')' <stmt> */
 	ps.p_stack[--ps.tos] = if_expr_stmt;
 	int i = ps.tos - 1;
 	while (ps.p_stack[i] != stmt &&
 	       ps.p_stack[i] != stmt_list &&
 	       ps.p_stack[i] != lbrace)
 	    --i;
-	ps.i_l_follow = ps.il[i];
+	ps.ind_level_follow = ps.il[i];
 	/*
-	 * for the time being, we will assume that there is no else on
-	 * this if, and set the indentation level accordingly. If an
-	 * else is scanned, it will be fixed up later
+	 * for the time being, we will assume that there is no else on this
+	 * if, and set the indentation level accordingly. If an else is
+	 * scanned, it will be fixed up later
 	 */
 	return true;
 
-    case switch_expr:	/* 'switch' '(' <expr> ')' <stmt> */
+    case switch_expr:		/* 'switch' '(' <expr> ')' <stmt> */
 	case_ind = ps.cstk[ps.tos - 1];
 	/* FALLTHROUGH */
-    case decl:		/* finish of a declaration */
-    case if_expr_stmt_else: /* 'if' '(' <expr> ')' <stmt> 'else' <stmt> */
-    case for_exprs:	/* 'for' '(' ... ')' <stmt> */
-    case while_expr:	/* 'while' '(' <expr> ')' <stmt> */
+    case decl:			/* finish of a declaration */
+    case if_expr_stmt_else:	/* 'if' '(' <expr> ')' <stmt> 'else' <stmt> */
+    case for_exprs:		/* 'for' '(' ... ')' <stmt> */
+    case while_expr:		/* 'while' '(' <expr> ')' <stmt> */
 	ps.p_stack[--ps.tos] = stmt;
-	ps.i_l_follow = ps.il[ps.tos];
+	ps.ind_level_follow = ps.il[ps.tos];
 	return true;
 
-    default:		/* <anything else> <stmt> */
+    default:			/* <anything else> <stmt> */
 	return false;
     }
 }

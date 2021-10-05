@@ -1,4 +1,4 @@
-/* $NetBSD: ixgbe.c,v 1.290 2021/08/26 09:03:47 msaitoh Exp $ */
+/* $NetBSD: ixgbe.c,v 1.293 2021/09/30 04:06:50 yamaguchi Exp $ */
 
 /******************************************************************************
 
@@ -64,7 +64,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: ixgbe.c,v 1.290 2021/08/26 09:03:47 msaitoh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: ixgbe.c,v 1.293 2021/09/30 04:06:50 yamaguchi Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_inet.h"
@@ -75,7 +75,6 @@ __KERNEL_RCSID(0, "$NetBSD: ixgbe.c,v 1.290 2021/08/26 09:03:47 msaitoh Exp $");
 #include "ixgbe.h"
 #include "ixgbe_phy.h"
 #include "ixgbe_sriov.h"
-#include "vlan.h"
 
 #include <sys/cprng.h>
 #include <dev/mii/mii.h>
@@ -927,11 +926,12 @@ ixgbe_attach(device_t parent, device_t dev, void *aux)
 	hw->allow_unsupported_sfp = allow_unsupported_sfp;
 
 	/* Pick up the 82599 settings */
-	if (hw->mac.type != ixgbe_mac_82598EB) {
+	if (hw->mac.type != ixgbe_mac_82598EB)
 		hw->phy.smart_speed = ixgbe_smart_speed;
-		adapter->num_segs = IXGBE_82599_SCATTER;
-	} else
-		adapter->num_segs = IXGBE_82598_SCATTER;
+
+	/* Set the right number of segments */
+	KASSERT(IXGBE_82599_SCATTER_MAX >= IXGBE_SCATTER_DEFAULT);
+	adapter->num_segs = IXGBE_SCATTER_DEFAULT;
 
 	/* Ensure SW/FW semaphore is free */
 	ixgbe_init_swfw_semaphore(hw);
@@ -3667,17 +3667,13 @@ ixgbe_detach(device_t dev, int flags)
 		return (EBUSY);
 	}
 
-#if NVLAN > 0
-	/* Make sure VLANs are not using driver */
-	if (!VLAN_ATTACHED(&adapter->osdep.ec))
-		;	/* nothing to do: no VLANs */
-	else if ((flags & (DETACH_SHUTDOWN | DETACH_FORCE)) != 0)
-		vlan_ifdetach(adapter->ifp);
-	else {
+	if (VLAN_ATTACHED(&adapter->osdep.ec) &&
+	    (flags & (DETACH_SHUTDOWN | DETACH_FORCE)) == 0) {
 		aprint_error_dev(dev, "VLANs in use, detach first\n");
 		return (EBUSY);
 	}
-#endif
+
+	ether_ifdetach(adapter->ifp);
 
 	adapter->osdep.detaching = true;
 	/*
@@ -3697,8 +3693,6 @@ ixgbe_detach(device_t dev, int flags)
 	atomic_store_relaxed(&adapter->timer_pending, 0);
 
 	pmf_device_deregister(dev);
-
-	ether_ifdetach(adapter->ifp);
 
 	ixgbe_free_deferred_handlers(adapter);
 
@@ -4102,7 +4096,7 @@ ixgbe_init_locked(struct adapter *adapter)
 		txdctl = IXGBE_READ_REG(hw, IXGBE_TXDCTL(txr->me));
 		txdctl |= IXGBE_TXDCTL_ENABLE;
 		/* Set WTHRESH to 8, burst writeback */
-		txdctl |= (8 << 16);
+		txdctl |= IXGBE_TX_WTHRESH << IXGBE_TXDCTL_WTHRESH_SHIFT;
 		/*
 		 * When the internal queue falls below PTHRESH (32),
 		 * start prefetching as long as there are at least

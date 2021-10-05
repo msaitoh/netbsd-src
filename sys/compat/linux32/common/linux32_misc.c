@@ -1,4 +1,4 @@
-/*	$NetBSD: linux32_misc.c,v 1.30 2020/05/03 01:06:56 thorpej Exp $	*/
+/*	$NetBSD: linux32_misc.c,v 1.33 2021/09/20 02:20:03 thorpej Exp $	*/
 
 /*-
  * Copyright (c) 1995, 1998, 1999 The NetBSD Foundation, Inc.
@@ -32,7 +32,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: linux32_misc.c,v 1.30 2020/05/03 01:06:56 thorpej Exp $");
+__KERNEL_RCSID(0, "$NetBSD: linux32_misc.c,v 1.33 2021/09/20 02:20:03 thorpej Exp $");
 
 #include <sys/param.h>
 #include <sys/proc.h>
@@ -66,8 +66,6 @@ __KERNEL_RCSID(0, "$NetBSD: linux32_misc.c,v 1.30 2020/05/03 01:06:56 thorpej Ex
 
 extern const struct linux_mnttypes linux_fstypes[];
 extern const int linux_fstypes_cnt;
-
-void linux32_to_native_timespec(struct timespec *, struct linux32_timespec *);
 
 /*
  * Implement the fs stat functions. Straightforward.
@@ -351,4 +349,84 @@ linux32_sys_ppoll(struct lwp *l, const struct linux32_sys_ppoll_args *uap,
 
 	return pollcommon(retval, SCARG_P32(uap, fds), SCARG(uap, nfds),
 	    ts, sigmask);
+}
+
+int
+linux32_sys_eventfd(struct lwp *l, const struct linux32_sys_eventfd_args *uap,
+    register_t *retval)
+{
+	/* {
+		syscallarg(unsigned int) initval;
+	} */
+	struct linux_sys_eventfd_args ua;
+
+	NETBSD32TO64_UAP(initval);
+
+	return linux_sys_eventfd(l, &ua, retval);
+}
+
+int
+linux32_sys_eventfd2(struct lwp *l, const struct linux32_sys_eventfd2_args *uap,
+    register_t *retval)
+{
+	/* {
+		syscallarg(unsigned int) initval;
+		syscallarg(int) flags;
+	} */
+	struct linux_sys_eventfd2_args ua;
+
+	NETBSD32TO64_UAP(initval);
+	NETBSD32TO64_UAP(flags);
+
+	return linux_sys_eventfd2(l, &ua, retval);
+}
+
+static inline off_t
+linux32_hilo_to_off_t(unsigned long hi, unsigned long lo)
+{
+	return (((off_t)hi) << 32) | lo;
+}
+
+int
+linux32_sys_preadv(struct lwp *l, const struct linux32_sys_preadv_args *uap,
+    register_t *retval)
+{
+	/* {
+		syscallarg(int) fd;
+		syscallarg(const netbsd32_iovecp_t) iovp;
+		syscallarg(int) iovcnt;
+		syscallarg(netbsd32_u_long) off_lo;
+		syscallarg(netbsd32_u_long) off_hi;
+	} */
+	struct netbsd32_preadv_args ua;
+
+	SCARG(&ua, fd) = SCARG(uap, fd);
+	SCARG(&ua, iovp) = SCARG(uap, iovp);
+	SCARG(&ua, iovcnt) = SCARG(uap, iovcnt);
+	SCARG(&ua, PAD) = 0;
+	SCARG(&ua, offset) = linux32_hilo_to_off_t(SCARG(uap, off_hi),
+						   SCARG(uap, off_lo));
+	return netbsd32_preadv(l, &ua, retval);
+}
+
+int
+linux32_sys_pwritev(struct lwp *l, const struct linux32_sys_pwritev_args *uap,
+    register_t *retval)
+{
+	/* {
+		syscallarg(int) fd;
+		syscallarg(const netbsd32_iovecp_t) iovp;
+		syscallarg(int) iovcnt;
+		syscallarg(netbsd32_u_long) off_lo;
+		syscallarg(netbsd32_u_long) off_hi;
+	} */
+	struct netbsd32_pwritev_args ua;
+
+	SCARG(&ua, fd) = SCARG(uap, fd);
+	SCARG(&ua, iovp) = SCARG(uap, iovp);
+	SCARG(&ua, iovcnt) = SCARG(uap, iovcnt);
+	SCARG(&ua, PAD) = 0;
+	SCARG(&ua, offset) = linux32_hilo_to_off_t(SCARG(uap, off_hi),
+						   SCARG(uap, off_lo));
+	return netbsd32_pwritev(l, &ua, retval);
 }

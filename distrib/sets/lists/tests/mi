@@ -1,4 +1,4 @@
-# $NetBSD: mi,v 1.1125 2021/09/13 22:09:06 rillig Exp $
+# $NetBSD: mi,v 1.1131 2021/09/30 02:00:19 yamaguchi Exp $
 #
 # Note: don't delete entries from here - mark them as "obsolete" instead.
 #
@@ -2237,6 +2237,7 @@
 ./usr/tests/kernel/t_pty				tests-kernel-tests	compattestfile,atf
 ./usr/tests/kernel/t_rnd				tests-kernel-tests	atf,rump
 ./usr/tests/kernel/t_sigaction				tests-obsolete		obsolete
+./usr/tests/kernel/t_simplehook				tests-kernel-tests	atf,rump
 ./usr/tests/kernel/t_subr_prf				tests-kernel-tests	compattestfile,atf
 ./usr/tests/kernel/t_sysctl				tests-kernel-tests	compattestfile,atf
 ./usr/tests/kernel/t_sysv				tests-kernel-tests	compattestfile,atf
@@ -3145,6 +3146,7 @@
 ./usr/tests/lib/libc/sys/t_connect			tests-lib-tests		compattestfile,atf
 ./usr/tests/lib/libc/sys/t_context			tests-obsolete		obsolete
 ./usr/tests/lib/libc/sys/t_dup				tests-lib-tests		compattestfile,atf
+./usr/tests/lib/libc/sys/t_eventfd			tests-lib-tests		compattestfile,atf
 ./usr/tests/lib/libc/sys/t_fork				tests-lib-tests		compattestfile,atf
 ./usr/tests/lib/libc/sys/t_fsync			tests-lib-tests		compattestfile,atf
 ./usr/tests/lib/libc/sys/t_futex_ops			tests-lib-tests		compattestfile,atf
@@ -3212,6 +3214,7 @@
 ./usr/tests/lib/libc/sys/t_swapcontext			tests-lib-tests		compattestfile,atf
 ./usr/tests/lib/libc/sys/t_syscall			tests-lib-tests		compattestfile,atf
 ./usr/tests/lib/libc/sys/t_timer_create			tests-lib-tests		compattestfile,atf
+./usr/tests/lib/libc/sys/t_timerfd			tests-lib-tests		compattestfile,atf
 ./usr/tests/lib/libc/sys/t_truncate			tests-lib-tests		compattestfile,atf
 ./usr/tests/lib/libc/sys/t_ucontext			tests-lib-tests		compattestfile,atf
 ./usr/tests/lib/libc/sys/t_umask			tests-lib-tests		compattestfile,atf
@@ -4737,6 +4740,7 @@
 ./usr/tests/usr.bin/indent/cs.0.pro					tests-usr.bin-tests	compattestfile,atf
 ./usr/tests/usr.bin/indent/cs.0.stdout					tests-usr.bin-tests	compattestfile,atf
 ./usr/tests/usr.bin/indent/declarations.0				tests-usr.bin-tests	compattestfile,atf
+./usr/tests/usr.bin/indent/declarations.0.stderr			tests-usr.bin-tests	compattestfile,atf
 ./usr/tests/usr.bin/indent/declarations.0.stdout			tests-usr.bin-tests	compattestfile,atf
 ./usr/tests/usr.bin/indent/elsecomment.0				tests-usr.bin-tests	compattestfile,atf
 ./usr/tests/usr.bin/indent/elsecomment.0.pro				tests-usr.bin-tests	compattestfile,atf
@@ -4751,6 +4755,15 @@
 ./usr/tests/usr.bin/indent/label.0					tests-usr.bin-tests	compattestfile,atf
 ./usr/tests/usr.bin/indent/label.0.pro					tests-usr.bin-tests	compattestfile,atf
 ./usr/tests/usr.bin/indent/label.0.stdout				tests-usr.bin-tests	compattestfile,atf
+./usr/tests/usr.bin/indent/lex.0					tests-usr.bin-tests	compattestfile,atf
+./usr/tests/usr.bin/indent/lex.0.pro					tests-usr.bin-tests	compattestfile,atf
+./usr/tests/usr.bin/indent/lex.0.stdout					tests-usr.bin-tests	compattestfile,atf
+./usr/tests/usr.bin/indent/lex_char.0					tests-usr.bin-tests	compattestfile,atf
+./usr/tests/usr.bin/indent/lex_char.0.pro				tests-usr.bin-tests	compattestfile,atf
+./usr/tests/usr.bin/indent/lex_char.0.stdout				tests-usr.bin-tests	compattestfile,atf
+./usr/tests/usr.bin/indent/lex_string.0					tests-usr.bin-tests	compattestfile,atf
+./usr/tests/usr.bin/indent/lex_string.0.pro				tests-usr.bin-tests	compattestfile,atf
+./usr/tests/usr.bin/indent/lex_string.0.stdout				tests-usr.bin-tests	compattestfile,atf
 ./usr/tests/usr.bin/indent/lineno.0					tests-usr.bin-tests	compattestfile,atf
 ./usr/tests/usr.bin/indent/lineno.0.pro					tests-usr.bin-tests	compattestfile,atf
 ./usr/tests/usr.bin/indent/lineno.0.stdout				tests-usr.bin-tests	compattestfile,atf
@@ -7044,6 +7057,24 @@
 ./usr/tests/usr.bin/xlint/lint1/parse_stmt_iter_error.exp	tests-usr.bin-tests	compattestfile,atf
 ./usr/tests/usr.bin/xlint/lint1/parse_type_name.c		tests-usr.bin-tests	compattestfile,atf
 ./usr/tests/usr.bin/xlint/lint1/parse_type_name.exp		tests-usr.bin-tests	compattestfile,atf
+./usr/tests/usr.bin/xlint/lint1/platform_ilp32.c		tests-usr.bin-tests	compattestfile,atf
+./usr/tests/usr.bin/xlint/lint1/platform_ilp32.exp		tests-usr.bin-tests	compattestfile,atf
+./usr/tests/usr.bin/xlint/lint1/platform_int.c			tests-usr.bin-tests	compattestfile,atf
+./usr/tests/usr.bin/xlint/lint1/platform_int.exp		tests-usr.bin-tests	compattestfile,atf
+./usr/tests/usr.bin/xlint/lint1/platform_ldbl128.c		tests-usr.bin-tests	compattestfile,atf
+./usr/tests/usr.bin/xlint/lint1/platform_ldbl128.exp		tests-usr.bin-tests	compattestfile,atf
+./usr/tests/usr.bin/xlint/lint1/platform_ldbl64.c		tests-usr.bin-tests	compattestfile,atf
+./usr/tests/usr.bin/xlint/lint1/platform_ldbl64.exp		tests-usr.bin-tests	compattestfile,atf
+./usr/tests/usr.bin/xlint/lint1/platform_ldbl96.c		tests-usr.bin-tests	compattestfile,atf
+./usr/tests/usr.bin/xlint/lint1/platform_ldbl96.exp		tests-usr.bin-tests	compattestfile,atf
+./usr/tests/usr.bin/xlint/lint1/platform_long.c			tests-usr.bin-tests	compattestfile,atf
+./usr/tests/usr.bin/xlint/lint1/platform_long.exp		tests-usr.bin-tests	compattestfile,atf
+./usr/tests/usr.bin/xlint/lint1/platform_lp64.c			tests-usr.bin-tests	compattestfile,atf
+./usr/tests/usr.bin/xlint/lint1/platform_lp64.exp		tests-usr.bin-tests	compattestfile,atf
+./usr/tests/usr.bin/xlint/lint1/platform_schar.c		tests-usr.bin-tests	compattestfile,atf
+./usr/tests/usr.bin/xlint/lint1/platform_schar.exp		tests-usr.bin-tests	compattestfile,atf
+./usr/tests/usr.bin/xlint/lint1/platform_uchar.c		tests-usr.bin-tests	compattestfile,atf
+./usr/tests/usr.bin/xlint/lint1/platform_uchar.exp		tests-usr.bin-tests	compattestfile,atf
 ./usr/tests/usr.bin/xlint/lint1/stmt_for.c			tests-usr.bin-tests	compattestfile,atf
 ./usr/tests/usr.bin/xlint/lint1/stmt_for.exp			tests-usr.bin-tests	compattestfile,atf
 ./usr/tests/usr.bin/xlint/lint1/stmt_goto.c			tests-usr.bin-tests	compattestfile,atf

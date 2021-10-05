@@ -1,4 +1,4 @@
-/*	$NetBSD: picvar.h,v 1.35 2021/08/10 15:31:55 jmcneill Exp $	*/
+/*	$NetBSD: picvar.h,v 1.37 2021/09/26 13:38:49 jmcneill Exp $	*/
 /*-
  * Copyright (c) 2008 The NetBSD Foundation, Inc.
  * All rights reserved.
@@ -40,9 +40,9 @@
 
 typedef uint32_t	intr_handle_t;		/* for ACPI */
 
-extern int	(*_splraise)(int);
-extern int	(*_spllower)(int);
-extern void	(*splx)(int);
+extern int	(*pic_splraise)(int);
+extern int	(*pic_spllower)(int);
+extern void	(*pic_splx)(int);
 
 const char *
 	intr_typename(int);
@@ -128,6 +128,7 @@ struct intrsource {
 	char is_source[16];
 	char *is_xname;
 	uint32_t is_mask_count;
+	bool is_percpu;
 };
 
 struct pic_percpu {

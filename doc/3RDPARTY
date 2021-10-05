@@ -1,4 +1,4 @@
-#	$NetBSD: 3RDPARTY,v 1.1813 2021/09/02 11:27:19 christos Exp $
+#	$NetBSD: 3RDPARTY,v 1.1820 2021/10/02 11:01:53 kre Exp $
 #
 # This file contains a list of the software that has been integrated into
 # NetBSD where we are not the primary maintainer.
@@ -888,7 +888,7 @@ Notes:
 
 Package:	mandoc
 Version:	1.14.5
-Current Vers:	1.14.5
+Current Vers:	1.14.6
 Maintainer:	Kristaps Džonsons/Ingo Schwarze
 Archive Site:	http://mandoc.bsd.lv/snapshots/
 Home Page:	http://mandoc.bsd.lv/
@@ -1070,12 +1070,12 @@ Notes:
 Patch applied after OpenSSH import.
 
 Package:	OpenSSH
-Version:	8.7
-Current Vers:	8.7 / portable 8.7p1
+Version:	8.8
+Current Vers:	8.8 / portable 8.8p1
 Maintainer:	OpenSSH
 Archive Site:	http://www.openssh.com/ftp.html
 Home Page:	http://www.openssh.com/portable.html
-Date:		2021-09-02
+Date:		2021-09-27
 Mailing List:	openssh-unix-announce@mindrot.org
 Responsible:	thorpej, christos, elric
 License:	BSD. See src/crypto/external/bsd/openssh/dist/LICENSE
@@ -1409,8 +1409,8 @@ Notes:
 Added changes from a5 -> a12 manually.
 
 Package:	tz
-Version:	tzcode2021a / tzdata2021a
-Current Vers:	tzcode2021a / tzdata2021a
+Version:	tzcode2021a / tzdata2021c-
+Current Vers:	tzcode2021c / tzdata2021c
 Maintainer:	Paul Eggert <eggert@cs.ucla.edu>
 Archive Site:	ftp://ftp.iana.org/tz/releases/
 Archive Site:	ftp://munnari.oz.au/pub/oldtz/
@@ -1672,8 +1672,8 @@ License:        BSD-like (3-clause)
 Location:       usr.bin/nc
 
 Package:	gnu-efi
-Version:	3.0.8
-Current Vers:	3.0.8
+Version:	3.0.14
+Current Vers:	3.0.14
 Maintainer:	https://sourceforge.net/projects/gnu-efi/
 Archive Site:	https://sourceforge.net/projects/gnu-efi/
 Home Page:	https://sourceforge.net/projects/gnu-efi/
@@ -2223,12 +2223,12 @@ Location:	external/mit/libcbor
 Notes:
 
 Package:	pam-u2f
-Version:	1.0.8-73-gd10f843 (d10f84314c55f10d244bc275794e783dc408e45c)
-Current Vers:	1.0.8
+Version:	1.2.0
+Current Vers:	1.2.0
 Maintainer:	Yubico
 Archive Site:	https://github.com/Yubico/pam-u2f
 Home Page:	https://developers.yubico.com/pam-u2f/
-Date:		2020-06-13
+Date:		2021-09-24
 Mailing List:
 Responsible:	christos
 License:	bsd
@@ -2236,12 +2236,12 @@ Location:	external/bsd/pam-u2f
 Notes:
 
 Package:	libfido2
-Version:	1.7.0
-Current Vers:	1.7.0
+Version:	1.8.0
+Current Vers:	1.8.0
 Maintainer:	Yubico
 Archive Site:	https://github.com/Yubico/libfido2
 Home Page:	https://developers.yubico.com/libfido2/
-Date:		2021-06-16
+Date:		2021-09-24
 Mailing List:
 Responsible:	christos
 License:	bsd

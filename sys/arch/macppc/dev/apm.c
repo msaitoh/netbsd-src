@@ -1,4 +1,4 @@
-/*	$NetBSD: apm.c,v 1.29 2020/12/19 21:54:42 thorpej Exp $	*/
+/*	$NetBSD: apm.c,v 1.31 2021/09/26 16:36:19 thorpej Exp $	*/
 /*	$OpenBSD: apm.c,v 1.5 2002/06/07 07:13:59 miod Exp $	*/
 
 /*-
@@ -33,7 +33,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: apm.c,v 1.29 2020/12/19 21:54:42 thorpej Exp $");
+__KERNEL_RCSID(0, "$NetBSD: apm.c,v 1.31 2021/09/26 16:36:19 thorpej Exp $");
 
 #include "apm.h"
 
@@ -432,7 +432,7 @@ filt_apmread(struct knote *kn, long hint)
 }
 
 static struct filterops apmread_filtops = {
-	.f_isfd = 1,
+	.f_flags = FILTEROP_ISFD,
 	.f_attach = NULL,
 	.f_detach = filt_apmrdetach,
 	.f_event = filt_apmread,
@@ -448,7 +448,7 @@ apmkqfilter(dev_t dev, struct knote *kn)
 		kn->kn_fop = &apmread_filtops;
 		break;
 	default:
-		return (1);
+		return (EINVAL);
 	}
 
 	kn->kn_hook = sc;

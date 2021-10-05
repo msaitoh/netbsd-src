@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.255 2021/09/11 16:10:37 pgoyette Exp $
+#	$NetBSD: Makefile,v 1.257 2021/10/03 17:27:02 brad Exp $
 
 .include <bsd.own.mk>
 
@@ -69,6 +69,7 @@ SUBDIR+=	hfs
 SUBDIR+=	hythygtemp
 SUBDIR+=	si70xxtemp
 SUBDIR+=	am2315temp
+SUBDIR+=	sht4xtemp
 SUBDIR+=	i2cexec
 SUBDIR+=	i2c_bitbang
 SUBDIR+=	if_agr
@@ -341,12 +342,12 @@ SUBDIR+=	viadrmums
     ${MACHINE_ARCH} == "x86_64"
 SUBDIR+=	compat_linux
 SUBDIR+=	drm
-SUBDIR+=	drmkms
-SUBDIR+=	drmkms_agp
-SUBDIR+=	drmkms_linux
-SUBDIR+=	drmkms_pci
+#SUBDIR+=	drmkms
+#SUBDIR+=	drmkms_agp
+#SUBDIR+=	drmkms_linux
+#SUBDIR+=	drmkms_pci
 SUBDIR+=	i915drm
-SUBDIR+=	i915drmkms
+#SUBDIR+=	i915drmkms
 #
 # ISA modules
 #

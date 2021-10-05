@@ -1,4 +1,4 @@
-/* $NetBSD: comment-line-end.0,v 1.5 2021/03/12 18:28:07 rillig Exp $ */
+/* $NetBSD: comment-line-end.0,v 1.8 2021/09/30 22:45:34 rillig Exp $ */
 /* $FreeBSD$ */
 
 /*
@@ -25,6 +25,20 @@ void function(void){}
 int
 main(void)
 {
+}
+
+void c99_comment(void)
+{
+foo(); // C++ comment
+bar();
+}
+
+void
+comment_at_end_of_function(void)
+{
+    if (cond)
+	statement();
+    // comment
 }
 
 // end-of-line comment at the end of the file

@@ -1,4 +1,4 @@
-/*	$NetBSD: uipc_socket.c,v 1.295 2021/08/03 20:27:08 chs Exp $	*/
+/*	$NetBSD: uipc_socket.c,v 1.298 2021/09/29 13:15:45 thorpej Exp $	*/
 
 /*
  * Copyright (c) 2002, 2007, 2008, 2009 The NetBSD Foundation, Inc.
@@ -71,7 +71,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: uipc_socket.c,v 1.295 2021/08/03 20:27:08 chs Exp $");
+__KERNEL_RCSID(0, "$NetBSD: uipc_socket.c,v 1.298 2021/09/29 13:15:45 thorpej Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_compat_netbsd.h"
@@ -2225,9 +2225,8 @@ filt_sordetach(struct knote *kn)
 
 	so = ((file_t *)kn->kn_obj)->f_socket;
 	solock(so);
-	selremove_knote(&so->so_rcv.sb_sel, kn);
-	if (SLIST_EMPTY(&so->so_rcv.sb_sel.sel_klist))	/* XXX select/kqueue */
-		so->so_rcv.sb_flags &= ~SB_KNOTE;	/* XXX internals */
+	if (selremove_knote(&so->so_rcv.sb_sel, kn))
+		so->so_rcv.sb_flags &= ~SB_KNOTE;
 	sounlock(so);
 }
 
@@ -2264,9 +2263,8 @@ filt_sowdetach(struct knote *kn)
 
 	so = ((file_t *)kn->kn_obj)->f_socket;
 	solock(so);
-	selremove_knote(&so->so_snd.sb_sel, kn);
-	if (SLIST_EMPTY(&so->so_snd.sb_sel.sel_klist))	/* XXX select/kqueue */
-		so->so_snd.sb_flags &= ~SB_KNOTE;	/* XXX internals */
+	if (selremove_knote(&so->so_snd.sb_sel, kn))
+		so->so_snd.sb_flags &= ~SB_KNOTE;
 	sounlock(so);
 }
 
@@ -2322,21 +2320,21 @@ filt_solisten(struct knote *kn, long hint)
 }
 
 static const struct filterops solisten_filtops = {
-	.f_isfd = 1,
+	.f_flags = FILTEROP_ISFD | FILTEROP_MPSAFE,
 	.f_attach = NULL,
 	.f_detach = filt_sordetach,
 	.f_event = filt_solisten,
 };
 
 static const struct filterops soread_filtops = {
-	.f_isfd = 1,
+	.f_flags = FILTEROP_ISFD | FILTEROP_MPSAFE,
 	.f_attach = NULL,
 	.f_detach = filt_sordetach,
 	.f_event = filt_soread,
 };
 
 static const struct filterops sowrite_filtops = {
-	.f_isfd = 1,
+	.f_flags = FILTEROP_ISFD | FILTEROP_MPSAFE,
 	.f_attach = NULL,
 	.f_detach = filt_sowdetach,
 	.f_event = filt_sowrite,

@@ -1,4 +1,4 @@
-#	$NetBSD: mi,v 1.2391 2021/08/16 06:56:28 mrg Exp $
+#	$NetBSD: mi,v 1.2395 2021/09/30 02:00:19 yamaguchi Exp $
 #
 # Note: don't delete entries from here - mark them as "obsolete" instead.
 ./etc/mtree/set.comp				comp-sys-root
@@ -3279,6 +3279,7 @@
 ./usr/include/sys/errno.h			comp-c-include
 ./usr/include/sys/evcnt.h			comp-c-include
 ./usr/include/sys/event.h			comp-c-include
+./usr/include/sys/eventfd.h			comp-c-include
 ./usr/include/sys/exec.h			comp-c-include
 ./usr/include/sys/exec_aout.h			comp-c-include
 ./usr/include/sys/exec_coff.h			comp-c-include
@@ -3305,6 +3306,7 @@
 ./usr/include/sys/gmon.h			comp-c-include
 ./usr/include/sys/gpio.h			comp-c-include
 ./usr/include/sys/hash.h			comp-c-include
+./usr/include/sys/hook.h			comp-c-include
 ./usr/include/sys/idtype.h			comp-c-include
 ./usr/include/sys/ieee754.h			comp-c-include
 ./usr/include/sys/intr.h			comp-c-include
@@ -3430,6 +3432,7 @@
 ./usr/include/sys/time.h			comp-c-include
 ./usr/include/sys/timeb.h			comp-c-include
 ./usr/include/sys/timepps.h			comp-c-include
+./usr/include/sys/timerfd.h			comp-c-include
 ./usr/include/sys/times.h			comp-c-include
 ./usr/include/sys/timespec.h			comp-c-include
 ./usr/include/sys/timex.h			comp-c-include
@@ -3619,20 +3622,34 @@
 ./usr/lib/clang/7.0.0/include/xray/xray_records.h	comp-obsolete		obsolete
 ./usr/lib/clang/7.0.0/share/asan_blacklist.txt	comp-obsolete		obsolete
 ./usr/lib/clang/7.0.0/share/msan_blacklist.txt	comp-obsolete		obsolete
-./usr/lib/clang/9.0.0/include/sanitizer/allocator_interface.h	comp-cxx-include		llvm
-./usr/lib/clang/9.0.0/include/sanitizer/asan_interface.h	comp-cxx-include		llvm
-./usr/lib/clang/9.0.0/include/sanitizer/common_interface_defs.h	comp-cxx-include		llvm
-./usr/lib/clang/9.0.0/include/sanitizer/coverage_interface.h	comp-cxx-include		llvm
-./usr/lib/clang/9.0.0/include/sanitizer/lsan_interface.h	comp-cxx-include		llvm
-./usr/lib/clang/9.0.0/include/sanitizer/msan_interface.h	comp-cxx-include		llvm
-./usr/lib/clang/9.0.0/include/sanitizer/netbsd_syscall_hooks.h	comp-cxx-include		llvm
-./usr/lib/clang/9.0.0/include/sanitizer/tsan_interface.h	comp-cxx-include		llvm
-./usr/lib/clang/9.0.0/include/sanitizer/tsan_interface_atomic.h	comp-cxx-include		llvm
-./usr/lib/clang/9.0.0/include/xray/xray_interface.h	comp-cxx-include		llvm
-./usr/lib/clang/9.0.0/include/xray/xray_log_interface.h	comp-cxx-include		llvm
-./usr/lib/clang/9.0.0/include/xray/xray_records.h	comp-cxx-include		llvm
-./usr/lib/clang/9.0.0/share/asan_blacklist.txt	comp-cxx-include		llvm
-./usr/lib/clang/9.0.0/share/msan_blacklist.txt	comp-cxx-include		llvm
+./usr/lib/clang/9.0.0/include/sanitizer/allocator_interface.h	comp-obsolete	obsolete		llvm
+./usr/lib/clang/9.0.0/include/sanitizer/asan_interface.h	comp-obsolete	obsolete		llvm
+./usr/lib/clang/9.0.0/include/sanitizer/common_interface_defs.h	comp-obsolete	obsolete		llvm
+./usr/lib/clang/9.0.0/include/sanitizer/coverage_interface.h	comp-obsolete	obsolete		llvm
+./usr/lib/clang/9.0.0/include/sanitizer/lsan_interface.h	comp-obsolete	obsolete		llvm
+./usr/lib/clang/9.0.0/include/sanitizer/msan_interface.h	comp-obsolete	obsolete		llvm
+./usr/lib/clang/9.0.0/include/sanitizer/netbsd_syscall_hooks.h	comp-obsolete	obsolete		llvm
+./usr/lib/clang/9.0.0/include/sanitizer/tsan_interface.h	comp-obsolete	obsolete		llvm
+./usr/lib/clang/9.0.0/include/sanitizer/tsan_interface_atomic.h	comp-obsolete	obsolete		llvm
+./usr/lib/clang/9.0.0/include/xray/xray_interface.h	comp-obsolete	obsolete		llvm
+./usr/lib/clang/9.0.0/include/xray/xray_log_interface.h	comp-obsolete	obsolete		llvm
+./usr/lib/clang/9.0.0/include/xray/xray_records.h	comp-obsolete	obsolete		llvm
+./usr/lib/clang/9.0.0/share/asan_blacklist.txt	comp-obsolete	obsolete		llvm
+./usr/lib/clang/9.0.0/share/msan_blacklist.txt	comp-obsolete	obsolete		llvm
+./usr/lib/clang/13.0.0/include/sanitizer/allocator_interface.h	comp-cxx-include		llvm
+./usr/lib/clang/13.0.0/include/sanitizer/asan_interface.h	comp-cxx-include		llvm
+./usr/lib/clang/13.0.0/include/sanitizer/common_interface_defs.h	comp-cxx-include		llvm
+./usr/lib/clang/13.0.0/include/sanitizer/coverage_interface.h	comp-cxx-include		llvm
+./usr/lib/clang/13.0.0/include/sanitizer/lsan_interface.h	comp-cxx-include		llvm
+./usr/lib/clang/13.0.0/include/sanitizer/msan_interface.h	comp-cxx-include		llvm
+./usr/lib/clang/13.0.0/include/sanitizer/netbsd_syscall_hooks.h	comp-cxx-include		llvm
+./usr/lib/clang/13.0.0/include/sanitizer/tsan_interface.h	comp-cxx-include		llvm
+./usr/lib/clang/13.0.0/include/sanitizer/tsan_interface_atomic.h	comp-cxx-include		llvm
+./usr/lib/clang/13.0.0/include/xray/xray_interface.h	comp-cxx-include		llvm
+./usr/lib/clang/13.0.0/include/xray/xray_log_interface.h	comp-cxx-include		llvm
+./usr/lib/clang/13.0.0/include/xray/xray_records.h	comp-cxx-include		llvm
+./usr/lib/clang/13.0.0/share/asan_blacklist.txt	comp-cxx-include		llvm
+./usr/lib/clang/13.0.0/share/msan_blacklist.txt	comp-cxx-include		llvm
 ./usr/lib/crt0.o				comp-c-lib		compatfile
 ./usr/lib/gcrt0.o				comp-c-lib		compatfile
 ./usr/lib/i18n/libBIG5.a			comp-i18n-lib		compatfile
@@ -4045,6 +4062,8 @@
 ./usr/lib/librumpkern_ksem_p.a			comp-obsolete		obsolete
 ./usr/lib/librumpkern_nv.a			comp-c-lib		rump
 ./usr/lib/librumpkern_nv_p.a			comp-c-proflib		rump,profile
+./usr/lib/librumpkern_simplehook_tester.a	comp-c-lib		rump
+./usr/lib/librumpkern_simplehook_tester_p.a	comp-c-proflib		rump,profile
 ./usr/lib/librumpkern_sljit.a			comp-c-lib		rump,sljit
 ./usr/lib/librumpkern_sljit_p.a			comp-c-proflib		rump,sljit,profile
 ./usr/lib/librumpkern_solaris.a			comp-c-lib		rump,zfs
@@ -4645,6 +4664,9 @@
 ./usr/share/man/cat2/dup2.0			comp-c-catman		.cat
 ./usr/share/man/cat2/dup3.0			comp-c-catman		.cat
 ./usr/share/man/cat2/errno.0			comp-c-catman		.cat
+./usr/share/man/cat2/eventfd.0			comp-c-catman		.cat
+./usr/share/man/cat2/eventfd_read.0		comp-c-catman		.cat
+./usr/share/man/cat2/eventfd_write.0		comp-c-catman		.cat
 ./usr/share/man/cat2/execve.0			comp-c-catman		.cat
 ./usr/share/man/cat2/extattr_delete_fd.0	comp-c-catman		.cat
 ./usr/share/man/cat2/extattr_delete_file.0	comp-c-catman		.cat
@@ -4883,6 +4905,10 @@
 ./usr/share/man/cat2/timer_getoverrun.0		comp-c-catman		.cat
 ./usr/share/man/cat2/timer_gettime.0		comp-c-catman		.cat
 ./usr/share/man/cat2/timer_settime.0		comp-c-catman		.cat
+./usr/share/man/cat2/timerfd.0			comp-c-catman		.cat
+./usr/share/man/cat2/timerfd_create.0		comp-c-catman		.cat
+./usr/share/man/cat2/timerfd_gettime.0		comp-c-catman		.cat
+./usr/share/man/cat2/timerfd_settime.0		comp-c-catman		.cat
 ./usr/share/man/cat2/truncate.0			comp-c-catman		.cat
 ./usr/share/man/cat2/ucontext.0			comp-c-catman		.cat
 ./usr/share/man/cat2/umask.0			comp-c-catman		.cat
@@ -12980,6 +13006,9 @@
 ./usr/share/man/html2/dup2.html			comp-c-htmlman		html
 ./usr/share/man/html2/dup3.html			comp-c-htmlman		html
 ./usr/share/man/html2/errno.html		comp-c-htmlman		html
+./usr/share/man/html2/eventfd.html		comp-c-htmlman		html
+./usr/share/man/html2/eventfd_read.html		comp-c-htmlman		html
+./usr/share/man/html2/eventfd_write.html	comp-c-htmlman		html
 ./usr/share/man/html2/execve.html		comp-c-htmlman		html
 ./usr/share/man/html2/extattr_delete_fd.html	comp-c-htmlman		html
 ./usr/share/man/html2/extattr_delete_file.html	comp-c-htmlman		html
@@ -13204,6 +13233,10 @@
 ./usr/share/man/html2/timer_getoverrun.html	comp-c-htmlman		html
 ./usr/share/man/html2/timer_gettime.html	comp-c-htmlman		html
 ./usr/share/man/html2/timer_settime.html	comp-c-htmlman		html
+./usr/share/man/html2/timerfd.html		comp-c-htmlman		html
+./usr/share/man/html2/timerfd_create.html	comp-c-htmlman		html
+./usr/share/man/html2/timerfd_gettime.html	comp-c-htmlman		html
+./usr/share/man/html2/timerfd_settime.html	comp-c-htmlman		html
 ./usr/share/man/html2/truncate.html		comp-c-htmlman		html
 ./usr/share/man/html2/ucontext.html		comp-c-htmlman		html
 ./usr/share/man/html2/umask.html		comp-c-htmlman		html
@@ -21132,6 +21165,9 @@
 ./usr/share/man/man2/dup2.2			comp-c-man		.man
 ./usr/share/man/man2/dup3.2			comp-c-man		.man
 ./usr/share/man/man2/errno.2			comp-c-man		.man
+./usr/share/man/man2/eventfd.2			comp-c-man		.man
+./usr/share/man/man2/eventfd_read.2		comp-c-man		.man
+./usr/share/man/man2/eventfd_write.2		comp-c-man		.man
 ./usr/share/man/man2/execve.2			comp-c-man		.man
 ./usr/share/man/man2/extattr_delete_fd.2	comp-c-man		.man
 ./usr/share/man/man2/extattr_delete_file.2	comp-c-man		.man
@@ -21368,6 +21404,10 @@
 ./usr/share/man/man2/timer_getoverrun.2		comp-c-man		.man
 ./usr/share/man/man2/timer_gettime.2		comp-c-man		.man
 ./usr/share/man/man2/timer_settime.2		comp-c-man		.man
+./usr/share/man/man2/timerfd.2			comp-c-man		.man
+./usr/share/man/man2/timerfd_create.2		comp-c-man		.man
+./usr/share/man/man2/timerfd_gettime.2		comp-c-man		.man
+./usr/share/man/man2/timerfd_settime.2		comp-c-man		.man
 ./usr/share/man/man2/truncate.2			comp-c-man		.man
 ./usr/share/man/man2/ucontext.2			comp-c-man		.man
 ./usr/share/man/man2/umask.2			comp-c-man		.man

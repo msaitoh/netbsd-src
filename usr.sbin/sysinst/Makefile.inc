@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile.inc,v 1.41 2021/07/13 09:13:00 martin Exp $
+#	$NetBSD: Makefile.inc,v 1.43 2021/09/26 15:52:40 maya Exp $
 #
 # Makefile for sysinst
 

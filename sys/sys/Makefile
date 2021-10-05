@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.177 2021/09/15 17:33:08 thorpej Exp $
+#	$NetBSD: Makefile,v 1.179 2021/09/30 01:26:07 yamaguchi Exp $
 
 .include <bsd.own.mk>
 
@@ -18,12 +18,12 @@ INCS=	acct.h acl.h agpio.h aio.h ansi.h aout_mids.h ataio.h atomic.h \
 	dir.h dirent.h \
 	disk.h disklabel.h disklabel_acorn.h disklabel_gpt.h disklabel_rdb.h \
 	dkbad.h dkio.h dkstat.h domain.h drvctlio.h dvdio.h \
-	endian.h envsys.h errno.h evcnt.h event.h exec.h exec_aout.h \
+	endian.h envsys.h errno.h evcnt.h event.h eventfd.h exec.h exec_aout.h \
 	exec_coff.h exec_ecoff.h exec_elf.h exec_script.h extattr.h extent.h \
 	fault.h \
 	fcntl.h fd_set.h fdio.h featuretest.h file.h filedesc.h filio.h \
 	flashio.h float_ieee754.h fstypes.h futex.h gcq.h gmon.h gpio.h hash.h \
-	idtype.h ieee754.h intr.h intrio.h inttypes.h ioccom.h ioctl.h \
+	hook.h idtype.h ieee754.h intr.h intrio.h inttypes.h ioccom.h ioctl.h \
 	ioctl_compat.h iostat.h ipc.h ipmi.h \
 	joystick.h \
 	kcore.h kcov.h kcpuset.h kgdb.h kmem.h ksem.h ksyms.h ktrace.h \
@@ -42,7 +42,7 @@ INCS=	acct.h acl.h agpio.h aio.h ansi.h aout_mids.h ataio.h atomic.h \
 	socketvar.h sockio.h spawn.h specificdata.h stat.h \
 	statvfs.h syscall.h syscallargs.h sysctl.h stdarg.h stdbool.h \
 	stdint.h swap.h syncobj.h syslimits.h syslog.h \
-	tape.h termios.h time.h timeb.h timepps.h times.h timespec.h \
+	tape.h termios.h time.h timeb.h timepps.h timerfd.h times.h timespec.h \
 	timex.h tls.h trace.h tree.h tty.h ttychars.h ttycom.h \
 	ttydefaults.h ttydev.h types.h \
 	ucontext.h ucred.h uio.h un.h unistd.h unpcb.h utsname.h uuid.h \
