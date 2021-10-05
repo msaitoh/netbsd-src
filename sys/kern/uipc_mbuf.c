@@ -165,11 +165,7 @@ nmbclusters_limit(void)
 	max_size = MIN(max_size, NMBCLUSTERS_MAX);
 #endif
 
-#ifdef NMBCLUSTERS
-	return MIN(max_size, NMBCLUSTERS);
-#else
 	return max_size;
-#endif
 }
 
 /*
@@ -199,7 +195,7 @@ mbinit(void)
 	 * Set an arbitrary default limit on the number of mbuf clusters.
 	 */
 #ifdef NMBCLUSTERS
-	nmbclusters = nmbclusters_limit();
+	nmbclusters = MIN(NMBCLUSTERS, nmbclusters_limit());
 #else
 	nmbclusters = MAX(1024,
 	    (vsize_t)physmem * PAGE_SIZE / MCLBYTES / 16);
