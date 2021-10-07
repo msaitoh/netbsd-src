@@ -1,4 +1,4 @@
-/*	$NetBSD: parse.c,v 1.27 2021/09/26 19:37:11 rillig Exp $	*/
+/*	$NetBSD: parse.c,v 1.29 2021/10/05 06:55:24 rillig Exp $	*/
 
 /*-
  * SPDX-License-Identifier: BSD-4-Clause
@@ -58,7 +58,6 @@ static void reduce(void);
 void
 parse(token_type ttype)
 {
-    int i;
 
 #ifdef debug
     printf("parse token: '%s' \"%s\"\n", token_type_name(ttype), token.s);
@@ -88,7 +87,7 @@ parse(token_type ttype)
 	    if (opt.ljust_decl) {	/* only do if we want left justified
 					 * declarations */
 		ps.ind_level = 0;
-		for (i = ps.tos - 1; i > 0; --i)
+		for (int i = ps.tos - 1; i > 0; --i)
 		    if (ps.p_stack[i] == decl)
 			++ps.ind_level;	/* indentation is number of
 					 * declaration levels deep we are */
@@ -190,10 +189,10 @@ parse(token_type ttype)
 	ps.cstk[ps.tos] = case_ind;
 	/* save current case indent level */
 	ps.il[ps.tos] = ps.ind_level_follow;
-	case_ind = ps.ind_level_follow + opt.case_indent; /* cases should be
-				 * one level deeper than the switch */
-	ps.ind_level_follow += opt.case_indent + 1; /* statements should be
-				 * two levels deeper */
+	/* cases should be one level deeper than the switch */
+	case_ind = (float)ps.ind_level_follow + opt.case_indent;
+	/* statements should be two levels deeper */
+	ps.ind_level_follow += (int)opt.case_indent + 1;
 	ps.search_brace = opt.btype_2;
 	break;
 
@@ -218,7 +217,7 @@ parse(token_type ttype)
 
 #ifdef debug
     printf("parse stack:");
-    for (i = 1; i <= ps.tos; ++i)
+    for (int i = 1; i <= ps.tos; ++i)
 	printf(" ('%s' at %d)", token_type_name(ps.p_stack[i]), ps.il[i]);
     if (ps.tos == 0)
 	printf(" empty");
@@ -259,7 +258,7 @@ reduce_stmt(void)
 	ps.ind_level_follow = ps.il[i];
 	/*
 	 * for the time being, we will assume that there is no else on this
-	 * if, and set the indentation level accordingly. If an else is
+	 * if, and set the indentation level accordingly. If an 'else' is
 	 * scanned, it will be fixed up later
 	 */
 	return true;

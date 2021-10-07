@@ -1,4 +1,4 @@
-/*	$NetBSD: io.c,v 1.68 2021/09/26 21:23:31 rillig Exp $	*/
+/*	$NetBSD: io.c,v 1.73 2021/10/05 21:05:12 rillig Exp $	*/
 
 /*-
  * SPDX-License-Identifier: BSD-4-Clause
@@ -43,7 +43,7 @@ static char sccsid[] = "@(#)io.c	8.1 (Berkeley) 6/6/93";
 
 #include <sys/cdefs.h>
 #if defined(__NetBSD__)
-__RCSID("$NetBSD: io.c,v 1.68 2021/09/26 21:23:31 rillig Exp $");
+__RCSID("$NetBSD: io.c,v 1.73 2021/10/05 21:05:12 rillig Exp $");
 #elif defined(__FreeBSD__)
 __FBSDID("$FreeBSD: head/usr.bin/indent/io.c 334927 2018-06-10 16:44:18Z pstef $");
 #endif
@@ -122,21 +122,21 @@ dump_line(void)
 	if (suppress_blanklines > 0)
 	    suppress_blanklines--;
 	else
-	    n_real_blanklines++;
+	    next_blank_lines++;
     } else if (!inhibit_formatting) {
 	suppress_blanklines = 0;
 	if (prefix_blankline_requested && not_first_line) {
 	    if (opt.swallow_optional_blanklines) {
-		if (n_real_blanklines == 1)
-		    n_real_blanklines = 0;
+		if (next_blank_lines == 1)
+		    next_blank_lines = 0;
 	    } else {
-		if (n_real_blanklines == 0)
-		    n_real_blanklines = 1;
+		if (next_blank_lines == 0)
+		    next_blank_lines = 1;
 	    }
 	}
-	while (--n_real_blanklines >= 0)
+	while (--next_blank_lines >= 0)
 	    output_char('\n');
-	n_real_blanklines = 0;
+	next_blank_lines = 0;
 	if (ps.ind_level == 0)
 	    ps.ind_stmt = false;	/* this is a class A kludge. don't do
 					 * additional statement indentation if
@@ -151,7 +151,7 @@ dump_line(void)
 		comment_open = false;
 		output_string(".*/\n");
 	    }
-	    while (lab.e > lab.s && (lab.e[-1] == ' ' || lab.e[-1] == '\t'))
+	    while (lab.e > lab.s && is_hspace(lab.e[-1]))
 		lab.e--;
 	    *lab.e = '\0';
 	    cur_col = 1 + output_indent(0, compute_label_indent());
@@ -163,7 +163,7 @@ dump_line(void)
 		do {
 		    output_char(*s++);
 		} while (s < lab.e && 'a' <= *s && *s <= 'z');
-		while ((*s == ' ' || *s == '\t') && s < lab.e)
+		while (s < lab.e && is_hspace(*s))
 		    s++;
 		if (s < lab.e) {
 		    if (s[0] == '/' && s[1] == '*') {
@@ -240,7 +240,7 @@ dump_line(void)
 	    ps.stats.comment_lines++;
 	}
 	if (ps.use_ff)
-	    output_char('\014');
+	    output_char('\f');
 	else
 	    output_char('\n');
 	ps.stats.lines++;
@@ -328,53 +328,52 @@ compute_label_indent(void)
 static void
 skip_hspace(const char **pp)
 {
-    while (**pp == ' ' || **pp == '\t')
+    while (is_hspace(**pp))
 	(*pp)++;
+}
+
+static bool
+skip_string(const char **pp, const char *s)
+{
+    size_t len = strlen(s);
+    if (strncmp(*pp, s, len) == 0) {
+	*pp += len;
+	return true;
+    }
+    return false;
 }
 
 static void
 parse_indent_comment(void)
 {
-    int on_off = 0;		/* 0 = keep, 1 = ON, 2 = OFF */
+    bool on_off;
 
     const char *p = in_buffer;
 
     skip_hspace(&p);
-
-    if (!(*p == '/' && p[1] == '*'))
+    if (!skip_string(&p, "/*"))
 	return;
-    p += 2;
-
     skip_hspace(&p);
-
-    if (!(p[0] == 'I' && p[1] == 'N' && p[2] == 'D'
-	    && p[3] == 'E' && p[4] == 'N' && p[5] == 'T'))
+    if (!skip_string(&p, "INDENT"))
 	return;
-    p += 6;
-
     skip_hspace(&p);
-
-    if (*p == '*')
-	on_off = 1;
-    else if (*p == 'O') {
-	if (*++p == 'N')
-	    p++, on_off = 1;
-	else if (*p == 'F' && *++p == 'F')
-	    p++, on_off = 2;
-    }
-    if (on_off == 0)
+    if (*p == '*' || skip_string(&p, "ON"))
+	on_off = true;
+    else if (skip_string(&p, "OFF"))
+	on_off = false;
+    else
 	return;
 
     skip_hspace(&p);
-
-    if (!(p[0] == '*' && p[1] == '/' && p[2] == '\n'))
+    if (!skip_string(&p, "*/\n"))
 	return;
 
     if (com.s != com.e || lab.s != lab.e || code.s != code.e)
 	dump_line();
 
-    if (!(inhibit_formatting = (on_off == 2))) {
-	n_real_blanklines = 0;
+    inhibit_formatting = !on_off;
+    if (on_off) {
+	next_blank_lines = 0;
 	postfix_blankline_requested = false;
 	prefix_blankline_requested = false;
 	suppress_blanklines = 1;
@@ -393,7 +392,7 @@ fill_buffer(void)
 {
     /* this routine reads stuff from the input */
     char *p;
-    int i;
+    int ch;
     FILE *f = input;
 
     if (bp_save != NULL) {	/* there is a partly filled input buffer left */
@@ -413,15 +412,15 @@ fill_buffer(void)
 	    p = in_buffer + offset;
 	    in_buffer_limit = in_buffer + size - 2;
 	}
-	if ((i = getc(f)) == EOF) {
+	if ((ch = getc(f)) == EOF) {
 	    *p++ = ' ';
 	    *p++ = '\n';
 	    had_eof = true;
 	    break;
 	}
-	if (i != '\0')
-	    *p++ = i;
-	if (i == '\n')
+	if (ch != '\0')
+	    *p++ = (char)ch;
+	if (ch == '\n')
 	    break;
     }
     buf_ptr = in_buffer;

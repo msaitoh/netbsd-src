@@ -1,4 +1,4 @@
-/*	$NetBSD: pr_comment.c,v 1.47 2021/09/26 19:37:11 rillig Exp $	*/
+/*	$NetBSD: pr_comment.c,v 1.53 2021/10/05 19:58:38 rillig Exp $	*/
 
 /*-
  * SPDX-License-Identifier: BSD-4-Clause
@@ -43,7 +43,7 @@ static char sccsid[] = "@(#)pr_comment.c	8.1 (Berkeley) 6/6/93";
 
 #include <sys/cdefs.h>
 #if defined(__NetBSD__)
-__RCSID("$NetBSD: pr_comment.c,v 1.47 2021/09/26 19:37:11 rillig Exp $");
+__RCSID("$NetBSD: pr_comment.c,v 1.53 2021/10/05 19:58:38 rillig Exp $");
 #elif defined(__FreeBSD__)
 __FBSDID("$FreeBSD: head/usr.bin/indent/pr_comment.c 334927 2018-06-10 16:44:18Z pstef $");
 #endif
@@ -143,13 +143,13 @@ process_comment(void)
     if (ps.box_com) {
 	/*
 	 * Find out how much indentation there was originally, because that
-	 * much will have to be ignored by pad_output() in dump_line(). This
-	 * is a box comment, so nothing changes -- not even indentation.
+	 * much will have to be ignored by dump_line(). This is a box comment,
+	 * so nothing changes -- not even indentation.
 	 *
 	 * The comment we're about to read usually comes from in_buffer,
 	 * unless it has been copied into save_com.
 	 */
-	char *start;
+	const char *start;
 
 	/*
 	 * XXX: ordered comparison between pointers from different objects
@@ -160,7 +160,7 @@ process_comment(void)
 	ps.n_comment_delta = -indentation_after_range(0, start, buf_ptr - 2);
     } else {
 	ps.n_comment_delta = 0;
-	while (*buf_ptr == ' ' || *buf_ptr == '\t')
+	while (is_hspace(*buf_ptr))
 	    buf_ptr++;
     }
     ps.comment_delta = 0;
@@ -193,7 +193,7 @@ process_comment(void)
     if (break_delim) {
 	char *t = com.e;
 	com.e = com.s + 2;
-	*com.e = 0;
+	*com.e = '\0';
 	if (opt.blanklines_before_blockcomments && ps.last_token != lbrace)
 	    prefix_blankline_requested = true;
 	dump_line();
@@ -207,7 +207,7 @@ process_comment(void)
     for (;;) {			/* this loop will go until the comment is
 				 * copied */
 	switch (*buf_ptr) {	/* this checks for various special cases */
-	case 014:		/* check for a form feed */
+	case '\f':
 	    check_size_comment(3);
 	    if (!ps.box_com) {	/* in a text comment, break the line here */
 		ps.use_ff = true;
@@ -216,12 +216,12 @@ process_comment(void)
 		last_blank = -1;
 		if (!ps.box_com && opt.star_comment_cont)
 		    *com.e++ = ' ', *com.e++ = '*', *com.e++ = ' ';
-		while (*++buf_ptr == ' ' || *buf_ptr == '\t')
-		    ;
+		buf_ptr++;
+		while (is_hspace(*buf_ptr))
+		    buf_ptr++;
 	    } else {
-		if (++buf_ptr >= buf_end)
-		    fill_buffer();
-		*com.e++ = 014;
+		inbuf_skip();
+		*com.e++ = '\f';
 	    }
 	    break;
 
@@ -238,7 +238,7 @@ process_comment(void)
 	    last_blank = -1;
 	    check_size_comment(4);
 	    if (ps.box_com || ps.last_nl) {	/* if this is a boxed comment,
-						 * we dont ignore the newline */
+						 * we handle the newline */
 		if (com.s == com.e)
 		    *com.e++ = ' ';
 		if (!ps.box_com && com.e - com.s > 3) {
@@ -251,37 +251,32 @@ process_comment(void)
 		    *com.e++ = ' ', *com.e++ = '*', *com.e++ = ' ';
 	    } else {
 		ps.last_nl = true;
-		if (!(com.e[-1] == ' ' || com.e[-1] == '\t'))
+		if (!is_hspace(com.e[-1]))
 		    *com.e++ = ' ';
 		last_blank = com.e - 1 - com.buf;
 	    }
 	    ++line_no;		/* keep track of input line number */
 	    if (!ps.box_com) {
-		int nstar = 1;
+		int asterisks_to_skip = 1;
 		do {		/* flush any blanks and/or tabs at start of
 				 * next line */
-		    if (++buf_ptr >= buf_end)
-			fill_buffer();
-		    if (*buf_ptr == '*' && --nstar >= 0) {
-			if (++buf_ptr >= buf_end)
-			    fill_buffer();
+		    inbuf_skip();
+		    if (*buf_ptr == '*' && --asterisks_to_skip >= 0) {
+			inbuf_skip();
 			if (*buf_ptr == '/')
 			    goto end_of_comment;
 		    }
-		} while (*buf_ptr == ' ' || *buf_ptr == '\t');
-	    } else if (++buf_ptr >= buf_end)
-		fill_buffer();
+		} while (is_hspace(*buf_ptr));
+	    } else
+		inbuf_skip();
 	    break;		/* end of case for newline */
 
-	case '*':		/* must check for possibility of being at end
-				 * of comment */
-	    if (++buf_ptr >= buf_end)	/* get to next char after * */
-		fill_buffer();
+	case '*':
+	    inbuf_skip();
 	    check_size_comment(4);
-	    if (*buf_ptr == '/') {	/* it is the end!!! */
+	    if (*buf_ptr == '/') {	/* end of the comment */
 	end_of_comment:
-		if (++buf_ptr >= buf_end)
-		    fill_buffer();
+		inbuf_skip();
 		if (break_delim) {
 		    if (com.e > com.s + 3)
 			dump_line();
@@ -289,7 +284,7 @@ process_comment(void)
 			com.s = com.e;
 		    *com.e++ = ' ';
 		}
-		if (com.e[-1] != ' ' && com.e[-1] != '\t' && !ps.box_com)
+		if (!is_hspace(com.e[-1]) && !ps.box_com)
 		    *com.e++ = ' ';	/* ensure blank before end */
 		if (token.e[-1] == '/')
 		    *com.e++ = '\n', *com.e = '\0';
@@ -305,13 +300,10 @@ process_comment(void)
 	    int now_len = indentation_after_range(ps.com_col - 1, com.s, com.e);
 	    do {
 		check_size_comment(1);
-		*com.e = *buf_ptr++;
-		if (buf_ptr >= buf_end)
-		    fill_buffer();
-		if (*com.e == ' ' || *com.e == '\t')
-		    last_blank = com.e - com.buf;	/* remember we saw a
-							 * blank */
-		++com.e;
+		char ch = inbuf_next();
+		if (is_hspace(ch))
+		    last_blank = com.e - com.buf;
+		*com.e++ = ch;
 		now_len++;
 	    } while (memchr("*\n\r\b\t", *buf_ptr, 6) == NULL &&
 		(now_len < adj_max_line_length || last_blank == -1));
@@ -334,7 +326,7 @@ process_comment(void)
 		if (!ps.box_com && opt.star_comment_cont)
 		    *com.e++ = ' ', *com.e++ = '*', *com.e++ = ' ';
 		for (t_ptr = com.buf + last_blank + 1;
-		     *t_ptr == ' ' || *t_ptr == '\t'; t_ptr++)
+		     is_hspace(*t_ptr); t_ptr++)
 		    continue;
 		last_blank = -1;
 		/*
@@ -343,7 +335,7 @@ process_comment(void)
 		 * com.e without any check_size_comment().
 		 */
 		while (*t_ptr != '\0') {
-		    if (*t_ptr == ' ' || *t_ptr == '\t')
+		    if (is_hspace(*t_ptr))
 			last_blank = com.e - com.buf;
 		    *com.e++ = *t_ptr++;
 		}

@@ -1,4 +1,4 @@
-/*	$NetBSD: lexi.c,v 1.65 2021/10/03 20:35:59 rillig Exp $	*/
+/*	$NetBSD: lexi.c,v 1.72 2021/10/05 22:22:46 rillig Exp $	*/
 
 /*-
  * SPDX-License-Identifier: BSD-4-Clause
@@ -43,7 +43,7 @@ static char sccsid[] = "@(#)lexi.c	8.1 (Berkeley) 6/6/93";
 
 #include <sys/cdefs.h>
 #if defined(__NetBSD__)
-__RCSID("$NetBSD: lexi.c,v 1.65 2021/10/03 20:35:59 rillig Exp $");
+__RCSID("$NetBSD: lexi.c,v 1.72 2021/10/05 22:22:46 rillig Exp $");
 #elif defined(__FreeBSD__)
 __FBSDID("$FreeBSD: head/usr.bin/indent/lexi.c 337862 2018-08-15 18:19:45Z pstef $");
 #endif
@@ -128,6 +128,7 @@ struct {
  * HP H* "." H+ P  FS? -> $float;    "0" O*          IS? -> $int;
  * HP H+ "."    P  FS  -> $float;    BP B+           IS? -> $int;
  */
+/* INDENT OFF */
 static const char num_lex_state[][26] = {
     /*                examples:
                                      00
@@ -155,6 +156,7 @@ static const char num_lex_state[][26] = {
     [15] =  "B EE    EE   T      W     ",
     /*       ABCDEFGHIJKLMNOPQRSTUVWXYZ */
 };
+/* INDENT ON */
 
 static const uint8_t num_lex_row[] = {
     ['0'] = 1,
@@ -180,7 +182,7 @@ inbuf_peek(void)
     return *buf_ptr;
 }
 
-static void
+void
 inbuf_skip(void)
 {
     buf_ptr++;
@@ -188,7 +190,7 @@ inbuf_skip(void)
 	fill_buffer();
 }
 
-static char
+char
 inbuf_next(void)
 {
     char ch = inbuf_peek();
@@ -237,11 +239,11 @@ token_type_name(token_type ttype)
 }
 
 static void
-print_buf(const char *name, const char *s, const char *e)
+debug_print_buf(const char *name, const struct buffer *buf)
 {
-    if (s < e) {
+    if (buf->s < buf->e) {
 	debug_printf(" %s ", name);
-	debug_vis_range("\"", s, e, "\"");
+	debug_vis_range("\"", buf->s, buf->e, "\"");
     }
 }
 
@@ -250,28 +252,28 @@ lexi_end(token_type ttype)
 {
     debug_printf("in line %d, lexi returns '%s'",
 	line_no, token_type_name(ttype));
-    print_buf("token", token.s, token.e);
-    print_buf("label", lab.s, lab.e);
-    print_buf("code", code.s, code.e);
-    print_buf("comment", com.s, com.e);
+    debug_print_buf("token", &token);
+    debug_print_buf("label", &lab);
+    debug_print_buf("code", &code);
+    debug_print_buf("comment", &com);
     debug_printf("\n");
 
     return ttype;
 }
 #else
-#  define lexi_end(tk) (tk)
+#define lexi_end(tk) (tk)
 #endif
 
 static void
 lex_number(void)
 {
-    for (uint8_t s = 'A'; s != 'f' && s != 'i' && s != 'u'; ) {
+    for (uint8_t s = 'A'; s != 'f' && s != 'i' && s != 'u';) {
 	uint8_t ch = (uint8_t)*buf_ptr;
 	if (ch >= nitems(num_lex_row) || num_lex_row[ch] == 0)
 	    break;
 	uint8_t row = num_lex_row[ch];
 	if (num_lex_state[row][s - 'A'] == ' ') {
-	    /*
+	    /*-
 	     * num_lex_state[0][s - 'A'] now indicates the type:
 	     * f = floating, ch = integer, u = unknown
 	     */
@@ -330,11 +332,19 @@ lex_char_or_string(void)
 static bool
 probably_typedef(const struct parser_state *state)
 {
-    return state->p_l_follow == 0 && !state->block_init && !state->in_stmt &&
-	((*buf_ptr == '*' && buf_ptr[1] != '=') ||
-	isalpha((unsigned char)*buf_ptr)) &&
-	(state->last_token == semicolon || state->last_token == lbrace ||
-	state->last_token == rbrace);
+    if (state->p_l_follow != 0)
+	return false;
+    if (state->block_init || state->in_stmt)
+	return false;
+    if (buf_ptr[0] == '*' && buf_ptr[1] != '=')
+	goto maybe;
+    if (isalpha((unsigned char)*buf_ptr))
+	goto maybe;
+    return false;
+maybe:
+    return state->last_token == semicolon ||
+	state->last_token == lbrace ||
+	state->last_token == rbrace;
 }
 
 static bool
@@ -367,9 +377,8 @@ lexi(struct parser_state *state)
 					 * scanned was a newline */
     state->last_nl = false;
 
-    while (*buf_ptr == ' ' || *buf_ptr == '\t') {	/* get rid of blanks */
-	state->col_1 = false;	/* leading blanks imply token is not in column
-				 * 1 */
+    while (is_hspace(*buf_ptr)) {
+	state->col_1 = false;
 	inbuf_skip();
     }
 
@@ -391,8 +400,8 @@ lexi(struct parser_state *state)
 	    (*buf_ptr == '"' || *buf_ptr == '\''))
 	    return lexi_end(string_prefix);
 
-	while (*buf_ptr == ' ' || *buf_ptr == '\t')	/* get rid of blanks */
-	    inbuf_next();
+	while (is_hspace(inbuf_peek()))
+	    inbuf_skip();
 	state->keyword = kw_0;
 
 	if (state->last_token == keyword_struct_union_enum &&
@@ -423,7 +432,7 @@ lexi(struct parser_state *state)
 		return lexi_end(case_label);
 	    case kw_struct_or_union_or_enum:
 	    case kw_type:
-	    found_typename:
+	found_typename:
 		if (state->p_l_follow != 0) {
 		    /* inside parens: cast, param list, offsetof or sizeof */
 		    state->cast_mask |= (1 << state->p_l_follow) & ~state->not_cast_mask;
@@ -539,7 +548,7 @@ lexi(struct parser_state *state)
 	ttype = rbrace;
 	break;
 
-    case 014:			/* a form feed */
+    case '\f':
 	unary_delim = state->last_u_d;
 	state->last_nl = true;	/* remember this so we can set 'state->col_1'
 				 * right */
@@ -589,7 +598,7 @@ lexi(struct parser_state *state)
 	if (*buf_ptr == '=') {	/* == */
 	    *token.e++ = '=';	/* Flip =+ to += */
 	    buf_ptr++;
-	    *token.e = 0;
+	    *token.e = '\0';
 	}
 	ttype = binary_op;
 	unary_delim = true;
@@ -665,7 +674,8 @@ lexi(struct parser_state *state)
 }
 
 static int
-insert_pos(const char *key, const char **arr, unsigned int len) {
+insert_pos(const char *key, const char **arr, unsigned int len)
+{
     int lo = 0;
     int hi = (int)len - 1;
 

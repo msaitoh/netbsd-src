@@ -1,4 +1,4 @@
-/*	$NetBSD: indent.c,v 1.98 2021/10/03 18:44:51 rillig Exp $	*/
+/*	$NetBSD: indent.c,v 1.108 2021/10/05 18:50:42 rillig Exp $	*/
 
 /*-
  * SPDX-License-Identifier: BSD-4-Clause
@@ -43,7 +43,7 @@ static char sccsid[] = "@(#)indent.c	5.17 (Berkeley) 6/7/93";
 
 #include <sys/cdefs.h>
 #if defined(__NetBSD__)
-__RCSID("$NetBSD: indent.c,v 1.98 2021/10/03 18:44:51 rillig Exp $");
+__RCSID("$NetBSD: indent.c,v 1.108 2021/10/05 18:50:42 rillig Exp $");
 #elif defined(__FreeBSD__)
 __FBSDID("$FreeBSD: head/usr.bin/indent/indent.c 340138 2018-11-04 19:24:49Z oshogbo $");
 #endif
@@ -105,7 +105,7 @@ char *bp_save;
 char *be_save;
 
 bool found_err;
-int n_real_blanklines;
+int next_blank_lines;
 bool prefix_blankline_requested;
 bool postfix_blankline_requested;
 bool break_comma;
@@ -161,7 +161,7 @@ init_capsicum(void)
 #endif
 
 static void
-search_brace_newline(bool *inout_force_nl)
+search_brace_newline(bool *force_nl)
 {
     if (sc_end == NULL) {
 	save_com = sc_buf;
@@ -178,11 +178,11 @@ search_brace_newline(bool *inout_force_nl)
      * However, the force_nl == true must be preserved if newline is never
      * scanned in this loop, so this assignment cannot be done earlier.
      */
-    *inout_force_nl = false;
+    *force_nl = false;
 }
 
 static void
-search_brace_comment(bool *inout_comment_buffered)
+search_brace_comment(bool *comment_buffered)
 {
     if (sc_end == NULL) {
 	/*
@@ -195,14 +195,12 @@ search_brace_comment(bool *inout_comment_buffered)
 	save_com[0] = save_com[1] = ' ';
 	sc_end = &save_com[2];
     }
-    *inout_comment_buffered = true;
+    *comment_buffered = true;
     *sc_end++ = '/';		/* copy in start of comment */
     *sc_end++ = '*';
     for (;;) {			/* loop until the end of the comment */
-	*sc_end = *buf_ptr++;
-	if (buf_ptr >= buf_end)
-	    fill_buffer();
-	if (*sc_end++ == '*' && *buf_ptr == '/')
+	*sc_end++ = inbuf_next();
+	if (sc_end[-1] == '*' && *buf_ptr == '/')
 	    break;		/* we are at end of comment */
 	if (sc_end >= &save_com[sc_size]) {	/* check for temp buffer
 						 * overflow */
@@ -212,8 +210,7 @@ search_brace_comment(bool *inout_comment_buffered)
 	}
     }
     *sc_end++ = '/';		/* add ending slash */
-    if (++buf_ptr >= buf_end)	/* get past / in buffer */
-	fill_buffer();
+    inbuf_skip();		/* get past / in buffer */
 }
 
 static bool
@@ -232,8 +229,7 @@ search_brace_lbrace(void)
 	 * resulting from the "{" before, it must be scanned now and ignored.
 	 */
 	while (isspace((unsigned char)*buf_ptr)) {
-	    if (++buf_ptr >= buf_end)
-		fill_buffer();
+	    inbuf_skip();
 	    if (*buf_ptr == '\n')
 		break;
 	}
@@ -243,7 +239,7 @@ search_brace_lbrace(void)
 }
 
 static bool
-search_brace_other(token_type ttype, bool *inout_force_nl,
+search_brace_other(token_type ttype, bool *force_nl,
     bool comment_buffered, bool last_else)
 {
     bool remove_newlines;
@@ -256,7 +252,7 @@ search_brace_other(token_type ttype, bool *inout_force_nl,
 	    || (ttype == keyword_for_if_while &&
 		*token.s == 'i' && last_else && opt.else_if);
     if (remove_newlines)
-	*inout_force_nl = false;
+	*force_nl = false;
     if (sc_end == NULL) {	/* ignore buffering if comment wasn't saved
 				 * up */
 	ps.search_brace = false;
@@ -267,14 +263,14 @@ search_brace_other(token_type ttype, bool *inout_force_nl,
     }
     if (opt.swallow_optional_blanklines ||
 	(!comment_buffered && remove_newlines)) {
-	*inout_force_nl = !remove_newlines;
+	*force_nl = !remove_newlines;
 	while (sc_end > save_com && sc_end[-1] == '\n') {
 	    sc_end--;
 	}
     }
-    if (*inout_force_nl) {	/* if we should insert a nl here, put it into
+    if (*force_nl) {	/* if we should insert a nl here, put it into
 				 * the buffer */
-	*inout_force_nl = false;
+	*force_nl = false;
 	--line_no;		/* this will be re-increased when the newline
 				 * is read from the buffer */
 	*sc_end++ = '\n';
@@ -303,12 +299,12 @@ switch_buffer(void)
 }
 
 static void
-search_brace_lookahead(token_type *inout_ttype)
+search_brace_lookahead(token_type *ttype)
 {
     /*
      * We must make this check, just in case there was an unexpected EOF.
      */
-    if (*inout_ttype != end_of_file) {
+    if (*ttype != end_of_file) {
 	/*
 	 * The only intended purpose of calling lexi() below is to categorize
 	 * the next token in order to decide whether to continue buffering
@@ -328,56 +324,55 @@ search_brace_lookahead(token_type *inout_ttype)
 	 * into the buffer so that the later lexi() call will read them.
 	 */
 	if (sc_end != NULL) {
-	    while (*buf_ptr == ' ' || *buf_ptr == '\t') {
+	    while (is_hspace(*buf_ptr)) {
 		*sc_end++ = *buf_ptr++;
 		if (sc_end >= &save_com[sc_size]) {
 		    errx(1, "input too long");
 		}
 	    }
-	    if (buf_ptr >= buf_end) {
+	    if (buf_ptr >= buf_end)
 		fill_buffer();
-	    }
 	}
 
 	struct parser_state transient_state;
 	transient_state = ps;
-	*inout_ttype = lexi(&transient_state);	/* read another token */
-	if (*inout_ttype != newline && *inout_ttype != form_feed &&
-	    *inout_ttype != comment && !transient_state.search_brace) {
+	*ttype = lexi(&transient_state);	/* read another token */
+	if (*ttype != newline && *ttype != form_feed &&
+	    *ttype != comment && !transient_state.search_brace) {
 	    ps = transient_state;
 	}
     }
 }
 
 static void
-search_brace(token_type *inout_ttype, bool *inout_force_nl,
-    bool *inout_comment_buffered, bool *inout_last_else)
+search_brace(token_type *ttype, bool *force_nl,
+    bool *comment_buffered, bool *last_else)
 {
     while (ps.search_brace) {
-	switch (*inout_ttype) {
+	switch (*ttype) {
 	case newline:
-	    search_brace_newline(inout_force_nl);
+	    search_brace_newline(force_nl);
 	    break;
 	case form_feed:
 	    break;
 	case comment:
-	    search_brace_comment(inout_comment_buffered);
+	    search_brace_comment(comment_buffered);
 	    break;
 	case lbrace:
 	    if (search_brace_lbrace())
 		goto sw_buffer;
 	    /* FALLTHROUGH */
 	default:		/* it is the start of a normal statement */
-	    if (!search_brace_other(*inout_ttype, inout_force_nl,
-		    *inout_comment_buffered, *inout_last_else))
+	    if (!search_brace_other(*ttype, force_nl,
+		    *comment_buffered, *last_else))
 		return;
 	sw_buffer:
 	    switch_buffer();
 	}
-	search_brace_lookahead(inout_ttype);
+	search_brace_lookahead(ttype);
     }
 
-    *inout_last_else = false;
+    *last_else = false;
 }
 
 static void
@@ -488,7 +483,7 @@ main_parse_command_line(int argc, char **argv)
 	opt.comment_column = 2;	/* don't put normal comments before column 2 */
     if (opt.block_comment_max_line_length <= 0)
 	opt.block_comment_max_line_length = opt.max_line_length;
-    if (opt.local_decl_indent < 0) /* if not specified by user, set this */
+    if (opt.local_decl_indent < 0)	/* if not specified by user, set this */
 	opt.local_decl_indent = opt.decl_indent;
     if (opt.decl_comment_column <= 0)	/* if not specified by user, set this */
 	opt.decl_comment_column = opt.ljust_decl
@@ -506,19 +501,19 @@ main_prepare_parsing(void)
     parse(semicolon);
 
     char *p = buf_ptr;
-    int col = 1;
+    int ind = 0;
 
     for (;;) {
 	if (*p == ' ')
-	    col++;
+	    ind++;
 	else if (*p == '\t')
-	    col = opt.tabsize * (1 + (col - 1) / opt.tabsize) + 1;
+	    ind = opt.tabsize * (1 + ind / opt.tabsize);
 	else
 	    break;
 	p++;
     }
-    if (col > opt.indent_size)
-	ps.ind_level = ps.ind_level_follow = col / opt.indent_size;
+    if (ind >= opt.indent_size)
+	ps.ind_level = ps.ind_level_follow = ind / opt.indent_size;
 }
 
 static void __attribute__((__noreturn__))
@@ -542,9 +537,9 @@ process_end_of_file(void)
 }
 
 static void
-process_comment_in_code(token_type ttype, bool *inout_force_nl)
+process_comment_in_code(token_type ttype, bool *force_nl)
 {
-    if (*inout_force_nl &&
+    if (*force_nl &&
 	ttype != semicolon &&
 	(ttype != lbrace || !opt.btype_2)) {
 
@@ -552,8 +547,8 @@ process_comment_in_code(token_type ttype, bool *inout_force_nl)
 	if (opt.verbose)
 	    diag(0, "Line broken");
 	dump_line();
-	ps.want_blank = false;	/* dont insert blank at line start */
-	*inout_force_nl = false;
+	ps.want_blank = false;	/* don't insert blank at line start */
+	*force_nl = false;
     }
 
     ps.in_stmt = true;		/* turn on flag which causes an extra level of
@@ -610,9 +605,8 @@ want_blank_before_lparen(void)
 }
 
 static void
-process_lparen_or_lbracket(int dec_ind, bool tabs_to_var, bool sp_sw)
+process_lparen_or_lbracket(int decl_ind, bool tabs_to_var, bool sp_sw)
 {
-    /* count parens to make Healy happy */
     if (++ps.p_l_follow == nitems(ps.paren_indents)) {
 	diag(0, "Reached internal limit of %zu unclosed parens",
 	    nitems(ps.paren_indents));
@@ -622,7 +616,7 @@ process_lparen_or_lbracket(int dec_ind, bool tabs_to_var, bool sp_sw)
 	&& !ps.block_init && !ps.dumped_decl_indent &&
 	ps.procname[0] == '\0' && ps.paren_level == 0) {
 	/* function pointer declarations */
-	indent_declaration(dec_ind, tabs_to_var);
+	indent_declaration(decl_ind, tabs_to_var);
 	ps.dumped_decl_indent = true;
     } else if (want_blank_before_lparen())
 	*code.e++ = ' ';
@@ -630,13 +624,13 @@ process_lparen_or_lbracket(int dec_ind, bool tabs_to_var, bool sp_sw)
     *code.e++ = token.s[0];
 
     ps.paren_indents[ps.p_l_follow - 1] =
-	indentation_after_range(0, code.s, code.e);
+	(short)indentation_after_range(0, code.s, code.e);
     debug_println("paren_indent[%d] is now %d",
 	ps.p_l_follow - 1, ps.paren_indents[ps.p_l_follow - 1]);
 
     if (sp_sw && ps.p_l_follow == 1 && opt.extra_expression_indent
 	    && ps.paren_indents[0] < 2 * opt.indent_size) {
-	ps.paren_indents[0] = 2 * opt.indent_size;
+	ps.paren_indents[0] = (short)(2 * opt.indent_size);
 	debug_println("paren_indent[0] is now %d", ps.paren_indents[0]);
     }
     if (ps.in_or_st && *token.s == '(' && ps.tos <= 2) {
@@ -654,7 +648,7 @@ process_lparen_or_lbracket(int dec_ind, bool tabs_to_var, bool sp_sw)
 }
 
 static void
-process_rparen_or_rbracket(bool *inout_sp_sw, bool *inout_force_nl,
+process_rparen_or_rbracket(bool *sp_sw, bool *force_nl,
     token_type hd_type)
 {
     if ((ps.cast_mask & (1 << ps.p_l_follow) & ~ps.not_cast_mask) != 0) {
@@ -675,13 +669,13 @@ process_rparen_or_rbracket(bool *inout_sp_sw, bool *inout_force_nl,
 
     *code.e++ = token.s[0];
 
-    if (*inout_sp_sw && (ps.p_l_follow == 0)) {	/* check for end of if (...),
+    if (*sp_sw && (ps.p_l_follow == 0)) {	/* check for end of if (...),
 						 * or some such */
-	*inout_sp_sw = false;
-	*inout_force_nl = true;	/* must force newline after if */
+	*sp_sw = false;
+	*force_nl = true;	/* must force newline after if */
 	ps.last_u_d = true;	/* inform lexi that a following operator is
 				 * unary */
-	ps.in_stmt = false;	/* dont use stmt continuation indentation */
+	ps.in_stmt = false;	/* don't use stmt continuation indentation */
 
 	parse(hd_type);		/* let parser worry about if, or whatever */
     }
@@ -692,12 +686,12 @@ process_rparen_or_rbracket(bool *inout_sp_sw, bool *inout_force_nl,
 }
 
 static void
-process_unary_op(int dec_ind, bool tabs_to_var)
+process_unary_op(int decl_ind, bool tabs_to_var)
 {
     if (!ps.dumped_decl_indent && ps.in_decl && !ps.block_init &&
 	ps.procname[0] == '\0' && ps.paren_level == 0) {
 	/* pointer declarations */
-	indent_declaration(dec_ind - (int)strlen(token.s), tabs_to_var);
+	indent_declaration(decl_ind - (int)strlen(token.s), tabs_to_var);
 	ps.dumped_decl_indent = true;
     } else if (ps.want_blank)
 	*code.e++ = ' ';
@@ -735,10 +729,10 @@ process_postfix_op(void)
 }
 
 static void
-process_question(int *inout_squest)
+process_question(int *seen_quest)
 {
-    (*inout_squest)++;		/* this will be used when a later colon
-				 * appears so we can distinguish the
+    (*seen_quest)++;		/* this will be used when a later colon
+				 * appears, so we can distinguish the
 				 * <c>?<n>:<n> construct */
     if (ps.want_blank)
 	*code.e++ = ' ';
@@ -747,10 +741,10 @@ process_question(int *inout_squest)
 }
 
 static void
-process_colon(int *inout_squest, bool *inout_force_nl, bool *inout_scase)
+process_colon(int *seen_quest, bool *force_nl, bool *seen_case)
 {
-    if (*inout_squest > 0) {	/* it is part of the <c>?<n>: <n> construct */
-	--*inout_squest;
+    if (*seen_quest > 0) {	/* it is part of the <c>?<n>: <n> construct */
+	--*seen_quest;
 	if (ps.want_blank)
 	    *code.e++ = ' ';
 	*code.e++ = ':';
@@ -777,26 +771,25 @@ process_colon(int *inout_squest, bool *inout_force_nl, bool *inout_scase)
 	*lab.e = '\0';
 	code.e = code.s;
     }
-    *inout_force_nl = ps.pcase = *inout_scase;	/* ps.pcase will be used by
-						 * dump_line to decide how to
-						 * indent the label. force_nl
-						 * will force a case n: to be
-						 * on a line by itself */
-    *inout_scase = false;
+    ps.pcase = *seen_case;	/* will be used by dump_line to decide how to
+				 * indent the label. */
+    *force_nl = *seen_case;	/* will force a 'case n:' to be on a
+				 * line by itself */
+    *seen_case = false;
     ps.want_blank = false;
 }
 
 static void
-process_semicolon(bool *inout_scase, int *inout_squest, int dec_ind,
-    bool tabs_to_var, bool *inout_sp_sw,
+process_semicolon(bool *seen_case, int *seen_quest, int decl_ind,
+    bool tabs_to_var, bool *sp_sw,
     token_type hd_type,
-    bool *inout_force_nl)
+    bool *force_nl)
 {
     if (ps.decl_nest == 0)
 	ps.in_or_st = false;	/* we are not in an initialization or
 				 * structure declaration */
-    *inout_scase = false;	/* these will only need resetting in an error */
-    *inout_squest = 0;
+    *seen_case = false;		/* these will only need resetting in an error */
+    *seen_quest = 0;
     if (ps.last_token == rparen)
 	ps.in_parameter_declaration = false;
     ps.cast_mask = 0;
@@ -808,15 +801,15 @@ process_semicolon(bool *inout_scase, int *inout_squest, int dec_ind,
     if (ps.in_decl && code.s == code.e && !ps.block_init &&
 	!ps.dumped_decl_indent && ps.paren_level == 0) {
 	/* indent stray semicolons in declarations */
-	indent_declaration(dec_ind - 1, tabs_to_var);
+	indent_declaration(decl_ind - 1, tabs_to_var);
 	ps.dumped_decl_indent = true;
     }
 
     ps.in_decl = (ps.decl_nest > 0);	/* if we were in a first level
-					 * structure declaration, we arent any
-					 * more */
+					 * structure declaration, we aren't
+					 * anymore */
 
-    if ((!*inout_sp_sw || hd_type != for_exprs) && ps.p_l_follow > 0) {
+    if ((!*sp_sw || hd_type != for_exprs) && ps.p_l_follow > 0) {
 
 	/*
 	 * This should be true iff there were unbalanced parens in the stmt.
@@ -825,10 +818,10 @@ process_semicolon(bool *inout_scase, int *inout_squest, int dec_ind,
 	 */
 	diag(1, "Unbalanced parens");
 	ps.p_l_follow = 0;
-	if (*inout_sp_sw) {	/* this is a check for an if, while, etc. with
+	if (*sp_sw) {		/* this is a check for an if, while, etc. with
 				 * unbalanced parens */
-	    *inout_sp_sw = false;
-	    parse(hd_type);	/* dont lose the if, or whatever */
+	    *sp_sw = false;
+	    parse(hd_type);	/* don't lose the 'if', or whatever */
 	}
     }
     *code.e++ = ';';
@@ -836,19 +829,19 @@ process_semicolon(bool *inout_scase, int *inout_squest, int dec_ind,
     ps.in_stmt = (ps.p_l_follow > 0);	/* we are no longer in the middle of a
 					 * stmt */
 
-    if (!*inout_sp_sw) {	/* if not if for (;;) */
+    if (!*sp_sw) {		/* if not if for (;;) */
 	parse(semicolon);	/* let parser know about end of stmt */
-	*inout_force_nl = true;	/* force newline after an end of stmt */
+	*force_nl = true;	/* force newline after an end of stmt */
     }
 }
 
 static void
-process_lbrace(bool *inout_force_nl, bool *inout_sp_sw, token_type hd_type,
-    int *di_stack, int di_stack_cap, int *inout_dec_ind)
+process_lbrace(bool *force_nl, bool *sp_sw, token_type hd_type,
+    int *di_stack, int di_stack_cap, int *decl_ind)
 {
-    ps.in_stmt = false;		/* dont indent the {} */
+    ps.in_stmt = false;		/* don't indent the {} */
     if (!ps.block_init)
-	*inout_force_nl = true;	/* force other stuff on same line as '{' onto
+	*force_nl = true;	/* force other stuff on same line as '{' onto
 				 * new line */
     else if (ps.block_init_level <= 0)
 	ps.block_init_level = 1;
@@ -875,24 +868,23 @@ process_lbrace(bool *inout_force_nl, bool *inout_sp_sw, token_type hd_type,
     if (ps.p_l_follow > 0) {	/* check for preceding unbalanced parens */
 	diag(1, "Unbalanced parens");
 	ps.p_l_follow = 0;
-	if (*inout_sp_sw) {	/* check for unclosed if, for, etc. */
-	    *inout_sp_sw = false;
+	if (*sp_sw) {		/* check for unclosed if, for, etc. */
+	    *sp_sw = false;
 	    parse(hd_type);
 	    ps.ind_level = ps.ind_level_follow;
 	}
     }
     if (code.s == code.e)
-	ps.ind_stmt = false;	/* dont put extra indentation on line
+	ps.ind_stmt = false;	/* don't put extra indentation on a line
 				 * with '{' */
     if (ps.in_decl && ps.in_or_st) {	/* this is either a structure
 					 * declaration or an init */
-	di_stack[ps.decl_nest] = *inout_dec_ind;
+	di_stack[ps.decl_nest] = *decl_ind;
 	if (++ps.decl_nest == di_stack_cap) {
 	    diag(0, "Reached internal limit of %d struct levels",
 		di_stack_cap);
 	    ps.decl_nest--;
 	}
-	/* ?		dec_ind = 0; */
     } else {
 	ps.decl_on_line = false;	/* we can't be in the middle of a
 					 * declaration, so don't do special
@@ -903,7 +895,7 @@ process_lbrace(bool *inout_force_nl, bool *inout_sp_sw, token_type hd_type,
 	ps.in_parameter_declaration = false;
 	ps.in_decl = false;
     }
-    *inout_dec_ind = 0;
+    *decl_ind = 0;
     parse(lbrace);		/* let parser know about this */
     if (ps.want_blank)		/* put a blank before '{' if '{' is not at
 				 * start of line */
@@ -914,7 +906,7 @@ process_lbrace(bool *inout_force_nl, bool *inout_sp_sw, token_type hd_type,
 }
 
 static void
-process_rbrace(bool *inout_sp_sw, int *inout_dec_ind, const int *di_stack)
+process_rbrace(bool *sp_sw, int *decl_ind, const int *di_stack)
 {
     if (ps.p_stack[ps.tos] == decl && !ps.block_init)	/* semicolons can be
 							 * omitted in
@@ -923,7 +915,7 @@ process_rbrace(bool *inout_sp_sw, int *inout_dec_ind, const int *di_stack)
     if (ps.p_l_follow != 0) {	/* check for unclosed if, for, else. */
 	diag(1, "Unbalanced parens");
 	ps.p_l_follow = 0;
-	*inout_sp_sw = false;
+	*sp_sw = false;
     }
     ps.just_saw_decl = 0;
     ps.block_init_level--;
@@ -936,7 +928,7 @@ process_rbrace(bool *inout_sp_sw, int *inout_dec_ind, const int *di_stack)
     ps.want_blank = true;
     ps.in_stmt = ps.ind_stmt = false;
     if (ps.decl_nest > 0) { /* we are in multi-level structure declaration */
-	*inout_dec_ind = di_stack[--ps.decl_nest];
+	*decl_ind = di_stack[--ps.decl_nest];
 	if (ps.decl_nest == 0 && !ps.in_parameter_declaration)
 	    ps.just_saw_decl = 2;
 	ps.in_decl = true;
@@ -951,7 +943,7 @@ process_rbrace(bool *inout_sp_sw, int *inout_dec_ind, const int *di_stack)
 }
 
 static void
-process_keyword_do_else(bool *inout_force_nl, bool *inout_last_else)
+process_keyword_do_else(bool *force_nl, bool *last_else)
 {
     ps.in_stmt = false;
     if (*token.s == 'e') {
@@ -961,8 +953,8 @@ process_keyword_do_else(bool *inout_force_nl, bool *inout_last_else)
 	    dump_line();	/* make sure this starts a line */
 	    ps.want_blank = false;
 	}
-	*inout_force_nl = true;/* also, following stuff must go onto new line */
-	*inout_last_else = true;
+	*force_nl = true;	/* following stuff must go onto new line */
+	*last_else = true;
 	parse(keyword_else);
     } else {
 	if (code.e != code.s) {	/* make sure this starts a line */
@@ -971,14 +963,14 @@ process_keyword_do_else(bool *inout_force_nl, bool *inout_last_else)
 	    dump_line();
 	    ps.want_blank = false;
 	}
-	*inout_force_nl = true;/* also, following stuff must go onto new line */
-	*inout_last_else = false;
+	*force_nl = true;	/* following stuff must go onto new line */
+	*last_else = false;
 	parse(keyword_do);
     }
 }
 
 static void
-process_decl(int *out_dec_ind, bool *out_tabs_to_var)
+process_decl(int *out_decl_ind, bool *out_tabs_to_var)
 {
     parse(decl);		/* let parser worry about indentation */
     if (ps.last_token == rparen && ps.tos <= 1) {
@@ -1003,13 +995,13 @@ process_decl(int *out_dec_ind, bool *out_tabs_to_var)
     int ind = ps.ind_level == 0 || ps.decl_nest > 0
 	    ? opt.decl_indent		/* global variable or local member */
 	    : opt.local_decl_indent;	/* local variable */
-    *out_dec_ind = ind > 0 ? ind : len;
+    *out_decl_ind = ind > 0 ? ind : len;
     *out_tabs_to_var = opt.use_tabs ? ind > 0 : false;
 }
 
 static void
-process_ident(token_type ttype, int dec_ind, bool tabs_to_var,
-    bool *inout_sp_sw, bool *inout_force_nl, token_type hd_type)
+process_ident(token_type ttype, int decl_ind, bool tabs_to_var,
+    bool *sp_sw, bool *force_nl, token_type hd_type)
 {
     if (ps.in_decl) {
 	if (ttype == funcname) {
@@ -1024,13 +1016,13 @@ process_ident(token_type ttype, int dec_ind, bool tabs_to_var,
 	} else if (!ps.block_init && !ps.dumped_decl_indent &&
 	    ps.paren_level == 0) {	/* if we are in a declaration, we must
 					 * indent identifier */
-	    indent_declaration(dec_ind, tabs_to_var);
+	    indent_declaration(decl_ind, tabs_to_var);
 	    ps.dumped_decl_indent = true;
 	    ps.want_blank = false;
 	}
-    } else if (*inout_sp_sw && ps.p_l_follow == 0) {
-	*inout_sp_sw = false;
-	*inout_force_nl = true;
+    } else if (*sp_sw && ps.p_l_follow == 0) {
+	*sp_sw = false;
+	*force_nl = true;
 	ps.last_u_d = true;
 	ps.in_stmt = false;
 	parse(hd_type);
@@ -1068,19 +1060,19 @@ process_period(void)
 {
     if (code.e[-1] == ',')
 	*code.e++ = ' ';
-    *code.e++ = '.';		/* move the period into line */
-    ps.want_blank = false;	/* dont put a blank after a period */
+    *code.e++ = '.';
+    ps.want_blank = false;
 }
 
 static void
-process_comma(int dec_ind, bool tabs_to_var, bool *inout_force_nl)
+process_comma(int decl_ind, bool tabs_to_var, bool *force_nl)
 {
     ps.want_blank = (code.s != code.e);	/* only put blank after comma if comma
 					 * does not start the line */
     if (ps.in_decl && ps.procname[0] == '\0' && !ps.block_init &&
 	!ps.dumped_decl_indent && ps.paren_level == 0) {
 	/* indent leading commas and not the actual identifiers */
-	indent_declaration(dec_ind - 1, tabs_to_var);
+	indent_declaration(decl_ind - 1, tabs_to_var);
 	ps.dumped_decl_indent = true;
     }
     *code.e++ = ',';
@@ -1091,7 +1083,7 @@ process_comma(int dec_ind, bool tabs_to_var, bool *inout_force_nl)
 			    indentation_after_range(
 				    compute_code_indent(), code.s, code.e)
 			    >= opt.max_line_length - opt.tabsize))
-	    *inout_force_nl = true;
+	    *force_nl = true;
     }
 }
 
@@ -1109,23 +1101,16 @@ process_preprocessing(void)
 	char quote = '\0';
 	int com_end = 0;
 
-	while (*buf_ptr == ' ' || *buf_ptr == '\t') {
-	    buf_ptr++;
-	    if (buf_ptr >= buf_end)
-		fill_buffer();
-	}
+	while (is_hspace(*buf_ptr))
+	    inbuf_skip();
+
 	while (*buf_ptr != '\n' || (in_comment && !had_eof)) {
 	    check_size_label(2);
-	    *lab.e = *buf_ptr++;
-	    if (buf_ptr >= buf_end)
-		fill_buffer();
-	    switch (*lab.e++) {
+	    *lab.e++ = inbuf_next();
+	    switch (lab.e[-1]) {
 	    case '\\':
-		if (!in_comment) {
-		    *lab.e++ = *buf_ptr++;
-		    if (buf_ptr >= buf_end)
-			fill_buffer();
-		}
+		if (!in_comment)
+		    *lab.e++ = inbuf_next();
 		break;
 	    case '/':
 		if (*buf_ptr == '*' && !in_comment && quote == '\0') {
@@ -1156,14 +1141,14 @@ process_preprocessing(void)
 	    }
 	}
 
-	while (lab.e > lab.s && (lab.e[-1] == ' ' || lab.e[-1] == '\t'))
+	while (lab.e > lab.s && is_hspace(lab.e[-1]))
 	    lab.e--;
 	if (lab.e - lab.s == com_end && bp_save == NULL) {
 	    /* comment on preprocessor line */
 	    if (sc_end == NULL) {	/* if this is the first comment, we
 					 * must set up the buffer */
 		save_com = sc_buf;
-		sc_end = &save_com[0];
+		sc_end = save_com;
 	    } else {
 		*sc_end++ = '\n';	/* add newline between comments */
 		*sc_end++ = ' ';
@@ -1174,7 +1159,7 @@ process_preprocessing(void)
 	    memmove(sc_end, lab.s + com_start, (size_t)(com_end - com_start));
 	    sc_end += com_end - com_start;
 	    lab.e = lab.s + com_start;
-	    while (lab.e > lab.s && (lab.e[-1] == ' ' || lab.e[-1] == '\t'))
+	    while (lab.e > lab.s && is_hspace(lab.e[-1]))
 		lab.e--;
 	    bp_save = buf_ptr;	/* save current input buffer */
 	    be_save = buf_end;
@@ -1218,7 +1203,7 @@ process_preprocessing(void)
     }
     if (opt.blanklines_around_conditional_compilation) {
 	postfix_blankline_requested = true;
-	n_real_blanklines = 0;
+	next_blank_lines = 0;
     } else {
 	postfix_blankline_requested = false;
 	prefix_blankline_requested = false;
@@ -1236,24 +1221,24 @@ main_loop(void)
     token_type ttype;
     bool force_nl;		/* when true, code must be broken */
     bool last_else = false;	/* true iff last keyword was an else */
-    int dec_ind;		/* current indentation for declarations */
+    int decl_ind;		/* current indentation for declarations */
     int di_stack[20];		/* a stack of structure indentation levels */
     bool tabs_to_var;		/* true if using tabs to indent to var name */
     bool sp_sw;			/* when true, we are in the expression of
 				 * if(...), while(...), etc. */
     token_type hd_type = end_of_file;	/* used to store type of stmt for if
 					 * (...), for (...), etc */
-    int squest;			/* when this is positive, we have seen a '?'
+    int seen_quest;		/* when this is positive, we have seen a '?'
 				 * without the matching ':' in a <c>?<s>:<s>
 				 * construct */
-    bool scase;			/* set to true when we see a 'case', so we
+    bool seen_case;		/* set to true when we see a 'case', so we
 				 * know what to do with the following colon */
 
     sp_sw = force_nl = false;
-    dec_ind = 0;
+    decl_ind = 0;
     di_stack[ps.decl_nest = 0] = 0;
-    scase = false;
-    squest = 0;
+    seen_case = false;
+    seen_quest = 0;
     tabs_to_var = false;
 
     for (;;) {			/* this is the main loop.  it will go until we
@@ -1307,7 +1292,7 @@ main_loop(void)
 	    break;
 
 	case lparen:		/* got a '(' or '[' */
-	    process_lparen_or_lbracket(dec_ind, tabs_to_var, sp_sw);
+	    process_lparen_or_lbracket(decl_ind, tabs_to_var, sp_sw);
 	    break;
 
 	case rparen:		/* got a ')' or ']' */
@@ -1315,7 +1300,7 @@ main_loop(void)
 	    break;
 
 	case unary_op:		/* this could be any unary operation */
-	    process_unary_op(dec_ind, tabs_to_var);
+	    process_unary_op(decl_ind, tabs_to_var);
 	    break;
 
 	case binary_op:		/* any binary operation */
@@ -1327,29 +1312,29 @@ main_loop(void)
 	    break;
 
 	case question:		/* got a ? */
-	    process_question(&squest);
+	    process_question(&seen_quest);
 	    break;
 
 	case case_label:	/* got word 'case' or 'default' */
-	    scase = true;	/* so we can process the later colon properly */
+	    seen_case = true;	/* so we can process the later colon properly */
 	    goto copy_id;
 
 	case colon:		/* got a ':' */
-	    process_colon(&squest, &force_nl, &scase);
+	    process_colon(&seen_quest, &force_nl, &seen_case);
 	    break;
 
 	case semicolon:		/* got a ';' */
-	    process_semicolon(&scase, &squest, dec_ind, tabs_to_var, &sp_sw,
-		hd_type, &force_nl);
+	    process_semicolon(&seen_case, &seen_quest, decl_ind, tabs_to_var,
+		&sp_sw, hd_type, &force_nl);
 	    break;
 
 	case lbrace:		/* got a '{' */
 	    process_lbrace(&force_nl, &sp_sw, hd_type, di_stack,
-		(int)nitems(di_stack), &dec_ind);
+		(int)nitems(di_stack), &decl_ind);
 	    break;
 
 	case rbrace:		/* got a '}' */
-	    process_rbrace(&sp_sw, &dec_ind, di_stack);
+	    process_rbrace(&sp_sw, &decl_ind, di_stack);
 	    break;
 
 	case switch_expr:	/* got keyword "switch" */
@@ -1381,12 +1366,12 @@ main_loop(void)
 		goto copy_id;
 	    /* FALLTHROUGH */
 	case decl:		/* we have a declaration type (int, etc.) */
-	    process_decl(&dec_ind, &tabs_to_var);
+	    process_decl(&decl_ind, &tabs_to_var);
 	    goto copy_id;
 
 	case funcname:
 	case ident:		/* got an identifier or constant */
-	    process_ident(ttype, dec_ind, tabs_to_var, &sp_sw, &force_nl,
+	    process_ident(ttype, decl_ind, tabs_to_var, &sp_sw, &force_nl,
 		hd_type);
     copy_id:
 	    copy_id();
@@ -1403,7 +1388,7 @@ main_loop(void)
 	    break;
 
 	case comma:
-	    process_comma(dec_ind, tabs_to_var, &force_nl);
+	    process_comma(decl_ind, tabs_to_var, &force_nl);
 	    break;
 
 	case preprocessing:	/* '#' */
@@ -1438,37 +1423,31 @@ main(int argc, char **argv)
 }
 
 /*
- * copy input file to backup file if in_name is /blah/blah/blah/file, then
- * backup file will be ".Bfile" then make the backup file the input and
- * original input file the output
+ * Copy the input file to the backup file, then make the backup file the input
+ * and the original input file the output.
  */
 static void
 bakcopy(void)
 {
     ssize_t n;
-    int bakchn;
+    int bak_fd;
     char buff[8 * 1024];
-    const char *p;
 
-    /* construct file name .Bfile */
-    for (p = in_name; *p != '\0'; p++);	/* skip to end of string */
-    while (p > in_name && *p != '/')	/* find last '/' */
-	p--;
-    if (*p == '/')
-	p++;
-    sprintf(bakfile, "%s%s", p, backup_suffix);
+    const char *last_slash = strrchr(in_name, '/');
+    snprintf(bakfile, sizeof(bakfile), "%s%s",
+	last_slash != NULL ? last_slash + 1 : in_name, backup_suffix);
 
     /* copy in_name to backup file */
-    bakchn = creat(bakfile, 0600);
-    if (bakchn < 0)
+    bak_fd = creat(bakfile, 0600);
+    if (bak_fd < 0)
 	err(1, "%s", bakfile);
     while ((n = read(fileno(input), buff, sizeof(buff))) > 0)
-	if (write(bakchn, buff, (size_t)n) != n)
+	if (write(bak_fd, buff, (size_t)n) != n)
 	    err(1, "%s", bakfile);
     if (n < 0)
 	err(1, "%s", in_name);
-    close(bakchn);
-    fclose(input);
+    close(bak_fd);
+    (void)fclose(input);
 
     /* re-open backup file as the input file */
     input = fopen(bakfile, "r");
@@ -1483,7 +1462,7 @@ bakcopy(void)
 }
 
 static void
-indent_declaration(int cur_dec_ind, bool tabs_to_var)
+indent_declaration(int cur_decl_ind, bool tabs_to_var)
 {
     int pos = (int)(code.e - code.s);
     char *startpos = code.e;
@@ -1494,19 +1473,19 @@ indent_declaration(int cur_dec_ind, bool tabs_to_var)
      */
     if ((ps.ind_level * opt.indent_size) % opt.tabsize != 0) {
 	pos += (ps.ind_level * opt.indent_size) % opt.tabsize;
-	cur_dec_ind += (ps.ind_level * opt.indent_size) % opt.tabsize;
+	cur_decl_ind += (ps.ind_level * opt.indent_size) % opt.tabsize;
     }
     if (tabs_to_var) {
 	int tpos;
 
-	check_size_code((size_t)(cur_dec_ind / opt.tabsize));
-	while ((tpos = opt.tabsize * (1 + pos / opt.tabsize)) <= cur_dec_ind) {
+	check_size_code((size_t)(cur_decl_ind / opt.tabsize));
+	while ((tpos = opt.tabsize * (1 + pos / opt.tabsize)) <= cur_decl_ind) {
 	    *code.e++ = '\t';
 	    pos = tpos;
 	}
     }
-    check_size_code((size_t)(cur_dec_ind - pos + 1));
-    while (pos < cur_dec_ind) {
+    check_size_code((size_t)(cur_decl_ind - pos) + 1);
+    while (pos < cur_decl_ind) {
 	*code.e++ = ' ';
 	pos++;
     }
