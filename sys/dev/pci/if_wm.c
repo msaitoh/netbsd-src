@@ -2014,7 +2014,12 @@ wm_attach(device_t parent, device_t self, void *aux)
 	 * this driver) to use it for normal operation, though it is
 	 * required to work around bugs in some chip versions.
 	 */
-	if (sc->sc_type >= WM_T_82544) {
+	switch (sc->sc_type) {
+	case WM_T_82544:
+	case WM_T_82541:
+	case WM_T_82541_2:
+	case WM_T_82547:
+	case WM_T_82547_2:
 		/* First we have to find the I/O BAR. */
 		for (i = PCI_MAPREG_START; i < PCI_MAPREG_END; i += 4) {
 			memtype = pci_mapreg_type(pa->pa_pc, pa->pa_tag, i);
@@ -2047,7 +2052,9 @@ wm_attach(device_t parent, device_t self, void *aux)
 				aprint_error_dev(sc->sc_dev,
 				    "WARNING: unable to map I/O space\n");
 		}
-
+		break;
+	default:
+		break;
 	}
 
 	/* Enable bus mastering.  Disable MWI on the i82542 2.0. */
