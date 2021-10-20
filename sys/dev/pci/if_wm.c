@@ -9867,7 +9867,7 @@ wm_intr_legacy(void *arg)
 
 	if (rxq->rxq_stopping) {
 		mutex_exit(rxq->rxq_lock);
-		return 0;
+		return 1;
 	}
 
 #if defined(WM_DEBUG) || defined(WM_EVENT_COUNTERS)
@@ -9893,7 +9893,7 @@ wm_intr_legacy(void *arg)
 
 	if (txq->txq_stopping) {
 		mutex_exit(txq->txq_lock);
-		return 0;
+		return 1;
 	}
 
 #if defined(WM_DEBUG) || defined(WM_EVENT_COUNTERS)
@@ -9915,7 +9915,7 @@ wm_intr_legacy(void *arg)
 
 	if (sc->sc_core_stopping) {
 		WM_CORE_UNLOCK(sc);
-		return 0;
+		return 1;
 	}
 
 	if (icr & (ICR_LSC | ICR_RXSEQ)) {
@@ -10016,7 +10016,7 @@ wm_txrxintr_msix(void *arg)
 
 	if (txq->txq_stopping) {
 		mutex_exit(txq->txq_lock);
-		return 0;
+		return 1;
 	}
 
 	WM_Q_EVCNT_INCR(txq, txdw);
@@ -10032,7 +10032,7 @@ wm_txrxintr_msix(void *arg)
 
 	if (rxq->rxq_stopping) {
 		mutex_exit(rxq->rxq_lock);
-		return 0;
+		return 1;
 	}
 
 	WM_Q_EVCNT_INCR(rxq, intr);
