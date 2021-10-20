@@ -4892,8 +4892,9 @@ wm_flush_desc_rings(struct wm_softc *sc)
 	 * the data of the next descriptor. We don't care about the data we are
 	 * about to reset the HW.
 	 */
-	device_printf(sc->sc_dev, "Need TX flush (reg = %08x, len = %u)\n",
-	    preg, reg);
+#ifdef WM_DEBUG
+	device_printf(sc->sc_dev, "Need TX flush (reg = %08x)\n", preg);
+#endif
 	reg = CSR_READ(sc, WMREG_TCTL);
 	CSR_WRITE(sc, WMREG_TCTL, reg | TCTL_EN);
 
@@ -4923,7 +4924,9 @@ wm_flush_desc_rings(struct wm_softc *sc)
 	 * Mark all descriptors in the RX ring as consumed and disable the
 	 * rx ring.
 	 */
+#ifdef WM_DEBUG
 	device_printf(sc->sc_dev, "Need RX flush (reg = %08x)\n", preg);
+#endif
 	rctl = CSR_READ(sc, WMREG_RCTL);
 	CSR_WRITE(sc, WMREG_RCTL, rctl & ~RCTL_EN);
 	CSR_WRITE_FLUSH(sc);
