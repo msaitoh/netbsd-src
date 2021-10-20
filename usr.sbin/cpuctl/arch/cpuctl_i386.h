@@ -45,6 +45,7 @@ extern int cpu_vendor;
 
 /* For x86/x86/identcpu_subr.c */
 uint64_t cpu_tsc_freq_cpuid(struct cpu_info *);
+void	cpu_dcp_cacheinfo(struct cpu_info *, uint32_t);
 
 /* Interfaces to code in i386-asm.S */
 

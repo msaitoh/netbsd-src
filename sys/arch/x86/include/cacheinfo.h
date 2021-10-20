@@ -359,4 +359,7 @@ __CI_TBL(0, 0x0f, 0xff, 0, 0, NULL), \
 __CI_TBL(0, 0x00,    0, 0, 0, NULL)  \
 }
 
+const struct x86_cache_info *cpu_cacheinfo_lookup(
+	const struct x86_cache_info *, uint8_t);
+
 #endif /* _X86_CACHEINFO_H_ */

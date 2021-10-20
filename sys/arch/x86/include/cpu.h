@@ -496,6 +496,7 @@ void	identify_hypervisor(void);
 
 /* identcpu_subr.c */
 uint64_t cpu_tsc_freq_cpuid(struct cpu_info *);
+void	cpu_dcp_cacheinfo(struct cpu_info *, uint32_t);
 
 typedef enum vm_guest {
 	VM_GUEST_NO = 0,
