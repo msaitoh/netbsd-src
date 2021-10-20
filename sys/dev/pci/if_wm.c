@@ -4854,8 +4854,15 @@ wm_reset_phy(struct wm_softc *sc)
 }
 
 /*
- * Only used by WM_T_PCH_SPT which does not use multiqueue,
- * so it is enough to check sc->sc_queue[0] only.
+ * wm_flush_desc_rings - remove all descriptors from the descriptor rings.
+ *
+ * In i219, the descriptor rings must be emptied before resetting the HW
+ * or before changing the device state to D3 during runtime (runtime PM).
+ *
+ * Failure to do this will cause the HW to enter a unit hang state which can
+ * only be released by PCI reset on the device.
+ *
+ * I219 does not use multiqueue, so it is enough to check sc->sc_queue[0] only.
  */
 static void
 wm_flush_desc_rings(struct wm_softc *sc)
@@ -4877,7 +4884,14 @@ wm_flush_desc_rings(struct wm_softc *sc)
 	if (((preg & DESCRING_STATUS_FLUSH_REQ) == 0) || (reg == 0))
 		return;
 
-	/* TX */
+	/*
+	 * Remove all descriptors from the tx_ring.
+	 *
+	 * We want to clear all pending descriptors from the TX ring. Zeroing
+	 * happens when the HW reads the regs. We  assign the ring itself as
+	 * the data of the next descriptor. We don't care about the data we are
+	 * about to reset the HW.
+	 */
 	device_printf(sc->sc_dev, "Need TX flush (reg = %08x, len = %u)\n",
 	    preg, reg);
 	reg = CSR_READ(sc, WMREG_TCTL);
@@ -4886,7 +4900,7 @@ wm_flush_desc_rings(struct wm_softc *sc)
 	txq = &sc->sc_queue[0].wmq_txq;
 	nexttx = txq->txq_next;
 	txd = &txq->txq_descs[nexttx];
-	wm_set_dma_addr(&txd->wtx_addr, WM_CDTXADDR(txq, nexttx));
+	wm_set_dma_addr(&txd->wtx_addr, txq->txq_desc_dma);
 	txd->wtx_cmdlen = htole32(WTX_CMD_IFCS | 512);
 	txd->wtx_fields.wtxu_status = 0;
 	txd->wtx_fields.wtxu_options = 0;
@@ -4905,7 +4919,10 @@ wm_flush_desc_rings(struct wm_softc *sc)
 	if ((preg & DESCRING_STATUS_FLUSH_REQ) == 0)
 		return;
 
-	/* RX */
+	/*
+	 * Mark all descriptors in the RX ring as consumed and disable the
+	 * rx ring.
+	 */
 	device_printf(sc->sc_dev, "Need RX flush (reg = %08x)\n", preg);
 	rctl = CSR_READ(sc, WMREG_RCTL);
 	CSR_WRITE(sc, WMREG_RCTL, rctl & ~RCTL_EN);
