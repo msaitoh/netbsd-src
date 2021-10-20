@@ -9845,6 +9845,7 @@ static int
 wm_intr_legacy(void *arg)
 {
 	struct wm_softc *sc = arg;
+	struct ifnet *ifp = &sc->sc_ethercom.ec_if;
 	struct wm_queue *wmq = &sc->sc_queue[0];
 	struct wm_txqueue *txq = &wmq->wmq_txq;
 	struct wm_rxqueue *rxq = &wmq->wmq_rxq;
@@ -9906,6 +9907,8 @@ wm_intr_legacy(void *arg)
 		}
 #endif
 		more |= wm_txeof(txq, UINT_MAX);
+		if (!IF_IS_EMPTY(&ifp->if_snd))
+			more = true;
 		/* Fill upper bits with TX index. See above for the lower. */
 		rndval = txq->txq_next * WM_NRXDESC;
 
