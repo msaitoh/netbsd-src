@@ -3292,6 +3292,10 @@ wm_resume(device_t self, const pmf_qual_t *qual)
 	if (sc->sc_type >= WM_T_PCH2)
 		wm_resume_workarounds_pchlan(sc);
 	if ((ifp->if_flags & IFF_UP) == 0) {
+		/* >= PCH_SPT hardware workaround before reset. */
+		if (sc->sc_type >= WM_T_PCH_SPT)
+			wm_flush_desc_rings(sc);
+
 		wm_reset(sc);
 		/* Non-AMT based hardware can now take control from firmware */
 		if ((sc->sc_flags & WM_F_HAS_AMT) == 0)
@@ -6095,8 +6099,8 @@ wm_init_locked(struct ifnet *ifp)
 	ifp->if_collisions += CSR_READ(sc, WMREG_COLC);
 	ifp->if_ierrors += CSR_READ(sc, WMREG_RXERRC);
 
-	/* PCH_SPT hardware workaround */
-	if (sc->sc_type == WM_T_PCH_SPT)
+	/* >= PCH_SPT hardware workaround before reset. */
+	if (sc->sc_type >= WM_T_PCH_SPT)
 		wm_flush_desc_rings(sc);
 
 	/* Reset the chip to a known state. */
