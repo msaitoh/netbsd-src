@@ -9849,92 +9849,89 @@ wm_intr_legacy(void *arg)
 	struct wm_queue *wmq = &sc->sc_queue[0];
 	struct wm_txqueue *txq = &wmq->wmq_txq;
 	struct wm_rxqueue *rxq = &wmq->wmq_rxq;
+	u_int txlimit = sc->sc_tx_intr_process_limit;
+	u_int rxlimit = sc->sc_rx_intr_process_limit;
 	uint32_t icr, rndval = 0;
-	int handled = 0;
 	bool more = false;
 
-	while (1 /* CONSTCOND */) {
-		icr = CSR_READ(sc, WMREG_ICR);
-		if ((icr & sc->sc_icr) == 0)
-			break;
-		if (handled == 0)
-			DPRINTF(sc, WM_DEBUG_TX,
-			    ("%s: INTx: got intr\n",device_xname(sc->sc_dev)));
-		if (rndval == 0)
-			rndval = icr;
+	icr = CSR_READ(sc, WMREG_ICR);
+	if ((icr & sc->sc_icr) == 0)
+		return 0;
 
-		mutex_enter(rxq->rxq_lock);
+	DPRINTF(sc, WM_DEBUG_TX,
+	    ("%s: INTx: got intr\n",device_xname(sc->sc_dev)));
+	if (rndval == 0)
+		rndval = icr;
 
-		if (rxq->rxq_stopping) {
-			mutex_exit(rxq->rxq_lock);
-			break;
-		}
+	mutex_enter(rxq->rxq_lock);
 
-		handled = 1;
-
-#if defined(WM_DEBUG) || defined(WM_EVENT_COUNTERS)
-		if (icr & (ICR_RXDMT0 | ICR_RXT0)) {
-			DPRINTF(sc, WM_DEBUG_RX,
-			    ("%s: RX: got Rx intr 0x%08x\n",
-				device_xname(sc->sc_dev),
-				icr & (ICR_RXDMT0 | ICR_RXT0)));
-			WM_Q_EVCNT_INCR(rxq, intr);
-		}
-#endif
-		/*
-		 * wm_rxeof() does *not* call upper layer functions directly,
-		 * as if_percpuq_enqueue() just call softint_schedule().
-		 * So, we can call wm_rxeof() in interrupt context.
-		 */
-		more = wm_rxeof(rxq, UINT_MAX);
-		/* Fill lower bits with RX index. See below for the upper. */
-		rndval |= rxq->rxq_ptr & WM_NRXDESC_MASK;
-
+	if (rxq->rxq_stopping) {
 		mutex_exit(rxq->rxq_lock);
-		mutex_enter(txq->txq_lock);
-
-		if (txq->txq_stopping) {
-			mutex_exit(txq->txq_lock);
-			break;
-		}
+		return 0;
+	}
 
 #if defined(WM_DEBUG) || defined(WM_EVENT_COUNTERS)
-		if (icr & ICR_TXDW) {
-			DPRINTF(sc, WM_DEBUG_TX,
-			    ("%s: TX: got TXDW interrupt\n",
-				device_xname(sc->sc_dev)));
-			WM_Q_EVCNT_INCR(txq, txdw);
-		}
+	if (icr & (ICR_RXDMT0 | ICR_RXT0)) {
+		DPRINTF(sc, WM_DEBUG_RX,
+		    ("%s: RX: got Rx intr 0x%08x\n",
+			device_xname(sc->sc_dev),
+			icr & (ICR_RXDMT0 | ICR_RXT0)));
+		WM_Q_EVCNT_INCR(rxq, intr);
+	}
 #endif
-		more |= wm_txeof(txq, UINT_MAX);
-		if (!IF_IS_EMPTY(&ifp->if_snd))
-			more = true;
-		/* Fill upper bits with TX index. See above for the lower. */
-		rndval = txq->txq_next * WM_NRXDESC;
+	/*
+	 * wm_rxeof() does *not* call upper layer functions directly,
+	 * as if_percpuq_enqueue() just call softint_schedule().
+	 * So, we can call wm_rxeof() in interrupt context.
+	 */
+	more = wm_rxeof(rxq, rxlimit);
+	/* Fill lower bits with RX index. See below for the upper. */
+	rndval |= rxq->rxq_ptr & WM_NRXDESC_MASK;
 
+	mutex_exit(rxq->rxq_lock);
+	mutex_enter(txq->txq_lock);
+
+	if (txq->txq_stopping) {
 		mutex_exit(txq->txq_lock);
-		WM_CORE_LOCK(sc);
+		return 0;
+	}
 
-		if (sc->sc_core_stopping) {
-			WM_CORE_UNLOCK(sc);
-			break;
-		}
+#if defined(WM_DEBUG) || defined(WM_EVENT_COUNTERS)
+	if (icr & ICR_TXDW) {
+		DPRINTF(sc, WM_DEBUG_TX,
+		    ("%s: TX: got TXDW interrupt\n",
+			device_xname(sc->sc_dev)));
+		WM_Q_EVCNT_INCR(txq, txdw);
+	}
+#endif
+	more |= wm_txeof(txq, txlimit);
+	if (!IF_IS_EMPTY(&ifp->if_snd))
+		more = true;
+	/* Fill upper bits with TX index. See above for the lower. */
+	rndval = txq->txq_next * WM_NRXDESC;
 
-		if (icr & (ICR_LSC | ICR_RXSEQ)) {
-			WM_EVCNT_INCR(&sc->sc_ev_linkintr);
-			wm_linkintr(sc, icr);
-		}
-		if ((icr & ICR_GPI(0)) != 0)
-			device_printf(sc->sc_dev, "got module interrupt\n");
+	mutex_exit(txq->txq_lock);
+	WM_CORE_LOCK(sc);
 
+	if (sc->sc_core_stopping) {
 		WM_CORE_UNLOCK(sc);
+		return 0;
+	}
 
-		if (icr & ICR_RXO) {
+	if (icr & (ICR_LSC | ICR_RXSEQ)) {
+		WM_EVCNT_INCR(&sc->sc_ev_linkintr);
+		wm_linkintr(sc, icr);
+	}
+	if ((icr & ICR_GPI(0)) != 0)
+		device_printf(sc->sc_dev, "got module interrupt\n");
+
+	WM_CORE_UNLOCK(sc);
+
+	if (icr & ICR_RXO) {
 #if defined(WM_DEBUG)
-			log(LOG_WARNING, "%s: Receive overrun\n",
-			    device_xname(sc->sc_dev));
+		log(LOG_WARNING, "%s: Receive overrun\n",
+		    device_xname(sc->sc_dev));
 #endif /* defined(WM_DEBUG) */
-		}
 	}
 
 	rnd_add_uint32(&sc->sc_queue[0].rnd_source, rndval);
@@ -9946,7 +9943,7 @@ wm_intr_legacy(void *arg)
 		wm_sched_handle_queue(sc, wmq);
 	}
 
-	return handled;
+	return 1;
 }
 
 static inline void
