@@ -1,4 +1,4 @@
-/*	$NetBSD: args.c,v 1.43 2021/10/03 19:09:59 rillig Exp $	*/
+/*	$NetBSD: args.c,v 1.56 2021/10/17 18:13:00 rillig Exp $	*/
 
 /*-
  * SPDX-License-Identifier: BSD-4-Clause
@@ -43,15 +43,12 @@ static char sccsid[] = "@(#)args.c	8.1 (Berkeley) 6/6/93";
 
 #include <sys/cdefs.h>
 #if defined(__NetBSD__)
-__RCSID("$NetBSD: args.c,v 1.43 2021/10/03 19:09:59 rillig Exp $");
+__RCSID("$NetBSD: args.c,v 1.56 2021/10/17 18:13:00 rillig Exp $");
 #elif defined(__FreeBSD__)
 __FBSDID("$FreeBSD: head/usr.bin/indent/args.c 336318 2018-07-15 21:04:21Z pstef $");
 #endif
 
-/*
- * Argument scanning and profile reading code.  Default parameters are set
- * here as well.
- */
+/* Read options from profile files and from the command line. */
 
 #include <ctype.h>
 #include <err.h>
@@ -59,26 +56,24 @@ __FBSDID("$FreeBSD: head/usr.bin/indent/args.c 336318 2018-07-15 21:04:21Z pstef
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 
 #include "indent.h"
 
 #define INDENT_VERSION	"2.0"
-
-void add_typedefs_from_file(const char *);
-
-static const char *option_source = "?";
 
 #if __STDC_VERSION__ >= 201112L
 #define assert_type(expr, type) _Generic((expr), type : (expr))
 #else
 #define assert_type(expr, type) (expr)
 #endif
+
 #define bool_option(name, value, var) \
-	{name, true, value, false, assert_type(&(opt.var), bool *)}
-#define int_option(name, var) \
-	{name, false, false, false, assert_type(&(opt.var), int *)}
+	{name, true, value, false, 0, 0, assert_type(&(opt.var), bool *)}
 #define bool_options(name, var) \
-	{name, true, false, true, assert_type(&(opt.var), bool *)}
+	{name, true, false, true, 0, 0, assert_type(&(opt.var), bool *)}
+#define int_option(name, var, min, max) \
+	{name, false, false, false, min, max, assert_type(&(opt.var), int *)}
 
 /*
  * N.B.: an option whose name is a prefix of another option must come earlier;
@@ -87,41 +82,43 @@ static const char *option_source = "?";
  * See set_special_option for special options.
  */
 static const struct pro {
-    const char p_name[5];	/* name, e.g. "bl", "cli" */
+    const char p_name[5];	/* e.g. "bl", "cli" */
     bool p_is_bool;
     bool p_bool_value;
     bool p_may_negate;
+    short i_min;
+    short i_max;
     void *p_var;		/* the associated variable */
 }   pro[] = {
     bool_options("bacc", blanklines_around_conditional_compilation),
-    bool_options("bad", blanklines_after_declarations),
-    bool_options("badp", blanklines_after_declarations_at_proctop),
+    bool_options("bad", blanklines_after_decl),
+    bool_options("badp", blanklines_after_decl_at_top),
     bool_options("bap", blanklines_after_procs),
-    bool_options("bbb", blanklines_before_blockcomments),
+    bool_options("bbb", blanklines_before_block_comments),
     bool_options("bc", break_after_comma),
-    bool_option("bl", false, btype_2),
-    bool_option("br", true, btype_2),
+    bool_option("bl", false, brace_same_line),
+    bool_option("br", true, brace_same_line),
     bool_options("bs", blank_after_sizeof),
-    int_option("c", comment_column),
-    int_option("cd", decl_comment_column),
+    int_option("c", comment_column, 1, 999),
+    int_option("cd", decl_comment_column, 1, 999),
     bool_options("cdb", comment_delimiter_on_blankline),
     bool_options("ce", cuddle_else),
-    int_option("ci", continuation_indent),
+    int_option("ci", continuation_indent, 0, 999),
     /* "cli" is special */
     bool_options("cs", space_after_cast),
-    int_option("d", unindent_displace),
-    int_option("di", decl_indent),
+    int_option("d", unindent_displace, -999, 999),
+    int_option("di", decl_indent, 0, 999),
     bool_options("dj", ljust_decl),
-    bool_options("eei", extra_expression_indent),
+    bool_options("eei", extra_expr_indent),
     bool_options("ei", else_if),
     bool_options("fbs", function_brace_split),
     bool_options("fc1", format_col1_comments),
     bool_options("fcb", format_block_comments),
-    int_option("i", indent_size),
+    int_option("i", indent_size, 1, 80),
     bool_options("ip", indent_parameters),
-    int_option("l", max_line_length),
-    int_option("lc", block_comment_max_line_length),
-    int_option("ldi", local_decl_indent),
+    int_option("l", max_line_length, 1, 999),
+    int_option("lc", block_comment_max_line_length, 1, 999),
+    int_option("ldi", local_decl_indent, 0, 999),
     bool_options("lp", lineup_to_parens),
     bool_options("lpl", lineup_to_parens_always),
     /* "npro" is special */
@@ -133,51 +130,53 @@ static const struct pro {
     /* "st" is special */
     bool_option("ta", true, auto_typedefs),
     /* "T" is special */
-    int_option("ts", tabsize),
+    int_option("ts", tabsize, 1, 80),
     /* "U" is special */
     bool_options("ut", use_tabs),
     bool_options("v", verbose),
 };
 
 static void
-load_profile(const char *fname)
+load_profile(const char *fname, bool must_exist)
 {
     FILE *f;
-    int comment_index, ch;
-    char *p;
-    char buf[BUFSIZ];
 
-    if ((f = fopen(fname, "r")) == NULL)
+    if ((f = fopen(fname, "r")) == NULL) {
+	if (must_exist)
+	    err(EXIT_FAILURE, "profile %s", fname);
 	return;
-    option_source = fname;
+    }
 
     for (;;) {
-	p = buf;
-	comment_index = 0;
+	char buf[BUFSIZ];
+	size_t n = 0;
+	int ch, comment_ch = -1;
+
 	while ((ch = getc(f)) != EOF) {
-	    if (ch == '*' && comment_index == 0 && p > buf && p[-1] == '/') {
-		comment_index = (int)(p - buf);
-		*p++ = (char)ch;
-	    } else if (ch == '/' && comment_index != 0 && p > buf && p[-1] == '*') {
-		p = buf + comment_index - 1;
-		comment_index = 0;
+	    if (ch == '*' && comment_ch < 0 && n > 0 && buf[n - 1] == '/') {
+		n--;
+		comment_ch = ch;
+	    } else if (comment_ch >= 0) {
+		comment_ch = ch == '/' && comment_ch == '*' ? -1 : ch;
 	    } else if (isspace((unsigned char)ch)) {
-		if (p > buf && comment_index == 0)
-		    break;
-	    } else {
-		*p++ = (char)ch;
-	    }
+		break;
+	    } else if (n >= nitems(buf) - 5) {
+		diag(1, "buffer overflow in %s, starting with '%.10s'",
+		     fname, buf);
+		exit(1);
+	    } else
+		buf[n++] = (char)ch;
 	}
-	if (p != buf) {
-	    *p++ = '\0';
+
+	if (n > 0) {
+	    buf[n] = '\0';
 	    if (opt.verbose)
 		printf("profile: %s\n", buf);
-	    set_option(buf);
-	} else if (ch == EOF) {
-	    (void)fclose(f);
-	    return;
-	}
+	    set_option(buf, fname);
+	} else if (ch == EOF)
+	    break;
     }
+    (void)fclose(f);
 }
 
 void
@@ -186,13 +185,12 @@ load_profiles(const char *profile_name)
     char fname[PATH_MAX];
 
     if (profile_name != NULL)
-	load_profile(profile_name);
+	load_profile(profile_name, true);
     else {
 	snprintf(fname, sizeof(fname), "%s/.indent.pro", getenv("HOME"));
-	load_profile(fname);
+	load_profile(fname, false);
     }
-    load_profile(".indent.pro");
-    option_source = "Command line";
+    load_profile(".indent.pro", false);
 }
 
 static const char *
@@ -207,15 +205,32 @@ skip_over(const char *s, bool may_negate, const char *prefix)
     return s;
 }
 
+static void
+add_typedefs_from_file(const char *fname)
+{
+    FILE *file;
+    char line[BUFSIZ];
+
+    if ((file = fopen(fname, "r")) == NULL) {
+	fprintf(stderr, "indent: cannot open file %s\n", fname);
+	exit(1);
+    }
+    while ((fgets(line, BUFSIZ, file)) != NULL) {
+	/* Remove trailing whitespace */
+	line[strcspn(line, " \t\n\r")] = '\0';
+	add_typename(line);
+    }
+    (void)fclose(file);
+}
+
 static bool
-set_special_option(const char *arg)
+set_special_option(const char *arg, const char *option_source)
 {
     const char *arg_end;
 
     if (strncmp(arg, "-version", 8) == 0) {
 	printf("FreeBSD indent %s\n", INDENT_VERSION);
 	exit(0);
-	/* NOTREACHED */
     }
 
     if (arg[0] == 'P' || strncmp(arg, "npro", 4) == 0)
@@ -225,7 +240,7 @@ set_special_option(const char *arg)
 	arg_end = arg + 3;
 	if (arg_end[0] == '\0')
 	    goto need_param;
-	opt.case_indent = atof(arg_end);
+	opt.case_indent = (float)atof(arg_end);
 	return true;
     }
 
@@ -262,13 +277,13 @@ need_param:
 }
 
 void
-set_option(const char *arg)
+set_option(const char *arg, const char *option_source)
 {
     const struct pro *p;
     const char *param_start;
 
-    arg++;			/* ignore leading "-" */
-    if (set_special_option(arg))
+    arg++;			/* skip leading '-' */
+    if (set_special_option(arg, option_source))
 	return;
 
     for (p = pro + nitems(pro); p-- != pro;) {
@@ -276,33 +291,24 @@ set_option(const char *arg)
 	if (param_start != NULL)
 	    goto found;
     }
-    errx(1, "%s: unknown parameter \"%s\"", option_source, arg - 1);
+    errx(1, "%s: unknown option \"-%s\"", option_source, arg);
 
 found:
-    if (p->p_is_bool)
+    if (p->p_is_bool) {
+	if (param_start[0] != '\0')
+	    errx(1, "%s: unknown option \"-%s\"", option_source, arg);
 	*(bool *)p->p_var = p->p_may_negate ? arg[0] != 'n' : p->p_bool_value;
-    else {
+    } else {
 	if (!isdigit((unsigned char)*param_start))
-	    errx(1, "%s: ``%s'' requires a parameter",
+	    errx(1, "%s: option \"-%s\" requires an integer parameter",
 		option_source, p->p_name);
-	*(int *)p->p_var = atoi(param_start);
+	errno = 0;
+	char *end;
+	long num = strtol(param_start, &end, 10);
+	if (!(errno == 0 && *end == '\0' &&
+		p->i_min <= num && num <= p->i_max))
+	    errx(1, "%s: invalid argument \"%s\" for option \"-%s\"",
+		 option_source, param_start, p->p_name);
+	*(int *)p->p_var = (int)num;
     }
-}
-
-void
-add_typedefs_from_file(const char *fname)
-{
-    FILE *file;
-    char line[BUFSIZ];
-
-    if ((file = fopen(fname, "r")) == NULL) {
-	fprintf(stderr, "indent: cannot open file %s\n", fname);
-	exit(1);
-    }
-    while ((fgets(line, BUFSIZ, file)) != NULL) {
-	/* Remove trailing whitespace */
-	line[strcspn(line, " \t\n\r")] = '\0';
-	add_typename(line);
-    }
-    fclose(file);
 }

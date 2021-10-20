@@ -1,4 +1,4 @@
-/* $NetBSD: cpu.c,v 1.62 2021/10/04 09:39:18 skrll Exp $ */
+/* $NetBSD: cpu.c,v 1.64 2021/10/17 07:26:20 skrll Exp $ */
 
 /*
  * Copyright (c) 2017 Ryo Shimizu <ryo@nerv.org>
@@ -27,7 +27,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(1, "$NetBSD: cpu.c,v 1.62 2021/10/04 09:39:18 skrll Exp $");
+__KERNEL_RCSID(1, "$NetBSD: cpu.c,v 1.64 2021/10/17 07:26:20 skrll Exp $");
 
 #include "locators.h"
 #include "opt_arm_debug.h"
@@ -153,6 +153,7 @@ cpu_attach(device_t dv, cpuid_t id)
 #ifdef MULTIPROCESSOR
 	if (unit != 0) {
 		mi_cpu_attach(ci);
+		pmap_tlb_info_attach(&pmap_tlb0_info, ci);
 		return;
 	}
 #endif /* MULTIPROCESSOR */
@@ -362,8 +363,6 @@ cpu_identify2(device_t self, struct cpu_info *ci)
 		break;
 	}
 	aprint_verbose("\n");
-
-
 
 	aprint_verbose_dev(self, "auxID=0x%" PRIx64, ci->ci_id.ac_aa64isar0);
 

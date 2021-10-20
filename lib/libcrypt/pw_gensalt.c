@@ -1,4 +1,4 @@
-/*	$NetBSD: pw_gensalt.c,v 1.9 2020/05/14 08:34:19 msaitoh Exp $	*/
+/*	$NetBSD: pw_gensalt.c,v 1.12 2021/10/16 10:53:33 nia Exp $	*/
 
 /*
  * Copyright 1997 Niels Provos <provos@physnet.uni-hamburg.de>
@@ -34,7 +34,7 @@
 
 #include <sys/cdefs.h>
 #ifndef lint
-__RCSID("$NetBSD: pw_gensalt.c,v 1.9 2020/05/14 08:34:19 msaitoh Exp $");
+__RCSID("$NetBSD: pw_gensalt.c,v 1.12 2021/10/16 10:53:33 nia Exp $");
 #endif /* not lint */
 
 #include <sys/syslimits.h>
@@ -81,31 +81,7 @@ static const struct pw_salt {
 	{ NULL, NULL }
 };
 
-static int
-getnum(const char *str, size_t *num)
-{
-	char *ep;
-	unsigned long rv;
-
-	if (str == NULL) {
-		*num = 0;
-		return 0;
-	}
-
-	rv = strtoul(str, &ep, 0);
-
-	if (str == ep || *ep) {
-		errno = EINVAL;
-		return -1;
-	}
-
-	if (errno == ERANGE && rv == ULONG_MAX)
-		return -1;
-	*num = (size_t)rv;
-	return 0;
-}
-
-int
+crypt_private int
 /*ARGSUSED2*/
 __gensalt_old(char *salt, size_t saltsiz, const char *option)
 {
@@ -118,7 +94,7 @@ __gensalt_old(char *salt, size_t saltsiz, const char *option)
 	return 0;
 }
 
-int
+crypt_private int
 /*ARGSUSED2*/
 __gensalt_new(char *salt, size_t saltsiz, const char* option)
 {
@@ -144,7 +120,7 @@ __gensalt_new(char *salt, size_t saltsiz, const char* option)
 	return 0;
 }
 
-int
+crypt_private int
 /*ARGSUSED2*/
 __gensalt_md5(char *salt, size_t saltsiz, const char *option)
 {
@@ -162,7 +138,7 @@ __gensalt_md5(char *salt, size_t saltsiz, const char *option)
 	return 0;
 }
 
-int
+crypt_private int
 __gensalt_sha1(char *salt, size_t saltsiz, const char *option)
 {
 	int n;
@@ -186,7 +162,8 @@ __gensalt_sha1(char *salt, size_t saltsiz, const char *option)
 }
 
 #ifdef HAVE_ARGON2
-static int __gensalt_argon2_decode_option(char * dst, size_t dlen, const char * option)
+static int
+__gensalt_argon2_decode_option(char *dst, size_t dlen, const char *option)
 {
 
 	char * in = 0;
@@ -266,10 +243,10 @@ __gensalt_argon2(char *salt, size_t saltsiz, const char *option,argon2_type atyp
 		return 0;
 	}
 
-	__crypt_to64(&salt[n], arc4random(), 4);
-	__crypt_to64(&salt[n + 4], arc4random(), 4);
-	__crypt_to64(&salt[n + 8], arc4random(), 4);
-	__crypt_to64(&salt[n + 12], arc4random(), 4);
+	__crypt_tobase64(&salt[n], arc4random(), 4);
+	__crypt_tobase64(&salt[n + 4], arc4random(), 4);
+	__crypt_tobase64(&salt[n + 8], arc4random(), 4);
+	__crypt_tobase64(&salt[n + 12], arc4random(), 4);
 
 	salt[n + 16] = '$';
 	salt[n + 17] = '\0';
@@ -278,19 +255,19 @@ __gensalt_argon2(char *salt, size_t saltsiz, const char *option,argon2_type atyp
 }
 
 /* argon2 variant-specific hooks to generic */
-int
+crypt_private int
 __gensalt_argon2id(char *salt, size_t saltsiz, const char *option)
 {
 	return __gensalt_argon2(salt, saltsiz, option, Argon2_id);
 }
 
-int
+crypt_private int
 __gensalt_argon2i(char *salt, size_t saltsiz, const char *option)
 {
 	return __gensalt_argon2(salt, saltsiz, option, Argon2_i);
 }
 
-int
+crypt_private int
 __gensalt_argon2d(char *salt, size_t saltsiz, const char *option)
 {
 	return __gensalt_argon2(salt, saltsiz, option, Argon2_d);

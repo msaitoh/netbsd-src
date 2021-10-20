@@ -1,4 +1,4 @@
-/* $NetBSD: configmenu.c,v 1.12 2021/01/31 22:45:46 rillig Exp $ */
+/* $NetBSD: configmenu.c,v 1.14 2021/10/09 09:06:28 martin Exp $ */
 
 /*-
  * Copyright (c) 2012 The NetBSD Foundation, Inc.
@@ -45,6 +45,9 @@ static int set_timezone_menu(struct menudesc *, void *);
 static int set_root_shell(struct menudesc *, void *);
 static int change_root_password(struct menudesc *, void *);
 static int add_new_user(struct menudesc *, void *);
+#if CHECK_ENTROPY
+static int add_entropy(struct menudesc *, void *);
+#endif
 static int set_binpkg(struct menudesc *, void *);
 static int set_pkgsrc(struct menudesc *, void *);
 static void config_list_init(void);
@@ -74,6 +77,7 @@ enum {
 	CONFIGOPT_LVM,
 	CONFIGOPT_RAIDFRAME,
 	CONFIGOPT_ADDUSER,
+	CONFIGOPT_ADD_ENTROPY,
 	CONFIGOPT_LAST
 };
 
@@ -102,6 +106,9 @@ configinfo config_list[] = {
 	{MSG_enable_lvm, CONFIGOPT_LVM, "lvm", toggle_rcvar, NULL},
 	{MSG_enable_raid, CONFIGOPT_RAIDFRAME, "raidframe", toggle_rcvar, NULL},
 	{MSG_add_a_user, CONFIGOPT_ADDUSER, NULL, add_new_user, ""},
+#if CHECK_ENTROPY
+	{MSG_Configure_entropy, CONFIGOPT_ADD_ENTROPY, NULL, add_entropy, ""},
+#endif
 	{NULL,		CONFIGOPT_LAST,	NULL, NULL, NULL}
 };
 
@@ -180,6 +187,10 @@ init_config_menu(configinfo *conf, menu_ent *me, configinfo **ce)
 		opt = conf->opt;
 		if (opt == CONFIGOPT_LAST)
 			break;
+#if CHECK_ENTROPY
+		if (opt == CONFIGOPT_ADD_ENTROPY && entropy_needed() == 0)
+			continue;
+#endif
 		*ce = conf;
 		memset(me, 0, sizeof(*me));
 		me->opt_action = conf->action;
@@ -246,6 +257,15 @@ check_root_password(void)
 	free(buf);
 	return rval;
 }
+
+#if CHECK_ENTROPY
+static int
+add_entropy(struct menudesc *menu, void *arg)
+{
+	do_add_entropy();
+	return 0;
+}
+#endif
 
 static int
 add_new_user(struct menudesc *menu, void *arg)

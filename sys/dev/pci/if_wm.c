@@ -1,4 +1,4 @@
-/*	$NetBSD: if_wm.c,v 1.706 2021/08/03 01:08:18 knakahara Exp $	*/
+/*	$NetBSD: if_wm.c,v 1.712 2021/10/20 07:04:28 knakahara Exp $	*/
 
 /*
  * Copyright (c) 2001, 2002, 2003, 2004 Wasabi Systems, Inc.
@@ -82,7 +82,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_wm.c,v 1.706 2021/08/03 01:08:18 knakahara Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_wm.c,v 1.712 2021/10/20 07:04:28 knakahara Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_net_mpsafe.h"
@@ -1599,85 +1599,112 @@ static const struct wm_product {
 	  "I219 LM Ethernet Connection",
 	  WM_T_PCH_SPT,		WMP_F_COPPER },
 	{ PCI_VENDOR_INTEL,	PCI_PRODUCT_INTEL_I219_LM2,
-	  "I219 LM Ethernet Connection",
+	  "I219 LM (2) Ethernet Connection",
 	  WM_T_PCH_SPT,		WMP_F_COPPER },
 	{ PCI_VENDOR_INTEL,	PCI_PRODUCT_INTEL_I219_LM3,
-	  "I219 LM Ethernet Connection",
+	  "I219 LM (3) Ethernet Connection",
 	  WM_T_PCH_SPT,		WMP_F_COPPER },
 	{ PCI_VENDOR_INTEL,	PCI_PRODUCT_INTEL_I219_LM4,
-	  "I219 LM Ethernet Connection",
+	  "I219 LM (4) Ethernet Connection",
 	  WM_T_PCH_SPT,		WMP_F_COPPER },
 	{ PCI_VENDOR_INTEL,	PCI_PRODUCT_INTEL_I219_LM5,
-	  "I219 LM Ethernet Connection",
+	  "I219 LM (5) Ethernet Connection",
 	  WM_T_PCH_SPT,		WMP_F_COPPER },
 	{ PCI_VENDOR_INTEL,	PCI_PRODUCT_INTEL_I219_LM6,
-	  "I219 LM Ethernet Connection",
+	  "I219 LM (6) Ethernet Connection",
 	  WM_T_PCH_CNP,		WMP_F_COPPER },
 	{ PCI_VENDOR_INTEL,	PCI_PRODUCT_INTEL_I219_LM7,
-	  "I219 LM Ethernet Connection",
+	  "I219 LM (7) Ethernet Connection",
 	  WM_T_PCH_CNP,		WMP_F_COPPER },
 	{ PCI_VENDOR_INTEL,	PCI_PRODUCT_INTEL_I219_LM8,
-	  "I219 LM Ethernet Connection",
+	  "I219 LM (8) Ethernet Connection",
 	  WM_T_PCH_CNP,		WMP_F_COPPER },
 	{ PCI_VENDOR_INTEL,	PCI_PRODUCT_INTEL_I219_LM9,
-	  "I219 LM Ethernet Connection",
+	  "I219 LM (9) Ethernet Connection",
 	  WM_T_PCH_CNP,		WMP_F_COPPER },
 	{ PCI_VENDOR_INTEL,	PCI_PRODUCT_INTEL_I219_LM10,
-	  "I219 LM Ethernet Connection",
+	  "I219 LM (10) Ethernet Connection",
 	  WM_T_PCH_CNP,		WMP_F_COPPER },
 	{ PCI_VENDOR_INTEL,	PCI_PRODUCT_INTEL_I219_LM11,
-	  "I219 LM Ethernet Connection",
+	  "I219 LM (11) Ethernet Connection",
 	  WM_T_PCH_CNP,		WMP_F_COPPER },
 	{ PCI_VENDOR_INTEL,	PCI_PRODUCT_INTEL_I219_LM12,
-	  "I219 LM Ethernet Connection",
+	  "I219 LM (12) Ethernet Connection",
 	  WM_T_PCH_SPT,		WMP_F_COPPER },
 	{ PCI_VENDOR_INTEL,	PCI_PRODUCT_INTEL_I219_LM13,
-	  "I219 LM Ethernet Connection",
+	  "I219 LM (13) Ethernet Connection",
 	  WM_T_PCH_CNP,		WMP_F_COPPER },
 	{ PCI_VENDOR_INTEL,	PCI_PRODUCT_INTEL_I219_LM14,
-	  "I219 LM Ethernet Connection",
+	  "I219 LM (14) Ethernet Connection",
 	  WM_T_PCH_CNP,		WMP_F_COPPER },
 	{ PCI_VENDOR_INTEL,	PCI_PRODUCT_INTEL_I219_LM15,
-	  "I219 LM Ethernet Connection",
+	  "I219 LM (15) Ethernet Connection",
+	  WM_T_PCH_CNP,		WMP_F_COPPER },
+	{ PCI_VENDOR_INTEL,	PCI_PRODUCT_INTEL_I219_LM16,
+	  "I219 LM (16) Ethernet Connection",
+	  WM_T_PCH_CNP,		WMP_F_COPPER },
+	{ PCI_VENDOR_INTEL,	PCI_PRODUCT_INTEL_I219_LM17,
+	  "I219 LM (17) Ethernet Connection",
+	  WM_T_PCH_CNP,		WMP_F_COPPER },
+	{ PCI_VENDOR_INTEL,	PCI_PRODUCT_INTEL_I219_LM18,
+	  "I219 LM (18) Ethernet Connection",
+	  WM_T_PCH_CNP,		WMP_F_COPPER },
+	{ PCI_VENDOR_INTEL,	PCI_PRODUCT_INTEL_I219_LM19,
+	  "I219 LM (19) Ethernet Connection",
 	  WM_T_PCH_CNP,		WMP_F_COPPER },
 	{ PCI_VENDOR_INTEL,	PCI_PRODUCT_INTEL_I219_V,
 	  "I219 V Ethernet Connection",
 	  WM_T_PCH_SPT,		WMP_F_COPPER },
 	{ PCI_VENDOR_INTEL,	PCI_PRODUCT_INTEL_I219_V2,
-	  "I219 V Ethernet Connection",
+	  "I219 V (2) Ethernet Connection",
 	  WM_T_PCH_SPT,		WMP_F_COPPER },
 	{ PCI_VENDOR_INTEL,	PCI_PRODUCT_INTEL_I219_V4,
-	  "I219 V Ethernet Connection",
+	  "I219 V (4) Ethernet Connection",
 	  WM_T_PCH_SPT,		WMP_F_COPPER },
 	{ PCI_VENDOR_INTEL,	PCI_PRODUCT_INTEL_I219_V5,
-	  "I219 V Ethernet Connection",
+	  "I219 V (5) Ethernet Connection",
 	  WM_T_PCH_SPT,		WMP_F_COPPER },
 	{ PCI_VENDOR_INTEL,	PCI_PRODUCT_INTEL_I219_V6,
-	  "I219 V Ethernet Connection",
+	  "I219 V (6) Ethernet Connection",
 	  WM_T_PCH_CNP,		WMP_F_COPPER },
 	{ PCI_VENDOR_INTEL,	PCI_PRODUCT_INTEL_I219_V7,
-	  "I219 V Ethernet Connection",
+	  "I219 V (7) Ethernet Connection",
 	  WM_T_PCH_CNP,		WMP_F_COPPER },
 	{ PCI_VENDOR_INTEL,	PCI_PRODUCT_INTEL_I219_V8,
-	  "I219 V Ethernet Connection",
+	  "I219 V (8) Ethernet Connection",
 	  WM_T_PCH_CNP,		WMP_F_COPPER },
 	{ PCI_VENDOR_INTEL,	PCI_PRODUCT_INTEL_I219_V9,
-	  "I219 V Ethernet Connection",
+	  "I219 V (9) Ethernet Connection",
 	  WM_T_PCH_CNP,		WMP_F_COPPER },
 	{ PCI_VENDOR_INTEL,	PCI_PRODUCT_INTEL_I219_V10,
-	  "I219 V Ethernet Connection",
+	  "I219 V (10) Ethernet Connection",
 	  WM_T_PCH_CNP,		WMP_F_COPPER },
 	{ PCI_VENDOR_INTEL,	PCI_PRODUCT_INTEL_I219_V11,
-	  "I219 V Ethernet Connection",
+	  "I219 V (11) Ethernet Connection",
 	  WM_T_PCH_CNP,		WMP_F_COPPER },
 	{ PCI_VENDOR_INTEL,	PCI_PRODUCT_INTEL_I219_V12,
-	  "I219 V Ethernet Connection",
+	  "I219 V (12) Ethernet Connection",
 	  WM_T_PCH_SPT,		WMP_F_COPPER },
 	{ PCI_VENDOR_INTEL,	PCI_PRODUCT_INTEL_I219_V13,
-	  "I219 V Ethernet Connection",
+	  "I219 V (13) Ethernet Connection",
 	  WM_T_PCH_CNP,		WMP_F_COPPER },
 	{ PCI_VENDOR_INTEL,	PCI_PRODUCT_INTEL_I219_V14,
-	  "I219 V Ethernet Connection",
+	  "I219 V (14) Ethernet Connection",
+	  WM_T_PCH_CNP,		WMP_F_COPPER },
+	{ PCI_VENDOR_INTEL,	PCI_PRODUCT_INTEL_I219_V15,
+	  "I219 V (15) Ethernet Connection",
+	  WM_T_PCH_CNP,		WMP_F_COPPER },
+	{ PCI_VENDOR_INTEL,	PCI_PRODUCT_INTEL_I219_V16,
+	  "I219 V (16) Ethernet Connection",
+	  WM_T_PCH_CNP,		WMP_F_COPPER },
+	{ PCI_VENDOR_INTEL,	PCI_PRODUCT_INTEL_I219_V17,
+	  "I219 V (17) Ethernet Connection",
+	  WM_T_PCH_CNP,		WMP_F_COPPER },
+	{ PCI_VENDOR_INTEL,	PCI_PRODUCT_INTEL_I219_V18,
+	  "I219 V (18) Ethernet Connection",
+	  WM_T_PCH_CNP,		WMP_F_COPPER },
+	{ PCI_VENDOR_INTEL,	PCI_PRODUCT_INTEL_I219_V19,
+	  "I219 V (19) Ethernet Connection",
 	  WM_T_PCH_CNP,		WMP_F_COPPER },
 	{ 0,			0,
 	  NULL,
@@ -1989,7 +2016,12 @@ wm_attach(device_t parent, device_t self, void *aux)
 	 * this driver) to use it for normal operation, though it is
 	 * required to work around bugs in some chip versions.
 	 */
-	if (sc->sc_type >= WM_T_82544) {
+	switch (sc->sc_type) {
+	case WM_T_82544:
+	case WM_T_82541:
+	case WM_T_82541_2:
+	case WM_T_82547:
+	case WM_T_82547_2:
 		/* First we have to find the I/O BAR. */
 		for (i = PCI_MAPREG_START; i < PCI_MAPREG_END; i += 4) {
 			memtype = pci_mapreg_type(pa->pa_pc, pa->pa_tag, i);
@@ -2022,7 +2054,9 @@ wm_attach(device_t parent, device_t self, void *aux)
 				aprint_error_dev(sc->sc_dev,
 				    "WARNING: unable to map I/O space\n");
 		}
-
+		break;
+	default:
+		break;
 	}
 
 	/* Enable bus mastering.  Disable MWI on the i82542 2.0. */
@@ -9797,89 +9831,89 @@ static int
 wm_intr_legacy(void *arg)
 {
 	struct wm_softc *sc = arg;
+	struct ifnet *ifp = &sc->sc_ethercom.ec_if;
 	struct wm_queue *wmq = &sc->sc_queue[0];
 	struct wm_txqueue *txq = &wmq->wmq_txq;
 	struct wm_rxqueue *rxq = &wmq->wmq_rxq;
+	u_int txlimit = sc->sc_tx_intr_process_limit;
+	u_int rxlimit = sc->sc_rx_intr_process_limit;
 	uint32_t icr, rndval = 0;
-	int handled = 0;
 	bool more = false;
 
-	while (1 /* CONSTCOND */) {
-		icr = CSR_READ(sc, WMREG_ICR);
-		if ((icr & sc->sc_icr) == 0)
-			break;
-		if (handled == 0)
-			DPRINTF(sc, WM_DEBUG_TX,
-			    ("%s: INTx: got intr\n",device_xname(sc->sc_dev)));
-		if (rndval == 0)
-			rndval = icr;
+	icr = CSR_READ(sc, WMREG_ICR);
+	if ((icr & sc->sc_icr) == 0)
+		return 0;
 
-		mutex_enter(rxq->rxq_lock);
+	DPRINTF(sc, WM_DEBUG_TX,
+	    ("%s: INTx: got intr\n",device_xname(sc->sc_dev)));
+	if (rndval == 0)
+		rndval = icr;
 
-		if (rxq->rxq_stopping) {
-			mutex_exit(rxq->rxq_lock);
-			break;
-		}
+	mutex_enter(rxq->rxq_lock);
 
-		handled = 1;
-
-#if defined(WM_DEBUG) || defined(WM_EVENT_COUNTERS)
-		if (icr & (ICR_RXDMT0 | ICR_RXT0)) {
-			DPRINTF(sc, WM_DEBUG_RX,
-			    ("%s: RX: got Rx intr 0x%08x\n",
-				device_xname(sc->sc_dev),
-				icr & (ICR_RXDMT0 | ICR_RXT0)));
-			WM_Q_EVCNT_INCR(rxq, intr);
-		}
-#endif
-		/*
-		 * wm_rxeof() does *not* call upper layer functions directly,
-		 * as if_percpuq_enqueue() just call softint_schedule().
-		 * So, we can call wm_rxeof() in interrupt context.
-		 */
-		more = wm_rxeof(rxq, UINT_MAX);
-
+	if (rxq->rxq_stopping) {
 		mutex_exit(rxq->rxq_lock);
-		mutex_enter(txq->txq_lock);
-
-		if (txq->txq_stopping) {
-			mutex_exit(txq->txq_lock);
-			break;
-		}
+		return 1;
+	}
 
 #if defined(WM_DEBUG) || defined(WM_EVENT_COUNTERS)
-		if (icr & ICR_TXDW) {
-			DPRINTF(sc, WM_DEBUG_TX,
-			    ("%s: TX: got TXDW interrupt\n",
-				device_xname(sc->sc_dev)));
-			WM_Q_EVCNT_INCR(txq, txdw);
-		}
+	if (icr & (ICR_RXDMT0 | ICR_RXT0)) {
+		DPRINTF(sc, WM_DEBUG_RX,
+		    ("%s: RX: got Rx intr 0x%08x\n",
+			device_xname(sc->sc_dev),
+			icr & (ICR_RXDMT0 | ICR_RXT0)));
+		WM_Q_EVCNT_INCR(rxq, intr);
+	}
 #endif
-		more |= wm_txeof(txq, UINT_MAX);
+	/*
+	 * wm_rxeof() does *not* call upper layer functions directly,
+	 * as if_percpuq_enqueue() just call softint_schedule().
+	 * So, we can call wm_rxeof() in interrupt context.
+	 */
+	more = wm_rxeof(rxq, rxlimit);
 
+	mutex_exit(rxq->rxq_lock);
+	mutex_enter(txq->txq_lock);
+
+	if (txq->txq_stopping) {
 		mutex_exit(txq->txq_lock);
-		WM_CORE_LOCK(sc);
+		return 1;
+	}
 
-		if (sc->sc_core_stopping) {
-			WM_CORE_UNLOCK(sc);
-			break;
-		}
+#if defined(WM_DEBUG) || defined(WM_EVENT_COUNTERS)
+	if (icr & ICR_TXDW) {
+		DPRINTF(sc, WM_DEBUG_TX,
+		    ("%s: TX: got TXDW interrupt\n",
+			device_xname(sc->sc_dev)));
+		WM_Q_EVCNT_INCR(txq, txdw);
+	}
+#endif
+	more |= wm_txeof(txq, txlimit);
+	if (!IF_IS_EMPTY(&ifp->if_snd))
+		more = true;
 
-		if (icr & (ICR_LSC | ICR_RXSEQ)) {
-			WM_EVCNT_INCR(&sc->sc_ev_linkintr);
-			wm_linkintr(sc, icr);
-		}
-		if ((icr & ICR_GPI(0)) != 0)
-			device_printf(sc->sc_dev, "got module interrupt\n");
+	mutex_exit(txq->txq_lock);
+	WM_CORE_LOCK(sc);
 
+	if (sc->sc_core_stopping) {
 		WM_CORE_UNLOCK(sc);
+		return 1;
+	}
 
-		if (icr & ICR_RXO) {
+	if (icr & (ICR_LSC | ICR_RXSEQ)) {
+		WM_EVCNT_INCR(&sc->sc_ev_linkintr);
+		wm_linkintr(sc, icr);
+	}
+	if ((icr & ICR_GPI(0)) != 0)
+		device_printf(sc->sc_dev, "got module interrupt\n");
+
+	WM_CORE_UNLOCK(sc);
+
+	if (icr & ICR_RXO) {
 #if defined(WM_DEBUG)
-			log(LOG_WARNING, "%s: Receive overrun\n",
-			    device_xname(sc->sc_dev));
+		log(LOG_WARNING, "%s: Receive overrun\n",
+		    device_xname(sc->sc_dev));
 #endif /* defined(WM_DEBUG) */
-		}
 	}
 
 	rnd_add_uint32(&sc->rnd_source, rndval);
@@ -9891,7 +9925,7 @@ wm_intr_legacy(void *arg)
 		wm_sched_handle_queue(sc, wmq);
 	}
 
-	return handled;
+	return 1;
 }
 
 static inline void
@@ -9963,7 +9997,7 @@ wm_txrxintr_msix(void *arg)
 
 	if (txq->txq_stopping) {
 		mutex_exit(txq->txq_lock);
-		return 0;
+		return 1;
 	}
 
 	WM_Q_EVCNT_INCR(txq, txdw);
@@ -9977,7 +10011,7 @@ wm_txrxintr_msix(void *arg)
 
 	if (rxq->rxq_stopping) {
 		mutex_exit(rxq->rxq_lock);
-		return 0;
+		return 1;
 	}
 
 	WM_Q_EVCNT_INCR(rxq, intr);

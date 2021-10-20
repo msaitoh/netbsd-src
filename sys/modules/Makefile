@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.257 2021/10/03 17:27:02 brad Exp $
+#	$NetBSD: Makefile,v 1.259 2021/10/14 13:54:45 brad Exp $
 
 .include <bsd.own.mk>
 
@@ -70,6 +70,7 @@ SUBDIR+=	hythygtemp
 SUBDIR+=	si70xxtemp
 SUBDIR+=	am2315temp
 SUBDIR+=	sht4xtemp
+SUBDIR+=	sgp40mox
 SUBDIR+=	i2cexec
 SUBDIR+=	i2c_bitbang
 SUBDIR+=	if_agr
@@ -359,6 +360,10 @@ SUBDIR+=	lm_isa
 SUBDIR+=	lm_isa_common
 SUBDIR+=	lm_wbsio
 SUBDIR+=	wbsio
+.endif
+
+.if ${MACHINE_CPU} == "aarch64"
+SUBDIR+=	compat_linux
 .endif
 
 .if ${MACHINE_CPU} == "m68k"

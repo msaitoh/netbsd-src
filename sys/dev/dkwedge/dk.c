@@ -1,4 +1,4 @@
-/*	$NetBSD: dk.c,v 1.107 2021/08/21 11:55:25 andvar Exp $	*/
+/*	$NetBSD: dk.c,v 1.109 2021/10/18 11:40:56 simonb Exp $	*/
 
 /*-
  * Copyright (c) 2004, 2005, 2006, 2007 The NetBSD Foundation, Inc.
@@ -30,7 +30,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: dk.c,v 1.107 2021/08/21 11:55:25 andvar Exp $");
+__KERNEL_RCSID(0, "$NetBSD: dk.c,v 1.109 2021/10/18 11:40:56 simonb Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_dkwedge.h"
@@ -1339,7 +1339,6 @@ dkstart(struct dkwedge_softc *sc)
 
 	/* Do as much work as has been enqueued. */
 	while ((bp = bufq_peek(sc->sc_bufq)) != NULL) {
-
 		if (sc->sc_state != DKW_STATE_RUNNING) {
 			(void) bufq_get(sc->sc_bufq);
 			if (sc->sc_iopend-- == 1 &&
@@ -1543,7 +1542,7 @@ dkioctl(dev_t dev, u_long cmd, void *data, int flag, struct lwp *l)
 		return (error);
 
 	error = 0;
-	
+
 	switch (cmd) {
 	case DIOCGSTRATEGY:
 	case DIOCGCACHE:
@@ -1774,4 +1773,3 @@ dkwedge_get_parent_name(dev_t dev)
 		return NULL;
 	return sc->sc_parent->dk_name;
 }
-

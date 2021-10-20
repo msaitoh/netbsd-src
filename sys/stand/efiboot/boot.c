@@ -1,4 +1,4 @@
-/*	$NetBSD: boot.c,v 1.38 2021/10/06 10:13:19 jmcneill Exp $	*/
+/*	$NetBSD: boot.c,v 1.40 2021/10/17 14:12:54 jmcneill Exp $	*/
 
 /*-
  * Copyright (c) 2016 Kimihiro Nonaka <nonaka@netbsd.org>
@@ -88,7 +88,6 @@ static char netbsd_path[255];
 static char netbsd_args[255];
 static char rndseed_path[255];
 
-#define	DEFTIMEOUT	5
 #define DEFFILENAME	names[0]
 
 int	set_bootfile(const char *);
@@ -111,6 +110,7 @@ void	command_gop(char *);
 void	command_mem(char *);
 void	command_menu(char *);
 void	command_reset(char *);
+void	command_setup(char *);
 void	command_version(char *);
 void	command_quit(char *);
 
@@ -134,6 +134,7 @@ const struct boot_command commands[] = {
 	{ "menu",	command_menu,		"menu" },
 	{ "reboot",	command_reset,		"reboot|reset" },
 	{ "reset",	command_reset,		NULL },
+	{ "setup",	command_setup,		"setup" },
 	{ "version",	command_version,	"version" },
 	{ "ver",	command_version,	NULL },
 	{ "help",	command_help,		"help|?" },
@@ -355,6 +356,7 @@ command_version(char *arg)
 {
 	char pathbuf[80];
 	char *ufirmware;
+	const UINT64 *osindsup;
 	int rv;
 
 	printf("Version: %s (%s)\n", bootprog_rev, bootprog_kernrev);
@@ -369,6 +371,11 @@ command_version(char *arg)
 	}
 	if (bootcfg_path(pathbuf, sizeof(pathbuf)) == 0) {
 		printf("Config path: %s\n", pathbuf);
+	}
+
+	osindsup = LibGetVariable(L"OsIndicationsSupported", &EfiGlobalVariable);
+	if (osindsup != NULL) {
+		printf("UEFI OS indications supported: 0x%" PRIx64 "\n", *osindsup);
 	}
 
 #ifdef EFIBOOT_FDT
@@ -391,6 +398,29 @@ command_quit(char *arg)
 void
 command_reset(char *arg)
 {
+	efi_reboot();
+}
+
+void
+command_setup(char *arg)
+{
+	EFI_STATUS status;
+	const UINT64 *osindsup;
+	UINT64 osind;
+
+	osindsup = LibGetVariable(L"OsIndicationsSupported", &EfiGlobalVariable);
+	if (osindsup == NULL || (*osindsup & EFI_OS_INDICATIONS_BOOT_TO_FW_UI) == 0) {
+		printf("Not supported by firmware\n");
+		return;
+	}
+
+	osind = EFI_OS_INDICATIONS_BOOT_TO_FW_UI;
+	status = LibSetNVVariable(L"OsIndications", &EfiGlobalVariable, sizeof(osind), &osind);
+	if (EFI_ERROR(status)) {
+		printf("Failed to set OsIndications variable: %lu\n", (u_long)status);
+		return;
+	}
+
 	efi_reboot();
 }
 
@@ -518,7 +548,7 @@ boot(void)
 		printf("booting %s%s%s - starting in ", netbsd_path,
 		    netbsd_args[0] != '\0' ? " " : "", netbsd_args);
 
-		c = awaitkey(DEFTIMEOUT, 1);
+		c = awaitkey(bootcfg_info.timeout, 1);
 		if (c != '\r' && c != '\n' && c != '\0')
 			bootprompt(); /* does not return */
 

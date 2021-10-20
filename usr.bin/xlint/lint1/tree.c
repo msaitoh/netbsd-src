@@ -1,4 +1,4 @@
-/*	$NetBSD: tree.c,v 1.383 2021/09/26 14:52:37 rillig Exp $	*/
+/*	$NetBSD: tree.c,v 1.385 2021/10/09 21:56:12 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -37,7 +37,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: tree.c,v 1.383 2021/09/26 14:52:37 rillig Exp $");
+__RCSID("$NetBSD: tree.c,v 1.385 2021/10/09 21:56:12 rillig Exp $");
 #endif
 
 #include <float.h>
@@ -1412,7 +1412,16 @@ is_const_char_pointer(const tnode_t *tn)
 }
 
 static bool
-is_first_arg_const(const tnode_t *tn)
+is_const_pointer(const tnode_t *tn)
+{
+	const type_t *tp;
+
+	tp = before_conversion(tn)->tn_type;
+	return tp->t_tspec == PTR && tp->t_subt->t_const;
+}
+
+static bool
+is_first_arg_const_char_pointer(const tnode_t *tn)
 {
 	const tnode_t *an;
 
@@ -1425,6 +1434,20 @@ is_first_arg_const(const tnode_t *tn)
 	return is_const_char_pointer(an->tn_left);
 }
 
+static bool
+is_second_arg_const_pointer(const tnode_t *tn)
+{
+	const tnode_t *an;
+
+	an = tn->tn_right;
+	if (an == NULL || an->tn_right == NULL)
+		return false;
+
+	while (an->tn_right->tn_right != NULL)
+		an = an->tn_right;
+	return is_const_pointer(an->tn_left);
+}
+
 static void
 check_unconst_function(const type_t *lstp, const tnode_t *rn)
 {
@@ -1433,7 +1456,15 @@ check_unconst_function(const type_t *lstp, const tnode_t *rn)
 	if (lstp->t_tspec == CHAR && !lstp->t_const &&
 	    is_direct_function_call(rn, &function_name) &&
 	    is_unconst_function(function_name) &&
-	    is_first_arg_const(rn)) {
+	    is_first_arg_const_char_pointer(rn)) {
+		/* call to '%s' effectively discards 'const' from argument */
+		warning(346, function_name);
+	}
+
+	if (!lstp->t_const &&
+	    is_direct_function_call(rn, &function_name) &&
+	    strcmp(function_name, "bsearch") == 0 &&
+	    is_second_arg_const_pointer(rn)) {
 		/* call to '%s' effectively discards 'const' from argument */
 		warning(346, function_name);
 	}
@@ -4224,12 +4255,19 @@ check_integer_comparison(op_t op, tnode_t *ln, tnode_t *rn)
 	if (!is_integer(lt) || !is_integer(rt))
 		return;
 
-	if ((hflag || pflag) && ((lt == CHAR && is_out_of_char_range(rn)) ||
-				 (rt == CHAR && is_out_of_char_range(ln)))) {
-		/* nonportable character comparison, op %s */
-		warning(230, op_name(op));
-		return;
+	if (hflag || pflag) {
+		if (lt == CHAR && is_out_of_char_range(rn)) {
+			/* nonportable character comparison '%s %d' */
+			warning(230, op_name(op), (int)rn->tn_val->v_quad);
+			return;
+		}
+		if (rt == CHAR && is_out_of_char_range(ln)) {
+			/* nonportable character comparison '%s %d' */
+			warning(230, op_name(op), (int)ln->tn_val->v_quad);
+			return;
+		}
 	}
+
 	if (is_uinteger(lt) && !is_uinteger(rt) &&
 	    rn->tn_op == CON && rn->tn_val->v_quad <= 0) {
 		if (rn->tn_val->v_quad < 0) {

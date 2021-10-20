@@ -1,4 +1,4 @@
-/*	$NetBSD: pr_comment.c,v 1.53 2021/10/05 19:58:38 rillig Exp $	*/
+/*	$NetBSD: pr_comment.c,v 1.80 2021/10/20 05:14:21 rillig Exp $	*/
 
 /*-
  * SPDX-License-Identifier: BSD-4-Clause
@@ -43,21 +43,60 @@ static char sccsid[] = "@(#)pr_comment.c	8.1 (Berkeley) 6/6/93";
 
 #include <sys/cdefs.h>
 #if defined(__NetBSD__)
-__RCSID("$NetBSD: pr_comment.c,v 1.53 2021/10/05 19:58:38 rillig Exp $");
+__RCSID("$NetBSD: pr_comment.c,v 1.80 2021/10/20 05:14:21 rillig Exp $");
 #elif defined(__FreeBSD__)
 __FBSDID("$FreeBSD: head/usr.bin/indent/pr_comment.c 334927 2018-06-10 16:44:18Z pstef $");
 #endif
 
+#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 
 #include "indent.h"
 
 static void
-check_size_comment(size_t desired_size)
+com_add_char(char ch)
 {
-    if (com.e + desired_size >= com.l)
-	buf_expand(&com, desired_size);
+    if (com.e + 1 >= com.l)
+	buf_expand(&com, 1);
+    *com.e++ = ch;
+}
+
+static void
+com_add_delim(void)
+{
+    if (!opt.star_comment_cont)
+	return;
+    size_t len = 3;
+    if (com.e + len >= com.l)
+	buf_expand(&com, len);
+    memcpy(com.e, " * ", len);
+    com.e += len;
+}
+
+static void
+com_terminate(void)
+{
+    if (com.e + 1 >= com.l)
+	buf_expand(&com, 1);
+    *com.e = '\0';
+}
+
+static bool
+fits_in_one_line(int max_line_length)
+{
+    for (const char *p = inp.s; *p != '\n'; p++) {
+	assert(*p != '\0');
+	assert(inp.e - p >= 2);
+	if (!(p[0] == '*' && p[1] == '/'))
+	    continue;
+
+	int len = indentation_after_range(ps.com_ind + 3, inp.s, p);
+	len += is_hspace(p[-1]) ? 2 : 3;
+	if (len <= max_line_length)
+	    return true;
+    }
+    return false;
 }
 
 /*
@@ -84,69 +123,65 @@ process_comment(void)
     int adj_max_line_length;	/* Adjusted max_line_length for comments that
 				 * spill over the right margin */
     ssize_t last_blank;		/* index of the last blank in com.buf */
-    char *t_ptr;		/* used for moving string */
     bool break_delim = opt.comment_delimiter_on_blankline;
     int l_just_saw_decl = ps.just_saw_decl;
+    int com_ind;
 
     adj_max_line_length = opt.max_line_length;
     ps.just_saw_decl = 0;
     last_blank = -1;		/* no blanks found so far */
-    ps.box_com = false;		/* at first, assume that we are not in a boxed
-				 * comment or some other comment that should
-				 * not be touched */
+    bool may_wrap = true;
     ps.stats.comments++;
 
     /* Figure where to align and how to treat the comment */
 
-    if (ps.col_1 && !opt.format_col1_comments) { /* if the comment starts in
-				 * column 1, it should not be touched */
-	ps.box_com = true;
+    if (ps.col_1 && !opt.format_col1_comments) {
+	may_wrap = false;
 	break_delim = false;
-	ps.com_col = 1;
+	com_ind = 0;
+
     } else {
-	if (*buf_ptr == '-' || *buf_ptr == '*' || token.e[-1] == '/' ||
-	    (*buf_ptr == '\n' && !opt.format_block_comments)) {
-	    ps.box_com = true;	/* A comment with a '-' or '*' immediately
-				 * after the /+* is assumed to be a boxed
-				 * comment. A comment with a newline
-				 * immediately after the /+* is assumed to be
-				 * a block comment and is treated as a box
-				 * comment unless format_block_comments is
-				 * nonzero (the default). */
+	if (*inp.s == '-' || *inp.s == '*' || token.e[-1] == '/' ||
+	    (*inp.s == '\n' && !opt.format_block_comments)) {
+	    may_wrap = false;
 	    break_delim = false;
 	}
+
 	if (lab.s == lab.e && code.s == code.e) {
-	    ps.com_col = (ps.ind_level - opt.unindent_displace) * opt.indent_size + 1;
+	    com_ind = (ps.ind_level - opt.unindent_displace) * opt.indent_size;
 	    adj_max_line_length = opt.block_comment_max_line_length;
-	    if (ps.com_col <= 1)
-		ps.com_col = 1 + (!opt.format_col1_comments ? 1 : 0);
+	    if (com_ind <= 0)
+		com_ind = opt.format_col1_comments ? 0 : 1;
+
 	} else {
 	    break_delim = false;
 
-	    int target_col;
+	    int target_ind;
 	    if (code.s != code.e)
-		target_col = 1 + indentation_after(compute_code_indent(), code.s);
+		target_ind = indentation_after(compute_code_indent(), code.s);
 	    else if (lab.s != lab.e)
-		target_col = 1 + indentation_after(compute_label_indent(), lab.s);
+		target_ind = indentation_after(compute_label_indent(), lab.s);
 	    else
-		target_col = 1;
+		target_ind = 0;
 
-	    ps.com_col = ps.decl_on_line || ps.ind_level == 0
-		? opt.decl_comment_column : opt.comment_column;
-	    if (ps.com_col <= target_col)
-		ps.com_col = opt.tabsize * (1 + (target_col - 1) / opt.tabsize) + 1;
-	    if (ps.com_col + 24 > adj_max_line_length)
-		/* XXX: mismatch between column and length */
-		adj_max_line_length = ps.com_col + 24;
+	    com_ind = ps.decl_on_line || ps.ind_level == 0
+		? opt.decl_comment_column - 1 : opt.comment_column - 1;
+	    if (com_ind <= target_ind)
+		com_ind = next_tab(target_ind);
+	    if (com_ind + 25 > adj_max_line_length)
+		adj_max_line_length = com_ind + 25;
 	}
     }
-    if (ps.box_com) {
+
+    ps.com_ind = com_ind;
+
+    if (!may_wrap) {
 	/*
 	 * Find out how much indentation there was originally, because that
 	 * much will have to be ignored by dump_line(). This is a box comment,
 	 * so nothing changes -- not even indentation.
 	 *
-	 * The comment we're about to read usually comes from in_buffer,
+	 * The comment we're about to read usually comes from inp.buf,
 	 * unless it has been copied into save_com.
 	 */
 	const char *start;
@@ -155,189 +190,181 @@ process_comment(void)
 	 * XXX: ordered comparison between pointers from different objects
 	 * invokes undefined behavior (C99 6.5.8).
 	 */
-	start = buf_ptr >= save_com && buf_ptr < save_com + sc_size ?
-	    sc_buf : in_buffer;
-	ps.n_comment_delta = -indentation_after_range(0, start, buf_ptr - 2);
+	start = inp.s >= save_com && inp.s < save_com + sc_size ?
+	    sc_buf : inp.buf;
+	ps.n_comment_delta = -indentation_after_range(0, start, inp.s - 2);
     } else {
 	ps.n_comment_delta = 0;
-	while (is_hspace(*buf_ptr))
-	    buf_ptr++;
+	while (is_hspace(*inp.s))
+	    inp.s++;
     }
-    ps.comment_delta = 0;
-    *com.e++ = '/';
-    *com.e++ = token.e[-1];
-    if (*buf_ptr != ' ' && !ps.box_com)
-	*com.e++ = ' ';
 
-    /*
-     * Don't put a break delimiter if this is a one-liner that won't wrap.
-     */
-    if (break_delim)
-	for (t_ptr = buf_ptr; *t_ptr != '\0' && *t_ptr != '\n'; t_ptr++) {
-	    if (t_ptr >= buf_end)
-		fill_buffer();
-	    if (t_ptr[0] == '*' && t_ptr[1] == '/') {
-		/*
-		 * XXX: This computation ignores the leading " * ", as well as
-		 * the trailing ' ' '*' '/'.  In simple cases, these cancel
-		 * out since they are equally long.
-		 */
-		int right_margin = indentation_after_range(ps.com_col - 1,
-		    buf_ptr, t_ptr + 2);
-		if (right_margin < adj_max_line_length)
-		    break_delim = false;
-		break;
-	    }
-	}
+    ps.comment_delta = 0;
+    com_add_char('/');
+    com_add_char(token.e[-1]);	/* either '*' or '/' */
+    if (*inp.s != ' ' && may_wrap)
+	com_add_char(' ');
+
+    if (break_delim && fits_in_one_line(adj_max_line_length))
+	break_delim = false;
 
     if (break_delim) {
 	char *t = com.e;
 	com.e = com.s + 2;
 	*com.e = '\0';
-	if (opt.blanklines_before_blockcomments && ps.last_token != lbrace)
-	    prefix_blankline_requested = true;
+	if (opt.blanklines_before_block_comments && ps.last_token != lbrace)
+	    blank_line_before = true;
 	dump_line();
 	com.e = com.s = t;
-	if (!ps.box_com && opt.star_comment_cont)
-	    *com.e++ = ' ', *com.e++ = '*', *com.e++ = ' ';
+	com_add_delim();
     }
 
     /* Start to copy the comment */
 
     for (;;) {			/* this loop will go until the comment is
 				 * copied */
-	switch (*buf_ptr) {	/* this checks for various special cases */
+	switch (*inp.s) {	/* this checks for various special cases */
 	case '\f':
-	    check_size_comment(3);
-	    if (!ps.box_com) {	/* in a text comment, break the line here */
+	    if (may_wrap) {	/* in a text comment, break the line here */
 		ps.use_ff = true;
-		/* fix so dump_line uses a form feed */
 		dump_line();
 		last_blank = -1;
-		if (!ps.box_com && opt.star_comment_cont)
-		    *com.e++ = ' ', *com.e++ = '*', *com.e++ = ' ';
-		buf_ptr++;
-		while (is_hspace(*buf_ptr))
-		    buf_ptr++;
+		com_add_delim();
+		inp.s++;
+		while (is_hspace(*inp.s))
+		    inp.s++;
 	    } else {
 		inbuf_skip();
-		*com.e++ = '\f';
+		com_add_char('\f');
 	    }
 	    break;
 
 	case '\n':
-	    if (token.e[-1] == '/') {
-		++line_no;
-		goto end_of_comment;
-	    }
-	    if (had_eof) {	/* check for unexpected eof */
-		printf("Unterminated comment\n");
+	    if (token.e[-1] == '/')
+		goto end_of_line_comment;
+
+	    if (had_eof) {
+		diag(1, "Unterminated comment");
 		dump_line();
 		return;
 	    }
+
 	    last_blank = -1;
-	    check_size_comment(4);
-	    if (ps.box_com || ps.last_nl) {	/* if this is a boxed comment,
+	    if (!may_wrap || ps.last_nl) {	/* if this is a boxed comment,
 						 * we handle the newline */
 		if (com.s == com.e)
-		    *com.e++ = ' ';
-		if (!ps.box_com && com.e - com.s > 3) {
+		    com_add_char(' ');
+		if (may_wrap && com.e - com.s > 3) {
 		    dump_line();
-		    if (opt.star_comment_cont)
-			*com.e++ = ' ', *com.e++ = '*', *com.e++ = ' ';
+		    com_add_delim();
 		}
 		dump_line();
-		if (!ps.box_com && opt.star_comment_cont)
-		    *com.e++ = ' ', *com.e++ = '*', *com.e++ = ' ';
+		if (may_wrap)
+		    com_add_delim();
+
 	    } else {
 		ps.last_nl = true;
 		if (!is_hspace(com.e[-1]))
-		    *com.e++ = ' ';
+		    com_add_char(' ');
 		last_blank = com.e - 1 - com.buf;
 	    }
-	    ++line_no;		/* keep track of input line number */
-	    if (!ps.box_com) {
-		int asterisks_to_skip = 1;
+	    ++line_no;
+	    if (may_wrap) {
+		bool skip_asterisk = true;
 		do {		/* flush any blanks and/or tabs at start of
 				 * next line */
 		    inbuf_skip();
-		    if (*buf_ptr == '*' && --asterisks_to_skip >= 0) {
+		    if (*inp.s == '*' && skip_asterisk) {
+			skip_asterisk = false;
 			inbuf_skip();
-			if (*buf_ptr == '/')
+			if (*inp.s == '/')
 			    goto end_of_comment;
 		    }
-		} while (is_hspace(*buf_ptr));
+		} while (is_hspace(*inp.s));
 	    } else
 		inbuf_skip();
 	    break;		/* end of case for newline */
 
 	case '*':
 	    inbuf_skip();
-	    check_size_comment(4);
-	    if (*buf_ptr == '/') {	/* end of the comment */
+	    if (*inp.s == '/') {
 	end_of_comment:
 		inbuf_skip();
+
+	end_of_line_comment:
 		if (break_delim) {
 		    if (com.e > com.s + 3)
 			dump_line();
 		    else
-			com.s = com.e;
-		    *com.e++ = ' ';
+			com.s = com.e;	/* XXX: why not e = s? */
+		    com_add_char(' ');
 		}
-		if (!is_hspace(com.e[-1]) && !ps.box_com)
-		    *com.e++ = ' ';	/* ensure blank before end */
-		if (token.e[-1] == '/')
-		    *com.e++ = '\n', *com.e = '\0';
-		else
-		    *com.e++ = '*', *com.e++ = '/', *com.e = '\0';
+
+		if (!is_hspace(com.e[-1]) && may_wrap)
+		    com_add_char(' ');
+		if (token.e[-1] != '/') {
+		    com_add_char('*');
+		    com_add_char('/');
+		}
+		com_terminate();
+
 		ps.just_saw_decl = l_just_saw_decl;
 		return;
+
 	    } else		/* handle isolated '*' */
-		*com.e++ = '*';
+		com_add_char('*');
 	    break;
+
 	default:		/* we have a random char */
 	    ;
-	    int now_len = indentation_after_range(ps.com_col - 1, com.s, com.e);
-	    do {
-		check_size_comment(1);
+	    int now_len = indentation_after_range(ps.com_ind, com.s, com.e);
+	    for (;;) {
 		char ch = inbuf_next();
 		if (is_hspace(ch))
 		    last_blank = com.e - com.buf;
-		*com.e++ = ch;
+		com_add_char(ch);
 		now_len++;
-	    } while (memchr("*\n\r\b\t", *buf_ptr, 6) == NULL &&
-		(now_len < adj_max_line_length || last_blank == -1));
+		if (memchr("*\n\r\b\t", *inp.s, 6) != NULL)
+		    break;
+		if (now_len >= adj_max_line_length && last_blank != -1)
+		    break;
+	    }
+
 	    ps.last_nl = false;
+
 	    /* XXX: signed character comparison '>' does not work for UTF-8 */
 	    if (now_len > adj_max_line_length &&
-		    !ps.box_com && com.e[-1] > ' ') {
-		/*
-		 * the comment is too long, it must be broken up
-		 */
+		    may_wrap && com.e[-1] > ' ') {
+
+		/* the comment is too long, it must be broken up */
 		if (last_blank == -1) {
 		    dump_line();
-		    if (!ps.box_com && opt.star_comment_cont)
-			*com.e++ = ' ', *com.e++ = '*', *com.e++ = ' ';
+		    com_add_delim();
 		    break;
 		}
-		*com.e = '\0';
+
+		com_terminate();	/* mark the end of the last word */
 		com.e = com.buf + last_blank;
 		dump_line();
-		if (!ps.box_com && opt.star_comment_cont)
-		    *com.e++ = ' ', *com.e++ = '*', *com.e++ = ' ';
-		for (t_ptr = com.buf + last_blank + 1;
-		     is_hspace(*t_ptr); t_ptr++)
-		    continue;
+
+		com_add_delim();
+
+		const char *p = com.buf + last_blank + 1;
+		while (is_hspace(*p))
+		    p++;
 		last_blank = -1;
+
 		/*
-		 * t_ptr will be somewhere between com.e (dump_line() reset)
-		 * and com.l. So it's safe to copy byte by byte from t_ptr to
-		 * com.e without any check_size_comment().
+		 * p still points to the last word from the previous line, in
+		 * the same buffer that it is copied to, but to the right of
+		 * the writing region [com.s, com.e). Calling dump_line only
+		 * moved com.e back to com.s, it did not clear the contents of
+		 * the buffer. This ensures that the buffer is already large
+		 * enough.
 		 */
-		while (*t_ptr != '\0') {
-		    if (is_hspace(*t_ptr))
-			last_blank = com.e - com.buf;
-		    *com.e++ = *t_ptr++;
+		while (*p != '\0') {
+		    assert(!is_hspace(*p));
+		    *com.e++ = *p++;
 		}
 	    }
 	    break;

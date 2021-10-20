@@ -1,4 +1,4 @@
-/*	$NetBSD: pcireg.h,v 1.158 2021/09/09 08:11:42 mrg Exp $	*/
+/*	$NetBSD: pcireg.h,v 1.161 2021/10/10 23:28:36 msaitoh Exp $	*/
 
 /*
  * Copyright (c) 1995, 1996, 1999, 2000
@@ -203,7 +203,11 @@ typedef u_int8_t pci_revision_t;
 #define	PCI_SUBCLASS_MASS_STORAGE_NVM		0x08
 #define		PCI_INTERFACE_NVM_VND			0x00
 #define		PCI_INTERFACE_NVM_NVMHCI10		0x01
-#define		PCI_INTERFACE_NVM_NVME			0x02
+#define		PCI_INTERFACE_NVM_NVME_IO		0x02
+#define		PCI_INTERFACE_NVM_NVME_ADMIN		0x03
+#define	PCI_SUBCLASS_MASS_STORAGE_UFS		0x09
+#define		PCI_INTERFACE_UFS_VND			0x00
+#define		PCI_INTERFACE_UFS_UFSHCI		0x01
 #define	PCI_SUBCLASS_MASS_STORAGE_MISC		0x80
 
 /* 0x02 network subclasses */
@@ -215,6 +219,7 @@ typedef u_int8_t pci_revision_t;
 #define	PCI_SUBCLASS_NETWORK_WORLDFIP		0x05
 #define	PCI_SUBCLASS_NETWORK_PCIMGMULTICOMP	0x06
 #define	PCI_SUBCLASS_NETWORK_INFINIBAND		0x07
+#define	PCI_SUBCLASS_NETWORK_HFC		0x08
 #define	PCI_SUBCLASS_NETWORK_MISC		0x80
 
 /* 0x03 display subclasses */
@@ -230,6 +235,8 @@ typedef u_int8_t pci_revision_t;
 #define	PCI_SUBCLASS_MULTIMEDIA_AUDIO		0x01
 #define	PCI_SUBCLASS_MULTIMEDIA_TELEPHONY	0x02
 #define	PCI_SUBCLASS_MULTIMEDIA_HDAUDIO		0x03
+#define		PCI_INTERFACE_HDAUDIO			0x00
+#define		PCI_INTERFACE_HDAUDIO_VND		0x80
 #define	PCI_SUBCLASS_MULTIMEDIA_MISC		0x80
 
 /* 0x05 memory subclasses */
@@ -345,6 +352,7 @@ typedef u_int8_t pci_revision_t;
 #define		PCI_INTERFACE_USB_OHCI			0x10
 #define		PCI_INTERFACE_USB_EHCI			0x20
 #define		PCI_INTERFACE_USB_XHCI			0x30
+#define		PCI_INTERFACE_USB_USB4HCI		0x40
 #define		PCI_INTERFACE_USB_OTHERHC		0x80
 #define		PCI_INTERFACE_USB_DEVICE		0xfe
 #define	PCI_SUBCLASS_SERIALBUS_FIBER		0x04	/* XXX _FIBRECHANNEL */
@@ -356,6 +364,7 @@ typedef u_int8_t pci_revision_t;
 #define		PCI_INTERFACE_IPMI_BLOCKXFER		0x02
 #define	PCI_SUBCLASS_SERIALBUS_SERCOS		0x08
 #define	PCI_SUBCLASS_SERIALBUS_CANBUS		0x09
+#define	PCI_SUBCLASS_SERIALBUS_MIPI_I3C		0x0a
 #define	PCI_SUBCLASS_SERIALBUS_MISC		0x80
 
 /* 0x0d wireless subclasses */
@@ -368,6 +377,8 @@ typedef u_int8_t pci_revision_t;
 #define	PCI_SUBCLASS_WIRELESS_BROADBAND		0x12
 #define	PCI_SUBCLASS_WIRELESS_802_11A		0x20
 #define	PCI_SUBCLASS_WIRELESS_802_11B		0x21
+#define	PCI_SUBCLASS_WIRELESS_CELL		0x40
+#define	PCI_SUBCLASS_WIRELESS_CELL_E		0x41
 #define	PCI_SUBCLASS_WIRELESS_MISC		0x80
 
 /* 0x0e I2O (Intelligent I/O) subclasses */
@@ -567,7 +578,7 @@ typedef u_int8_t pci_revision_t;
 #define	PCI_CAP_SUBVENDOR	0x0d
 #define	PCI_CAP_AGP8		0x0e
 #define	PCI_CAP_SECURE		0x0f
-#define	PCI_CAP_PCIEXPRESS     	0x10
+#define	PCI_CAP_PCIEXPRESS	0x10
 #define	PCI_CAP_MSIX		0x11
 #define	PCI_CAP_SATA		0x12
 #define	PCI_CAP_PCIAF		0x13
@@ -972,13 +983,13 @@ typedef u_int8_t pci_revision_t;
 #define	PCIE_XCAP_TYPE(x)	__SHIFTOUT((x), PCIE_XCAP_TYPE_MASK)
 #define	 PCIE_XCAP_TYPE_PCIE_DEV	0x0
 #define	 PCIE_XCAP_TYPE_PCI_DEV		0x1
-#define	 PCIE_XCAP_TYPE_ROOT		0x4
+#define	 PCIE_XCAP_TYPE_RP		0x4
 #define	 PCIE_XCAP_TYPE_UP		0x5
 #define	 PCIE_XCAP_TYPE_DOWN		0x6
 #define	 PCIE_XCAP_TYPE_PCIE2PCI	0x7
 #define	 PCIE_XCAP_TYPE_PCI2PCIE	0x8
-#define	 PCIE_XCAP_TYPE_ROOT_INTEP	0x9
-#define	 PCIE_XCAP_TYPE_ROOT_EVNTC	0xa
+#define	 PCIE_XCAP_TYPE_RCIEP		0x9
+#define	 PCIE_XCAP_TYPE_RC_EVNTC	0xa
 #define PCIE_XCAP_SI		__SHIFTIN(__BIT(8), PCIE_XCAP_MASK) /* Slot Implemented */
 #define PCIE_XCAP_IRQ		__SHIFTIN(__BITS(13, 9), PCIE_XCAP_MASK)
 #define PCIE_DCAP	0x04	/* Device Capabilities Register */
@@ -1050,7 +1061,7 @@ typedef u_int8_t pci_revision_t;
 #define	PCIE_LCSR_NLW		__BITS(25, 20) /* Negotiated Link Width */
 #define	PCIE_LCSR_LINKTRAIN_ERR	__BIT(10 + 16) /* Link Training Error */
 #define	PCIE_LCSR_LINKTRAIN	__BIT(11 + 16) /* Link Training */
-#define	PCIE_LCSR_SLOTCLKCFG 	__BIT(12 + 16) /* Slot Clock Configuration */
+#define	PCIE_LCSR_SLOTCLKCFG	__BIT(12 + 16) /* Slot Clock Configuration */
 #define	PCIE_LCSR_DLACTIVE	__BIT(13 + 16) /* Data Link Layer Link Active*/
 #define	PCIE_LCSR_LINK_BW_MGMT	__BIT(14 + 16) /* Link BW Management Status */
 #define	PCIE_LCSR_LINK_AUTO_BW	__BIT(15 + 16) /* Link Autonomous BW Status */
@@ -1187,12 +1198,12 @@ typedef u_int8_t pci_revision_t;
  * Other than Root Complex Integrated Endpoint and Root Complex Event Collector
  * have link related registers.
  */
-#define PCIE_HAS_LINKREGS(type) (((type) != PCIE_XCAP_TYPE_ROOT_INTEP) && \
-	    ((type) != PCIE_XCAP_TYPE_ROOT_EVNTC))
+#define PCIE_HAS_LINKREGS(type) (((type) != PCIE_XCAP_TYPE_RCIEP) &&	\
+	    ((type) != PCIE_XCAP_TYPE_RC_EVNTC))
 
 /* Only root port and root complex event collector have PCIE_RCR & PCIE_RSR */
-#define PCIE_HAS_ROOTREGS(type) (((type) == PCIE_XCAP_TYPE_ROOT) || \
-	    ((type) == PCIE_XCAP_TYPE_ROOT_EVNTC))
+#define PCIE_HAS_ROOTREGS(type) (((type) == PCIE_XCAP_TYPE_RP) || \
+	    ((type) == PCIE_XCAP_TYPE_RC_EVNTC))
 
 
 /*
@@ -1557,6 +1568,7 @@ struct pci_rom {
 #define	PCI_EXTCAP_VF_RESIZBAR	0x0024	/* VF Resizable BAR */
 #define	PCI_EXTCAP_DLF		0x0025	/* Data link Feature */
 #define	PCI_EXTCAP_PYSLAY_16GT	0x0026	/* Physical Layer 16.0 GT/s */
+#define	PCI_EXTCAP_LMR		0x0027	/* Lane Margining at the Receiver */
 #define	PCI_EXTCAP_HIERARCHYID	0x0028	/* Hierarchy ID */
 #define	PCI_EXTCAP_NPEM		0x0029	/* Native PCIe Enclosure Management */
 
@@ -1984,9 +1996,9 @@ struct pci_rom {
 #define	PCI_TPH_REQ_CAP_DEVSPEC	__BIT(2)   /* Device Specific Mode Supported */
 #define	PCI_TPH_REQ_CAP_XTPHREQ	__BIT(8)    /* Extend TPH Requester Supported */
 #define	PCI_TPH_REQ_CAP_STTBLLOC __BITS(10, 9)	/* ST Table Location */
-#define	PCI_TPH_REQ_STTBLLOC_NONE 	0	/* not present */
-#define	PCI_TPH_REQ_STTBLLOC_TPHREQ 	1	/* in the TPHREQ cap */
-#define	PCI_TPH_REQ_STTBLLOC_MSIX 	2	/* in the MSI-X table */
+#define	PCI_TPH_REQ_STTBLLOC_NONE	0	 /* not present */
+#define	PCI_TPH_REQ_STTBLLOC_TPHREQ	1	 /* in the TPHREQ cap */
+#define	PCI_TPH_REQ_STTBLLOC_MSIX	2	 /* in the MSI-X table */
 #define	PCI_TPH_REQ_CAP_STTBLSIZ __BITS(26, 16)	/* ST Table Size */
 #define	PCI_TPH_REQ_CTL	0x08	/* TPH Requester Control */
 #define	PCI_TPH_REQ_CTL_STSEL	__BITS(2, 0)	/* ST Mode Select */

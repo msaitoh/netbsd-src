@@ -1,7 +1,7 @@
-/*	$NetBSD: msg_230.c,v 1.8 2021/08/28 15:25:10 rillig Exp $	*/
+/*	$NetBSD: msg_230.c,v 1.10 2021/10/09 22:03:38 rillig Exp $	*/
 # 3 "msg_230.c"
 
-// Test for message: nonportable character comparison, op %s [230]
+// Test for message: nonportable character comparison '%s %d' [230]
 
 /* lint1-flags: -S -g -p -w */
 /* lint1-only-if: schar */
@@ -19,26 +19,26 @@
 void
 compare_plain_char(char c)
 {
-	/* expect+1: warning: nonportable character comparison, op == [230] */
+	/* expect+1: warning: nonportable character comparison '== -129' [230] */
 	if (c == -129)
 		return;
-	/* expect+1: warning: nonportable character comparison, op == [230] */
+	/* expect+1: warning: nonportable character comparison '== -128' [230] */
 	if (c == -128)
 		return;
-	/* expect+1: warning: nonportable character comparison, op == [230] */
+	/* expect+1: warning: nonportable character comparison '== -1' [230] */
 	if (c == -1)
 		return;
 	if (c == 0)
 		return;
 	if (c == 127)
 		return;
-	/* expect+1: warning: nonportable character comparison, op == [230] */
+	/* expect+1: warning: nonportable character comparison '== 128' [230] */
 	if (c == 128)
 		return;
-	/* expect+1: warning: nonportable character comparison, op == [230] */
+	/* expect+1: warning: nonportable character comparison '== 255' [230] */
 	if (c == 255)
 		return;
-	/* expect+1: warning: nonportable character comparison, op == [230] */
+	/* expect+1: warning: nonportable character comparison '== 256' [230] */
 	if (c == 256)
 		return;
 }
@@ -46,26 +46,26 @@ compare_plain_char(char c)
 void
 compare_plain_char_yoda(char c)
 {
-	/* expect+1: warning: nonportable character comparison, op == [230] */
+	/* expect+1: warning: nonportable character comparison '== -129' [230] */
 	if (-129 == c)
 		return;
-	/* expect+1: warning: nonportable character comparison, op == [230] */
+	/* expect+1: warning: nonportable character comparison '== -128' [230] */
 	if (-128 == c)
 		return;
-	/* expect+1: warning: nonportable character comparison, op == [230] */
+	/* expect+1: warning: nonportable character comparison '== -1' [230] */
 	if (-1 == c)
 		return;
 	if (0 == c)
 		return;
 	if (127 == c)
 		return;
-	/* expect+1: warning: nonportable character comparison, op == [230] */
+	/* expect+1: warning: nonportable character comparison '== 128' [230] */
 	if (128 == c)
 		return;
-	/* expect+1: warning: nonportable character comparison, op == [230] */
+	/* expect+1: warning: nonportable character comparison '== 255' [230] */
 	if (255 == c)
 		return;
-	/* expect+1: warning: nonportable character comparison, op == [230] */
+	/* expect+1: warning: nonportable character comparison '== 256' [230] */
 	if (256 == c)
 		return;
 }
@@ -74,10 +74,10 @@ void
 compare_lt(char c)
 {
 
-	/* expect+1: warning: nonportable character comparison, op > [230] */
+	/* expect+1: warning: nonportable character comparison '> -2' [230] */
 	if (c > -2)
 		return;
-	/* expect+1: warning: nonportable character comparison, op >= [230] */
+	/* expect+1: warning: nonportable character comparison '>= -1' [230] */
 	if (c >= -1)
 		return;
 
@@ -85,7 +85,7 @@ compare_lt(char c)
 	 * XXX: The following two comparisons have the same effect, yet lint
 	 * only warns about one of them.
 	 */
-	/* expect+1: warning: nonportable character comparison, op > [230] */
+	/* expect+1: warning: nonportable character comparison '> -1' [230] */
 	if (c > -1)
 		return;
 	/*
@@ -101,14 +101,32 @@ compare_lt(char c)
 	 */
 	if (c > 127)
 		return;
-	/* expect+1: warning: nonportable character comparison, op >= [230] */
+	/* expect+1: warning: nonportable character comparison '>= 128' [230] */
 	if (c >= 128)
 		return;
 
-	/* expect+1: warning: nonportable character comparison, op > [230] */
+	/* expect+1: warning: nonportable character comparison '> 128' [230] */
 	if (c > 128)
 		return;
-	/* expect+1: warning: nonportable character comparison, op >= [230] */
+	/* expect+1: warning: nonportable character comparison '>= 129' [230] */
 	if (c >= 129)
+		return;
+}
+
+void
+compare_with_character_literal(char ch)
+{
+	/*
+	 * FIXME: These comparisons are portable since the character constant
+	 *  is interpreted using the type 'char' on the exact same platform
+	 *  as where the comparison takes place.
+	 */
+	/* expect+1: warning: nonportable character comparison '== -128' [230] */
+	if (ch == '\200')
+		return;
+	/* expect+1: warning: nonportable character comparison '== -1' [230] */
+	if (ch == '\377')
+		return;
+	if (ch == '\000')
 		return;
 }

@@ -1,4 +1,4 @@
-/*	$NetBSD: audio.c,v 1.108 2021/09/26 01:16:08 thorpej Exp $	*/
+/*	$NetBSD: audio.c,v 1.110 2021/10/10 11:21:05 riastradh Exp $	*/
 
 /*-
  * Copyright (c) 2008 The NetBSD Foundation, Inc.
@@ -114,7 +114,7 @@
  *	halt_output 		x	x +
  *	halt_input 		x	x +
  *	speaker_ctl 		x	x
- *	getdev 			-	x
+ *	getdev 			-	-
  *	set_port 		-	x +
  *	get_port 		-	x +
  *	query_devinfo 		-	x
@@ -138,7 +138,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: audio.c,v 1.108 2021/09/26 01:16:08 thorpej Exp $");
+__KERNEL_RCSID(0, "$NetBSD: audio.c,v 1.110 2021/10/10 11:21:05 riastradh Exp $");
 
 #ifdef _KERNEL_OPT
 #include "audio.h"
@@ -1322,6 +1322,7 @@ audiodetach(device_t self, int flags)
 	SLIST_FOREACH(file, &sc->sc_files, entry) {
 		atomic_store_relaxed(&file->dying, true);
 	}
+	mutex_exit(sc->sc_lock);
 
 	/*
 	 * Wait for existing users to drain.
@@ -1331,7 +1332,6 @@ audiodetach(device_t self, int flags)
 	 *   be psref_released.
 	 */
 	pserialize_perform(sc->sc_psz);
-	mutex_exit(sc->sc_lock);
 	psref_target_destroy(&sc->sc_psref, audio_psref_class);
 
 	/*
@@ -3113,9 +3113,7 @@ audio_ioctl(dev_t dev, struct audio_softc *sc, u_long cmd, void *addr, int flag,
 		break;
 
 	case AUDIO_GETDEV:
-		mutex_enter(sc->sc_lock);
 		error = sc->hw_if->getdev(sc->hw_hdl, (audio_device_t *)addr);
-		mutex_exit(sc->sc_lock);
 		break;
 
 	case AUDIO_GETENC:
@@ -8291,9 +8289,7 @@ mixer_ioctl(struct audio_softc *sc, u_long cmd, void *addr, int flag,
 
 	case AUDIO_GETDEV:
 		TRACE(2, "AUDIO_GETDEV");
-		mutex_enter(sc->sc_lock);
 		error = sc->hw_if->getdev(sc->hw_hdl, (audio_device_t *)addr);
-		mutex_exit(sc->sc_lock);
 		break;
 
 	case AUDIO_MIXER_DEVINFO:

@@ -1,4 +1,4 @@
-/*	$NetBSD: event.h,v 1.43 2021/09/26 21:29:39 thorpej Exp $	*/
+/*	$NetBSD: event.h,v 1.49 2021/10/20 03:08:18 thorpej Exp $	*/
 
 /*-
  * Copyright (c) 1999,2000,2001 Jonathan Lemon <jlemon@FreeBSD.org>
@@ -145,6 +145,10 @@ _EV_SET(struct kevent *_kevp, uintptr_t _ident, uint32_t _filter,
 #define	NOTE_LINK	0x0010U			/* link count changed */
 #define	NOTE_RENAME	0x0020U			/* vnode was renamed */
 #define	NOTE_REVOKE	0x0040U			/* vnode access was revoked */
+#define	NOTE_OPEN	0x0080U			/* vnode was opened */
+#define	NOTE_CLOSE	0x0100U			/* file closed (no FWRITE) */
+#define	NOTE_CLOSE_WRITE 0x0200U		/* file closed (FWRITE) */
+#define	NOTE_READ	0x0400U			/* file was read */
 
 /*
  * data/hint flags for EVFILT_PROC, shared with userspace
@@ -159,6 +163,16 @@ _EV_SET(struct kevent *_kevp, uintptr_t _ident, uint32_t _filter,
 #define	NOTE_TRACK	0x00000001U		/* follow across forks */
 #define	NOTE_TRACKERR	0x00000002U		/* could not track child */
 #define	NOTE_CHILD	0x00000004U		/* am a child process */
+
+/* additional flags for EVFILT_TIMER */
+#define	NOTE_MSECONDS	0x00000000U		/* data is milliseconds */
+#define	NOTE_SECONDS	0x00000001U		/* data is seconds */
+#define	NOTE_USECONDS	0x00000002U		/* data is microseconds */
+#define	NOTE_NSECONDS	0x00000003U		/* data is nanoseconds */
+#define	NOTE_ABSTIME	0x00000010U		/* timeout is absolute */
+#ifdef _KERNEL
+#define	NOTE_TIMER_UNITMASK 0x0003U
+#endif /* _KERNEL */
 
 /*
  * This is currently visible to userland to work around broken
@@ -237,7 +251,7 @@ struct knote {
 	SLIST_ENTRY(knote)	kn_selnext;	/* o: for struct selinfo */
 	TAILQ_ENTRY(knote)	kn_tqe;		/* q: for struct kqueue */
 	struct kqueue		*kn_kq;		/* q: which queue we are on */
-	struct kevent		kn_kevent;
+	struct kevent		kn_kevent;	/* (see below for locking) */
 	uint32_t		kn_status;	/* q: flags below */
 	uint32_t		kn_sfflags;	/*    saved filter flags */
 	uintptr_t		kn_sdata;	/*    saved data field */
@@ -246,6 +260,7 @@ struct knote {
 	struct kfilter		*kn_kfilter;
 	void 			*kn_hook;
 	int			kn_hookid;
+	unsigned int		kn_influx;	/* q: in-flux counter */
 
 #define	KN_ACTIVE	0x01U			/* event has been triggered */
 #define	KN_QUEUED	0x02U			/* event is on queue */
@@ -253,6 +268,7 @@ struct knote {
 #define	KN_DETACHED	0x08U			/* knote is detached */
 #define	KN_MARKER	0x10U			/* is a marker */
 #define	KN_BUSY		0x20U			/* is being scanned */
+#define	KN_WILLDETACH	0x40U			/* being detached imminently */
 /* Toggling KN_BUSY also requires kn_kq->kq_fdp->fd_lock. */
 #define __KN_FLAG_BITS \
     "\20" \
@@ -261,14 +277,21 @@ struct knote {
     "\3DISABLED" \
     "\4DETACHED" \
     "\5MARKER" \
-    "\6BUSY"
+    "\6BUSY" \
+    "\7WILLDETACH"
 
 
+/*
+ * The only time knote::kn_flags can be modified without synchronization
+ * is during filter attach, because the knote has not yet been published.
+ * This is usually to set EV_CLEAR or EV_ONESHOT as mandatory flags for
+ * that filter.
+ */
 #define	kn_id		kn_kevent.ident
 #define	kn_filter	kn_kevent.filter
-#define	kn_flags	kn_kevent.flags
-#define	kn_fflags	kn_kevent.fflags
-#define	kn_data		kn_kevent.data
+#define	kn_flags	kn_kevent.flags		/* q */
+#define	kn_fflags	kn_kevent.fflags	/* o */
+#define	kn_data		kn_kevent.data		/* o */
 };
 
 #include <sys/systm.h>	/* for copyin_t */
@@ -279,6 +302,8 @@ struct timespec;
 void	kqueue_init(void);
 void	knote(struct klist *, long);
 void	knote_fdclose(int);
+void	knote_set_eof(struct knote *, uint32_t);
+void	knote_clear_eof(struct knote *);
 
 typedef	int (*kevent_fetch_changes_t)(void *, const struct kevent *,
     struct kevent *, size_t, int);

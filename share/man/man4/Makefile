@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.716 2021/10/03 17:27:02 brad Exp $
+#	$NetBSD: Makefile,v 1.718 2021/10/14 13:54:45 brad Exp $
 #	@(#)Makefile	8.1 (Berkeley) 6/18/93
 
 MAN=	aac.4 ac97.4 acardide.4 aceride.4 acphy.4 \
@@ -28,7 +28,7 @@ MAN=	aac.4 ac97.4 acardide.4 aceride.4 acphy.4 \
 	gcscaudio.4 gem.4 genfb.4 gentbi.4 geodeide.4 \
 	glxtphy.4 gpib.4 gpio.4 gpioirq.4 gpiolock.4 gpiopps.4 gpiopwm.4 \
 	gpiosim.4 gre.4 gphyter.4 gsip.4 \
-	hdaudio.4 hifn.4 hme.4 hpacel.4 hpqlb.4 hptide.4 hythygtemp.4 \
+	hdaudio.4 hifn.4 hme.4 hpacel.4 hpqlb.4 hptide.4 hvn.4 hythygtemp.4 \
 	iavf.4 ibmcd.4 ibmhawk.4 ichsmb.4 icmp.4 icp.4 icsphy.4 iee.4 \
 	ieee80211.4 ifmedia.4 igmafb.4 igphy.4 igsfb.4 iha.4 ihidev.4 \
 	ihphy.4 iic.4 ims.4 inet.4 ikphy.4 inphy.4 intersil7170.4 intro.4 \
@@ -56,8 +56,8 @@ MAN=	aac.4 ac97.4 acardide.4 aceride.4 acphy.4 \
 	rnd.4 route.4 rs5c372rtc.4 rtk.4 rtsx.4 rtw.4 rtwn.4 rum.4 run.4 \
 	s390rtc.4 satalink.4 sbus.4 schide.4 \
 	scsi.4 sctp.4 sd.4 se.4 seeprom.4 sem.4 \
-	ses.4 sf.4 sfb.4 sgsmix.4 shb.4 shmif.4 shpcic.4 sht4xtemp.4 si70xxtemp.4 \
-	siisata.4 siop.4 sip.4 siside.4 sk.4 sl.4 slide.4 \
+	ses.4 sf.4 sfb.4 sgp40mox.4 sgsmix.4 shb.4 shmif.4 shpcic.4 sht4xtemp.4 \
+	si70xxtemp.4 siisata.4 siop.4 sip.4 siside.4 sk.4 sl.4 slide.4 \
 	sm.4 smscphy.4 smsh.4 sn.4 sony.4 spc.4 speaker.4 spif.4 sqphy.4 \
 	srt.4 ss.4 \
 	ssdfb.4 st.4 ste.4 stge.4 sti.4 stpcide.4 sv.4 \

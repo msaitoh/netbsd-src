@@ -1,4 +1,4 @@
-#	$NetBSD: bsd.own.mk,v 1.1263 2021/09/30 20:02:54 jmcneill Exp $
+#	$NetBSD: bsd.own.mk,v 1.1266 2021/10/14 12:58:30 nia Exp $
 
 # This needs to be before bsd.init.mk
 .if defined(BSD_MK_COMPAT_FILE)
@@ -1110,6 +1110,8 @@ MKCTF?=		yes
 .if !defined(COVERITY_TOP_CONFIG) && \
     (${MACHINE_ARCH} == "i386" || \
     ${MACHINE_ARCH} == "x86_64" || \
+    ${MACHINE_ARCH} == "aarch64" || \
+    ${MACHINE_ARCH} == "aarch64eb" || \
     ${MACHINE_CPU} == "arm" || \
     ${MACHINE_CPU} == "m68k" || \
     ${MACHINE_CPU} == "mips" || \
@@ -1121,10 +1123,12 @@ MKPIE?=		no
 .endif
 
 #
-# RELRO is enabled on i386 and amd64 by default
+# RELRO is enabled on i386, amd64, and aarch64 by default
 #
 .if ${MACHINE_ARCH} == "i386" || \
-    ${MACHINE_ARCH} == "x86_64"
+    ${MACHINE_ARCH} == "x86_64" || \
+    ${MACHINE_ARCH} == "aarch64" || \
+    ${MACHINE_ARCH} == "aarch64eb"
 MKRELRO?=	partial
 .else
 MKRELRO?=	no
@@ -1140,6 +1144,7 @@ MKSTATICPIE?=	no
 # MK* options which default to "yes".
 #
 _MKVARS.yes= \
+	MKARGON2 \
 	MKATF \
 	MKBINUTILS \
 	MKBSDTAR \
@@ -1281,7 +1286,6 @@ MKLLVMRT.aarch64=	yes
 # sorted with at most one letter per line.
 #
 _MKVARS.no= \
-	MKARGON2 \
 	MKARZERO \
 	MKBSDGREP \
 	MKCATPAGES MKCOMPATTESTS MKCOMPATX11 MKCTF \

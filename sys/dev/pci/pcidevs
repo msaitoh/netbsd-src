@@ -1,4 +1,4 @@
-$NetBSD: pcidevs,v 1.1435 2021/10/02 20:45:17 mrg Exp $
+$NetBSD: pcidevs,v 1.1440 2021/10/13 07:06:23 msaitoh Exp $
 
 /*
  * Copyright (c) 1995, 1996 Christopher G. Demetriou
@@ -3588,38 +3588,6 @@ product INTEL CMTLK_SDXC	0x02f5	Comet Lake SDXC
 product INTEL CMTLK_THERM	0x02f9	Comet Lake Thermal
 product INTEL CMTLK_SPI_2	0x02fb	Comet Lake SPI 2
 product INTEL CMTLK_ISH		0x02fc	Comet Lake Integrated Sensor Hub
-product INTEL CMTLK_PCIE_9	0x02b0	Comet Lake PCIe Root Port 9
-product INTEL CMTLK_PCIE_10	0x02b1	Comet Lake PCIe Root Port 10
-product INTEL CMTLK_PCIE_11	0x02b2	Comet Lake PCIe Root Port 11
-product INTEL CMTLK_PCIE_12	0x02b3	Comet Lake PCIe Root Port 12
-product INTEL CMTLK_PCIE_13	0x02b4	Comet Lake PCIe Root Port 13
-product INTEL CMTLK_PCIE_14	0x02b5	Comet Lake PCIe Root Port 14
-product INTEL CMTLK_PCIE_15	0x02b6	Comet Lake PCIe Root Port 15
-product INTEL CMTLK_PCIE_16	0x02b7	Comet Lake PCIe Root Port 16
-product INTEL CMTLK_PCIE_1	0x02b8	Comet Lake PCIe Root Port 1
-product INTEL CMTLK_PCIE_2	0x02b9	Comet Lake PCIe Root Port 2
-product INTEL CMTLK_PCIE_3	0x02ba	Comet Lake PCIe Root Port 3
-product INTEL CMTLK_PCIE_4	0x02bb	Comet Lake PCIe Root Port 4
-product INTEL CMTLK_PCIE_5	0x02bc	Comet Lake PCIe Root Port 5
-product INTEL CMTLK_PCIE_6	0x02bd	Comet Lake PCIe Root Port 6
-product INTEL CMTLK_PCIE_7	0x02be	Comet Lake PCIe Root Port 7
-product INTEL CMTLK_PCIE_8	0x02bf	Comet Lake PCIe Root Port 8
-product INTEL CMTLK_HDA		0x02c8	Comet Lake HD Audio
-product INTEL CMTLK_SATA_AHCI_0 0x02d3	Comet Lake SATA (AHCI)
-product INTEL CMTLK_MEI_1	0x02e0	Comet Lake MEI Controller #1
-product INTEL CMTLK_MEI_2	0x02e1	Comet Lake MEI Controller #2
-product INTEL CMTLK_IDE_R	0x02e2	Comet Lake IDE-R
-product INTEL CMTLK_KT		0x02e3	Comet Lake KT
-product INTEL CMTLK_MEI_3	0x02e4	Comet Lake MEI Controller #3
-product INTEL CMTLK_MEI_4	0x02e5	Comet Lake MEI Controller #4
-product INTEL CMTLK_I2C_0	0x02e8	Comet Lake I2C #0
-product INTEL CMTLK_I2C_1	0x02e9	Comet Lake I2C #1
-product INTEL CMTLK_I2C_2	0x02ea	Comet Lake I2C #2
-product INTEL CMTLK_I2C_3	0x02eb	Comet Lake I2C #3
-product INTEL CMTLK_XHCI	0x02ed	Comet Lake USB 3.2 Gen 2 xHCI
-product INTEL CMTLK_SSRAM	0x02ef	Comet Lake Shared SRAM
-product INTEL CMTLK_CNVI_WIFI	0x02f0	Comet Lake CNVi Wi-Fi
-product INTEL CMTLK_THERM	0x02f9	Comet Lake Thermal
 product INTEL 80312		0x030d	80312 I/O Companion Chip
 product INTEL 80321		0x0319	80321 I/O Processor
 product INTEL 6700PXH_IOXAPIC	0x0326	6700PXH IOxAPIC
@@ -3795,12 +3763,12 @@ product INTEL S1200_ILB		0x0c60	Atom S1200 LPC bridge
 product INTEL S1200_S1220	0x0c72	Atom S1220 Internal
 product INTEL S1200_S1240	0x0c73	Atom S1240 Internal
 product INTEL S1200_S1260	0x0c75	Atom S1260 Internal
-product INTEL I219_LM11		0x0d4c	I219-LM Ethernet Connection
-product INTEL I219_V11		0x0d4d	I219-V Ethernet Connection
-product INTEL I219_LM10		0x0d4e	I219-LM Ethernet Connection
-product INTEL I219_V10		0x0d4f	I219-V Ethernet Connection
-product INTEL I219_LM12		0x0d53	I219-LM Ethernet Connection
-product INTEL I219_V12		0x0d55	I219-V Ethernet Connection
+product INTEL I219_LM11		0x0d4c	I219-LM (11) Ethernet Connection
+product INTEL I219_V11		0x0d4d	I219-V (11) Ethernet Connection
+product INTEL I219_LM10		0x0d4e	I219-LM (10) Ethernet Connection
+product INTEL I219_V10		0x0d4f	I219-V (10) Ethernet Connection
+product INTEL I219_LM12		0x0d53	I219-LM (12) Ethernet Connection
+product INTEL I219_V12		0x0d55	I219-V (12) Ethernet Connection
 product INTEL E5V2_DMI2		0x0e00	E5 v2 DMI2
 product INTEL E5V2_PCIE_1	0x0e01	E5 v2 PCIe x4 (DMI2 Mode)
 product INTEL E5V2_PCIE_2	0x0e02	E5 v2 PCIe
@@ -4204,13 +4172,13 @@ product INTEL X557_AT2		0x15ad	X557-AT2
 product INTEL X552_1G_T		0x15ae	X552 1000Base-T
 product INTEL X552_XFI		0x15b0	X552 XFI
 product INTEL C3K_X553_VF_HYPV	0x15b4	C3000 X553 VF (Hyper-V)
-product INTEL I219_LM2		0x15b7	I219-LM Ethernet Connection
-product INTEL I219_V2		0x15b8	I219-V Ethernet Connection
-product INTEL I219_LM3		0x15b9	I219-LM Ethernet Connection
-product INTEL I219_LM7		0x15bb	I219-LM Ethernet Connection
-product INTEL I219_V7		0x15bc	I219-V Ethernet Connection
-product INTEL I219_LM6		0x15bd	I219-LM Ethernet Connection
-product INTEL I219_V6		0x15be	I219-V Ethernet Connection
+product INTEL I219_LM2		0x15b7	I219-LM (2) Ethernet Connection
+product INTEL I219_V2		0x15b8	I219-V (2) Ethernet Connection
+product INTEL I219_LM3		0x15b9	I219-LM (3) Ethernet Connection
+product INTEL I219_LM7		0x15bb	I219-LM (7) Ethernet Connection
+product INTEL I219_V7		0x15bc	I219-V (7) Ethernet Connection
+product INTEL I219_LM6		0x15bd	I219-LM (6) Ethernet Connection
+product INTEL I219_V6		0x15be	I219-V (6) Ethernet Connection
 product INTEL C3K_X553_KRKX	0x15c2	C3000 X553 Backplane (KR/KX 10G SKU)
 product INTEL C3K_X553_KX_25G	0x15c3	C3000 X553 Backplane (KX 2.5G)
 product INTEL C3K_X553_SFI_SFP	0x15c4	C3000 X553 10G SFP+ (SFI)
@@ -4222,24 +4190,25 @@ product INTEL C3K_X553_QSFP	0x15ca	C3000 X553 10G QSFP
 product INTEL C3K_X553_QSFP_N	0x15cc	C3000 X553 10G QSFP
 product INTEL C3K_X553_KR_SFP	0x15ce	C3000 X553 10G SFP+ (KR)
 product INTEL X550T1	 	0x15d1	X550 10G Ethernet
-product INTEL I219_V5		0x15d6	I219-V Ethernet Connection
-product INTEL I219_LM4		0x15d7	I219-LM Ethernet Connection
-product INTEL I219_V4		0x15d8	I219-V Ethernet Connection
-product INTEL I219_LM8		0x15df	I219-LM Ethernet Connection
-product INTEL I219_V8		0x15e0	I219-V Ethernet Connection
-product INTEL I219_LM9		0x15e1	I219-LM Ethernet Connection
-product INTEL I219_V9		0x15e2	I219-V Ethernet Connection
-product INTEL I219_LM5		0x15e3	I219-LM Ethernet Connection
+product INTEL I219_V5		0x15d6	I219-V (5) Ethernet Connection
+product INTEL I219_LM4		0x15d7	I219-LM (4) Ethernet Connection
+product INTEL I219_V4		0x15d8	I219-V (4) Ethernet Connection
+product INTEL I219_LM8		0x15df	I219-LM (8) Ethernet Connection
+product INTEL I219_V8		0x15e0	I219-V (8) Ethernet Connection
+product INTEL I219_LM9		0x15e1	I219-LM (9) Ethernet Connection
+product INTEL I219_V9		0x15e2	I219-V (9) Ethernet Connection
+product INTEL I219_LM5		0x15e3	I219-LM (5) Ethernet Connection
 product INTEL C3K_X553_SGMII	0x15e4	C3000 X553 1GbE SGMII (10G SKU)
 product INTEL C3K_X553_SGMII_L	0x15e5	C3000 X553 1GbE SGMII (non-10G SKU)
 product INTEL I225_LM		0x15f2	I225 LM Ethernet
 product INTEL I225_V		0x15f3	I225 V Ethernet
-product INTEL I219_LM15		0x15f4	I219-LM Ethernet Connection
+product INTEL I219_LM15		0x15f4	I219-LM (15) Ethernet Connection
+product INTEL I219_V15		0x15f5	I219-V (15) Ethernet Connection
 product INTEL I210_SGMII_WOF	0x15f6	I210 Ethernet (SGMII)
-product INTEL I219_LM14		0x15f9	I219-LM Ethernet Connection
-product INTEL I219_V14		0x15fa	I219-V Ethernet Connection
-product INTEL I219_LM13		0x15fb	I219-LM Ethernet Connection
-product INTEL I219_V13		0x15fc	I219-V Ethernet Connection
+product INTEL I219_LM14		0x15f9	I219-LM (14) Ethernet Connection
+product INTEL I219_V14		0x15fa	I219-V (14) Ethernet Connection
+product INTEL I219_LM13		0x15fb	I219-LM (13) Ethernet Connection
+product INTEL I219_V13		0x15fc	I219-V (13) Ethernet Connection
 product INTEL CORE5G_HB_1	0x1604	Core 5G Host Bridge
 product INTEL CORE5G_M_GT1	0x1606	HD Graphics (GT1)
 product INTEL CORE5G_HDA_1	0x160c	Core 5G HD Audio
@@ -4346,6 +4315,10 @@ product INTEL C3K_IE_HECI_1	0x19e5	C3000 IE HECI 1
 product INTEL C3K_IE_HECI_2	0x19e6	C3000 IE HECI 2
 product INTEL C3K_IE_KT		0x19e8	C3000 IE KT
 product INTEL C3K_IE_HECI_3	0x19e9	C3000 IE HECI 3
+product INTEL I219_LM17		0x1a1c	I219-LM (17) Ethernet Connection
+product INTEL I219_V17		0x1a1d	I219-V (17) Ethernet Connection
+product INTEL I219_LM16		0x1a1e	I219-LM (16) Ethernet Connection
+product INTEL I219_V16		0x1a1f	I219-V (16) Ethernet Connection
 product INTEL 82840_HB		0x1a21	82840 Host
 product INTEL 82840_AGP		0x1a23	82840 AGP
 product INTEL 82840_PCI		0x1a24	82840 PCI
@@ -5582,7 +5555,76 @@ product INTEL WIFI_LINK_5350_1	0x423a	WiFi Link 5350
 product INTEL WIFI_LINK_5350_2	0x423b	WiFi Link 5350
 product INTEL WIFI_LINK_5150_1	0x423c	WiFi Link 5150
 product INTEL WIFI_LINK_5150_2	0x423d	WiFi Link 5150
-
+product INTEL 5HS_Q570_ESPI	0x4384	Q570 eSPI
+product INTEL 5HS_Z590_ESPI	0x4385	Z590 eSPI
+product INTEL 5HS_H570_ESPI	0x4386	H570 eSPI
+product INTEL 5HS_B560_ESPI	0x4387	B560 eSPI
+product INTEL 5HS_H510_ESPI	0x4388	H510 eSPI
+product INTEL 5HS_W580_ESPI	0x438f	W580 eSPI
+product INTEL 5HS_H_P2SB	0x43a0	500 Series PCH-H P2SB
+product INTEL 5HS_H_PMC		0x43a1	500 Series PCH-H PMC
+product INTEL 5HS_H_SMB		0x43a3	500 Series PCH-H SMBus
+product INTEL 5HS_H_SPI		0x43a4	500 Series PCH-H SPI (FLASH)
+product INTEL 5HS_H_TRACE	0x43a6	500 Series PCH-H Trace Hub
+product INTEL 5HS_H_UART_2	0x43a7	500 Series PCH-H UART 2
+product INTEL 5HS_H_UART_0	0x43a8	500 Series PCH-H UART 0
+product INTEL 5HS_H_UART_1	0x43a9	500 Series PCH-H UART 1
+product INTEL 5HS_H_GSPI_0	0x43aa	500 Series PCH-H GSPI 0
+product INTEL 5HS_H_GSPI_1	0x43ab	500 Series PCH-H GSPI 1
+product INTEL 5HS_H_I2C_4	0x43ad	500 Series PCH-H I2C 4
+product INTEL 5HS_H_I2C_5	0x43ae	500 Series PCH-H I2C 5
+product INTEL 5HS_H_PCIE_9	0x43b0	500 Series PCH-H PCIe RP 9
+product INTEL 5HS_H_PCIE_10	0x43b1	500 Series PCH-H PCIe RP 10
+product INTEL 5HS_H_PCIE_11	0x43b2	500 Series PCH-H PCIe RP 11
+product INTEL 5HS_H_PCIE_12	0x43b3	500 Series PCH-H PCIe RP 12
+product INTEL 5HS_H_PCIE_13	0x43b4	500 Series PCH-H PCIe RP 13
+product INTEL 5HS_H_PCIE_14	0x43b5	500 Series PCH-H PCIe RP 14
+product INTEL 5HS_H_PCIE_15	0x43b6	500 Series PCH-H PCIe RP 15
+product INTEL 5HS_H_PCIE_16	0x43b7	500 Series PCH-H PCIe RP 16
+product INTEL 5HS_H_PCIE_1	0x43b8	500 Series PCH-H PCIe RP 1
+product INTEL 5HS_H_PCIE_2	0x43b9	500 Series PCH-H PCIe RP 2
+product INTEL 5HS_H_PCIE_3	0x43ba	500 Series PCH-H PCIe RP 3
+product INTEL 5HS_H_PCIE_4	0x43bb	500 Series PCH-H PCIe RP 4
+product INTEL 5HS_H_PCIE_5	0x43bc	500 Series PCH-H PCIe RP 5
+product INTEL 5HS_H_PCIE_6	0x43bd	500 Series PCH-H PCIe RP 6
+product INTEL 5HS_H_PCIE_7	0x43be	500 Series PCH-H PCIe RP 7
+product INTEL 5HS_H_PCIE_8	0x43bf	500 Series PCH-H PCIe RP 8
+product INTEL 5HS_H_PCIE_17	0x43c0	500 Series PCH-H PCIe RP 17
+product INTEL 5HS_H_PCIE_18	0x43c1	500 Series PCH-H PCIe RP 18
+product INTEL 5HS_H_PCIE_19	0x43c2	500 Series PCH-H PCIe RP 19
+product INTEL 5HS_H_PCIE_20	0x43c3	500 Series PCH-H PCIe RP 20
+product INTEL 5HS_H_PCIE_21	0x43c4	500 Series PCH-H PCIe RP 21
+product INTEL 5HS_H_PCIE_22	0x43c5	500 Series PCH-H PCIe RP 22
+product INTEL 5HS_H_PCIE_23	0x43c6	500 Series PCH-H PCIe RP 23
+product INTEL 5HS_H_PCIE_24	0x43c7	500 Series PCH-H PCIe RP 24
+product INTEL 5HS_H_HDA		0x43c8	500 Series PCH-H HD Audio
+product INTEL 5HS_H_THC_0	0x43d0	500 Series PCH-H THC 0
+product INTEL 5HS_H_THC_1	0x43d1	500 Series PCH-H THC 1
+product INTEL 5HS_H_D_AHCI	0x43d2	500 Series PCH-H SATA (AHCI, desktop)
+product INTEL 5HS_H_M_AHCI	0x43d3	500 Series PCH-H SATA (AHCI, mobile)
+product INTEL 5HS_H_D_RAID	0x43d4	500 Series PCH-H SATA (RAID, desktop)
+product INTEL 5HS_H_M_RAID	0x43d5	500 Series PCH-H SATA (RAID, mobile)
+product INTEL 5HS_H_D_RAID_P	0x43d6	500 Series PCH-H SATA (RAID, desktop) premium
+product INTEL 5HS_H_M_RAID_P	0x43d7	500 Series PCH-H SATA (RAID, mobile) premium
+product INTEL 5HS_H_I2C_6	0x43d8	500 Series PCH-H I2C 6
+product INTEL 5HS_H_UART_3	0x43da	500 Series PCH-H UART 3
+product INTEL 5HS_H_HECI_1	0x43e0	500 Series PCH-H HECI 1
+product INTEL 5HS_H_HECI_2	0x43e1	500 Series PCH-H HECI 2
+product INTEL 5HS_H_IDER	0x43e2	500 Series PCH-H IDE-R
+product INTEL 5HS_H_KT		0x43e3	500 Series PCH-H KT
+product INTEL 5HS_H_HECI_3	0x43e4	500 Series PCH-H HECI 3
+product INTEL 5HS_H_HECI_4	0x43e5	500 Series PCH-H HECI 4
+product INTEL 5HS_H_I2C_0	0x43e8	500 Series PCH-H I2C 0
+product INTEL 5HS_H_I2C_1	0x43e9	500 Series PCH-H I2C 1
+product INTEL 5HS_H_I2C_2	0x43ea	500 Series PCH-H I2C 2
+product INTEL 5HS_H_I2C_3	0x43eb	500 Series PCH-H I2C 3
+product INTEL 5HS_H_XHCI	0x43ed	500 Series PCH-H USB 3.2 Gen 2x2 xHCI
+product INTEL 5HS_H_XDCI	0x43ee	500 Series PCH-H USB 3.2 Gen 1x1 xDCI
+product INTEL 5HS_H_SSRAM	0x43ef	500 Series PCH-H Shared SRAM
+product INTEL 5HS_H_CNVI	0x43f0	500 Series PCH-H CNVi WiFi
+product INTEL 5HS_H_GSPI_2	0x43fb	500 Series PCH-H GSPI 2
+product INTEL 5HS_H_ISH		0x43fc	500 Series PCH-H Integrated Sensor Hub
+product INTEL 5HS_H_GSPI_3	0x43fd	500 Series PCH-H GSPI 3
 product INTEL JSL_ESPI		0x4d87	Jasper Lake eSPI
 product INTEL JSL_P2SB		0x4da0	Jasper Lake P2SB
 product INTEL JSL_PMC		0x4da1	Jasper Lake PMC
@@ -5657,6 +5699,10 @@ product INTEL EP80579_LAN_1	0x5040	EP80579 LAN
 product INTEL EP80579_LAN_2	0x5044	EP80579 LAN
 product INTEL EP80579_LAN_3	0x5048	EP80579 LAN
 product INTEL 80312_ATU		0x530d	80310 ATU
+product INTEL I219_LM18		0x550a	I219-LM (18) Ethernet Connection
+product INTEL I219_V18		0x550b	I219-V (18) Ethernet Connection
+product INTEL I219_LM19		0x550c	I219-LM (19) Ethernet Connection
+product INTEL I219_V19		0x550d	I219-V (19) Ethernet Connection
 product INTEL CORE7G_H_M_D_HOST_DRAM 0x5900 Core 7G (H, Mobile, Dual) Host Bridge, DRAM
 product INTEL CORE7G_PCIE_X16	0x5901	Core 7G PCIe x16
 product INTEL CORE7G_S_GT1	0x5902	HD Graphics 610 (GT1)
@@ -6588,6 +6634,60 @@ product INTEL 3HS_SSRAM		0xa36f	300 Series Shared SRAM
 product INTEL 3HS_THERM		0xa379	300 Series Thermal
 product INTEL 3HS_SPI_2		0xa37b	300 Series SPI
 product INTEL 3HS_ISH		0xa37c	300 Series ISH
+product INTEL 4HS_V_AHCI	0xa382	400 Series PCH-V SATA (AHCI)
+product INTEL 4HS_V_RAID	0xa384	400 Series PCH-V SATA (RAID)
+product INTEL 4HS_V_P_RAID	0xa386	400 Series PCH-V SATA (RAID) premium
+product INTEL 4HS_V_OPTANE	0xa38e	400 Series PCH-V SATA (Optane)
+product INTEL 4HS_V_PCIE_1	0xa390	400 Series PCH-V PCIe Root Port 1
+product INTEL 4HS_V_PCIE_2	0xa391	400 Series PCH-V PCIe Root Port 2
+product INTEL 4HS_V_PCIE_3	0xa392	400 Series PCH-V PCIe Root Port 3
+product INTEL 4HS_V_PCIE_4	0xa393	400 Series PCH-V PCIe Root Port 4
+product INTEL 4HS_V_PCIE_5	0xa394	400 Series PCH-V PCIe Root Port 5
+product INTEL 4HS_V_PCIE_6	0xa395	400 Series PCH-V PCIe Root Port 6
+product INTEL 4HS_V_PCIE_7	0xa396	400 Series PCH-V PCIe Root Port 7
+product INTEL 4HS_V_PCIE_8	0xa397	400 Series PCH-V PCIe Root Port 8
+product INTEL 4HS_V_PCIE_9	0xa398	400 Series PCH-V PCIe Root Port 9
+product INTEL 4HS_V_PCIE_10	0xa399	400 Series PCH-V PCIe Root Port 10
+product INTEL 4HS_V_PCIE_11	0xa39a	400 Series PCH-V PCIe Root Port 11
+product INTEL 4HS_V_PCIE_12	0xa39b	400 Series PCH-V PCIe Root Port 12
+product INTEL 4HS_V_PCIE_13	0xa39c	400 Series PCH-V PCIe Root Port 13
+product INTEL 4HS_V_PCIE_14	0xa39d	400 Series PCH-V PCIe Root Port 14
+product INTEL 4HS_V_PCIE_15	0xa39e	400 Series PCH-V PCIe Root Port 15
+product INTEL 4HS_V_PCIE_16	0xa39f	400 Series PCH-V PCIe Root Port 16
+product INTEL 4HS_V_P2SB	0xa3a0	400 Series PCH-V P2SB
+product INTEL 4HS_V_PMC		0xa3a1	400 Series PCH-V PMC
+product INTEL 4HS_V_SMB		0xa3a3	400 Series PCH-V SMBus
+product INTEL 4HS_V_SPI		0xa3a4	400 Series PCH-V SPI (FLASH)
+product INTEL 4HS_V_TRACE	0xa3a6	400 Series PCH-V Trace Hub
+product INTEL 4HS_V_UART_0	0xa3a7	400 Series PCH-V UART 0
+product INTEL 4HS_V_UART_1	0xa3a8	400 Series PCH-V UART 1
+product INTEL 4HS_V_SPI_0	0xa3a9	400 Series PCH-V SPI 0
+product INTEL 4HS_V_SPI_1	0xa3aa	400 Series PCH-V SPI 1
+product INTEL 4HS_V_XHCI	0xa3af	400 Series PCH-V USB 3.2 Gen 1x1 xHCI
+product INTEL 4HS_V_XDCI	0xa3b0	400 Series PCH-V USB xDCI
+product INTEL 4HS_V_THERM	0xa3b1	400 Series PCH-V Thermal
+product INTEL 4HS_V_ISH		0xa3b5	400 Series PCH-V Integrated Sensor Hub
+product INTEL 4HS_V_HECI_1	0xa3ba	400 Series PCH-V HECI 1
+product INTEL 4HS_V_HECI_2	0xa3bb	400 Series PCH-V HECI 2
+product INTEL 4HS_V_IDER	0xa3bc	400 Series PCH-V IDE-R
+product INTEL 4HS_V_KT		0xa3bd	400 Series PCH-V KT
+product INTEL 4HS_V_HECI_3	0xa3be	400 Series PCH-V HECI 3
+product INTEL 4HS_V_B460_LPC	0xa3c8	B460 PCH-V LPC or eSPI
+product INTEL 4HS_V_H410_LPC	0xa3da	H410 PCH-V LPC or eSPI
+product INTEL 4HS_V_I2C_0	0xa3e0	400 Series PCH-V I2C 0
+product INTEL 4HS_V_I2C_1	0xa3e1	400 Series PCH-V I2C 1
+product INTEL 4HS_V_I2C_2	0xa3e2	400 Series PCH-V I2C 2
+product INTEL 4HS_V_I2C_3	0xa3e3	400 Series PCH-V I2C 3
+product INTEL 4HS_V_UART_2	0xa3e6	400 Series PCH-V UART 2
+product INTEL 4HS_V_PCIE_17	0xa3e7	400 Series PCH-V PCIe Root Port 17
+product INTEL 4HS_V_PCIE_18	0xa3e8	400 Series PCH-V PCIe Root Port 18
+product INTEL 4HS_V_PCIE_19	0xa3e9	400 Series PCH-V PCIe Root Port 19
+product INTEL 4HS_V_PCIE_20	0xa3ea	400 Series PCH-V PCIe Root Port 20
+product INTEL 4HS_V_PCIE_21	0xa3eb	400 Series PCH-V PCIe Root Port 21
+product INTEL 4HS_V_PCIE_22	0xa3ec	400 Series PCH-V PCIe Root Port 22
+product INTEL 4HS_V_PCIE_23	0xa3ed	400 Series PCH-V PCIe Root Port 23
+product INTEL 4HS_V_PCIE_24	0xa3ee	400 Series PCH-V PCIe Root Port 24
+product INTEL 4HS_V_CAVS	0xa3f0	400 Series PCH-V cAVS
 product INTEL 21152		0xb152	S21152BB PCI-PCI Bridge
 product INTEL 21154		0xb154	S21152BA,S21154AE/BE PCI-PCI Bridge
 product INTEL 21555		0xb555	21555 Non-Transparent PCI-PCI Bridge

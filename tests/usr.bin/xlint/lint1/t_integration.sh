@@ -1,4 +1,4 @@
-# $NetBSD: t_integration.sh,v 1.71 2021/09/26 03:17:59 rillig Exp $
+# $NetBSD: t_integration.sh,v 1.73 2021/10/10 18:16:12 rillig Exp $
 #
 # Copyright (c) 2008, 2010 The NetBSD Foundation, Inc.
 # All rights reserved.
@@ -37,7 +37,7 @@ configure_test_case()
 	awk='
 		BEGIN {
 			# see usr.bin/xlint/arch/*/targparam.h
-			platform["aarch64"]	= "schar lp64  long ldbl-128"
+			platform["aarch64"]	= "uchar lp64  long ldbl-128"
 			platform["alpha"]	= "schar lp64  long ldbl-64"
 			platform["arm"]		= "uchar ilp32 long ldbl-64"
 			platform["coldfire"]	= "schar ilp32 int  ldbl-64"
@@ -51,7 +51,6 @@ configure_test_case()
 			platform["mipsn64"]	= "schar lp64  long ldbl-128"
 			platform["or1k"]	= "schar ilp32 int  ldbl-64"
 			platform["powerpc"]	= "uchar ilp32 int  ldbl-64"
-			platform["powerpc64"]	= "uchar lp64  long ldbl-64"
 			platform["powerpc64"]	= "uchar lp64  long ldbl-64"
 			platform["riscv32"]	= "schar ilp32 int  ldbl-64"
 			platform["riscv64"]	= "schar lp64  long ldbl-64"
