@@ -1,4 +1,4 @@
-/*	$NetBSD: if_wm.c,v 1.712 2021/10/20 07:04:28 knakahara Exp $	*/
+/*	$NetBSD: if_wm.c,v 1.715 2021/10/20 08:10:26 msaitoh Exp $	*/
 
 /*
  * Copyright (c) 2001, 2002, 2003, 2004 Wasabi Systems, Inc.
@@ -82,7 +82,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_wm.c,v 1.712 2021/10/20 07:04:28 knakahara Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_wm.c,v 1.715 2021/10/20 08:10:26 msaitoh Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_net_mpsafe.h"
@@ -3293,6 +3293,10 @@ wm_resume(device_t self, const pmf_qual_t *qual)
 	if (sc->sc_type >= WM_T_PCH2)
 		wm_resume_workarounds_pchlan(sc);
 	if ((ifp->if_flags & IFF_UP) == 0) {
+		/* >= PCH_SPT hardware workaround before reset. */
+		if (sc->sc_type >= WM_T_PCH_SPT)
+			wm_flush_desc_rings(sc);
+
 		wm_reset(sc);
 		/* Non-AMT based hardware can now take control from firmware */
 		if ((sc->sc_flags & WM_F_HAS_AMT) == 0)
@@ -4852,8 +4856,15 @@ wm_reset_phy(struct wm_softc *sc)
 }
 
 /*
- * Only used by WM_T_PCH_SPT which does not use multiqueue,
- * so it is enough to check sc->sc_queue[0] only.
+ * wm_flush_desc_rings - remove all descriptors from the descriptor rings.
+ *
+ * In i219, the descriptor rings must be emptied before resetting the HW
+ * or before changing the device state to D3 during runtime (runtime PM).
+ *
+ * Failure to do this will cause the HW to enter a unit hang state which can
+ * only be released by PCI reset on the device.
+ *
+ * I219 does not use multiqueue, so it is enough to check sc->sc_queue[0] only.
  */
 static void
 wm_flush_desc_rings(struct wm_softc *sc)
@@ -4875,16 +4886,24 @@ wm_flush_desc_rings(struct wm_softc *sc)
 	if (((preg & DESCRING_STATUS_FLUSH_REQ) == 0) || (reg == 0))
 		return;
 
-	/* TX */
-	device_printf(sc->sc_dev, "Need TX flush (reg = %08x, len = %u)\n",
-	    preg, reg);
+	/*
+	 * Remove all descriptors from the tx_ring.
+	 *
+	 * We want to clear all pending descriptors from the TX ring. Zeroing
+	 * happens when the HW reads the regs. We  assign the ring itself as
+	 * the data of the next descriptor. We don't care about the data we are
+	 * about to reset the HW.
+	 */
+#ifdef WM_DEBUG
+	device_printf(sc->sc_dev, "Need TX flush (reg = %08x)\n", preg);
+#endif
 	reg = CSR_READ(sc, WMREG_TCTL);
 	CSR_WRITE(sc, WMREG_TCTL, reg | TCTL_EN);
 
 	txq = &sc->sc_queue[0].wmq_txq;
 	nexttx = txq->txq_next;
 	txd = &txq->txq_descs[nexttx];
-	wm_set_dma_addr(&txd->wtx_addr, WM_CDTXADDR(txq, nexttx));
+	wm_set_dma_addr(&txd->wtx_addr, txq->txq_desc_dma);
 	txd->wtx_cmdlen = htole32(WTX_CMD_IFCS | 512);
 	txd->wtx_fields.wtxu_status = 0;
 	txd->wtx_fields.wtxu_options = 0;
@@ -4903,8 +4922,13 @@ wm_flush_desc_rings(struct wm_softc *sc)
 	if ((preg & DESCRING_STATUS_FLUSH_REQ) == 0)
 		return;
 
-	/* RX */
+	/*
+	 * Mark all descriptors in the RX ring as consumed and disable the
+	 * rx ring.
+	 */
+#ifdef WM_DEBUG
 	device_printf(sc->sc_dev, "Need RX flush (reg = %08x)\n", preg);
+#endif
 	rctl = CSR_READ(sc, WMREG_RCTL);
 	CSR_WRITE(sc, WMREG_RCTL, rctl & ~RCTL_EN);
 	CSR_WRITE_FLUSH(sc);
@@ -6073,8 +6097,8 @@ wm_init_locked(struct ifnet *ifp)
 	if_statadd2(ifp, if_collisions, CSR_READ(sc, WMREG_COLC),
 	    if_ierrors, CSR_READ(sc, WMREG_RXERRC));
 
-	/* PCH_SPT hardware workaround */
-	if (sc->sc_type == WM_T_PCH_SPT)
+	/* >= PCH_SPT hardware workaround before reset. */
+	if (sc->sc_type >= WM_T_PCH_SPT)
 		wm_flush_desc_rings(sc);
 
 	/* Reset the chip to a known state. */
