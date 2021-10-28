@@ -1,4 +1,4 @@
-/*	$NetBSD: signal.h,v 1.30 2016/01/24 16:00:29 christos Exp $	*/
+/*	$NetBSD: signal.h,v 1.32 2021/10/27 02:00:46 thorpej Exp $	*/
 
 /*
  * Copyright (c) 1992, 1993
@@ -79,6 +79,7 @@ struct sigcontext13 {
 #endif /* _KERNEL && COMPAT_13 */
 
 #if defined(_LIBC) || (defined(_KERNEL) && (defined(COMPAT_16) || defined(COMPAT_ULTRIX)))
+#define	__HAVE_STRUCT_SIGCONTEXT
 /*
  * Only need an O32 version.
  */

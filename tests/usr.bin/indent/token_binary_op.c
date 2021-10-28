@@ -1,4 +1,4 @@
-/* $NetBSD: token_binary_op.c,v 1.1 2021/10/18 22:30:34 rillig Exp $ */
+/* $NetBSD: token_binary_op.c,v 1.3 2021/10/26 22:00:38 rillig Exp $ */
 /* $FreeBSD$ */
 
 /*
@@ -217,4 +217,21 @@ peculiarities(void)
 	if (a++ ++ +++b)
 		return;
 }
+#indent end
+
+
+#indent input
+char *(*fn)() = NULL;
+char *(*fn)(int) = NULL;
+char *(*fn)(int, int) = NULL;
+#indent end
+
+/* FIXME: The parameter '(int)' is wrongly interpreted as a type cast. */
+/* FIXME: The parameter '(int, int)' is wrongly interpreted as a type cast. */
+#indent run -di0
+char *(*fn)() = NULL;
+/* $ FIXME: Missing space before '='. */
+char *(*fn)(int)= NULL;
+/* $ FIXME: Missing space before '='. */
+char *(*fn)(int, int)= NULL;
 #indent end

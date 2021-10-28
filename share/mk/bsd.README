@@ -1,4 +1,4 @@
-#	$NetBSD: bsd.README,v 1.419 2021/10/14 11:45:46 nia Exp $
+#	$NetBSD: bsd.README,v 1.421 2021/10/27 03:06:59 ryo Exp $
 #	@(#)bsd.README	8.2 (Berkeley) 4/2/94
 
 This is the README file for the make "include" files for the NetBSD

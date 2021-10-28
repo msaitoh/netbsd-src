@@ -1,4 +1,4 @@
-/*	$NetBSD: io.c,v 1.99 2021/10/20 05:14:21 rillig Exp $	*/
+/*	$NetBSD: io.c,v 1.103 2021/10/27 00:04:51 rillig Exp $	*/
 
 /*-
  * SPDX-License-Identifier: BSD-4-Clause
@@ -43,15 +43,15 @@ static char sccsid[] = "@(#)io.c	8.1 (Berkeley) 6/6/93";
 
 #include <sys/cdefs.h>
 #if defined(__NetBSD__)
-__RCSID("$NetBSD: io.c,v 1.99 2021/10/20 05:14:21 rillig Exp $");
+__RCSID("$NetBSD: io.c,v 1.103 2021/10/27 00:04:51 rillig Exp $");
 #elif defined(__FreeBSD__)
 __FBSDID("$FreeBSD: head/usr.bin/indent/io.c 334927 2018-06-10 16:44:18Z pstef $");
 #endif
 
 #include <ctype.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
-#include <stdarg.h>
 
 #include "indent.h"
 
@@ -207,15 +207,12 @@ dump_line_comment(int ind)
  * Write a line of formatted source to the output file. The line consists of a
  * label, the code and the comment.
  */
-void
-dump_line(void)
+static void
+output_line(char line_terminator)
 {
     static bool first_line = true;
 
-    if (ps.procname[0] != '\0') {
-	ps.ind_level = 0;
-	ps.procname[0] = '\0';
-    }
+    ps.procname[0] = '\0';
 
     if (code.s == code.e && lab.s == lab.e && com.s == com.e) {
 	if (suppress_blanklines)
@@ -254,10 +251,7 @@ dump_line(void)
 	if (com.e != com.s)
 	    dump_line_comment(ind);
 
-	if (ps.use_ff)
-	    output_char('\f');
-	else
-	    output_char('\n');
+	output_char(line_terminator);
 	ps.stats.lines++;
 
 	if (ps.just_saw_decl == 1 && opt.blanklines_after_decl) {
@@ -270,7 +264,6 @@ dump_line(void)
 
     ps.decl_on_line = ps.in_decl;	/* for proper comment indentation */
     ps.ind_stmt = ps.in_stmt && !ps.in_decl;
-    ps.use_ff = false;
     ps.dumped_decl_indent = false;
 
     *(lab.e = lab.s) = '\0';	/* reset buffers */
@@ -287,6 +280,18 @@ dump_line(void)
     }
 
     first_line = false;
+}
+
+void
+dump_line(void)
+{
+    output_line('\n');
+}
+
+void
+dump_line_ff(void)
+{
+    output_line('\f');
 }
 
 int
@@ -474,27 +479,4 @@ int
 indentation_after(int ind, const char *s)
 {
     return indentation_after_range(ind, s, NULL);
-}
-
-void
-diag(int level, const char *msg, ...)
-{
-    va_list ap;
-    const char *s, *e;
-
-    if (level != 0)
-	found_err = true;
-
-    if (output == stdout) {
-	s = "/**INDENT** ";
-	e = " */";
-    } else {
-	s = e = "";
-    }
-
-    va_start(ap, msg);
-    fprintf(stderr, "%s%s@%d: ", s, level == 0 ? "Warning" : "Error", line_no);
-    vfprintf(stderr, msg, ap);
-    fprintf(stderr, "%s\n", e);
-    va_end(ap);
 }

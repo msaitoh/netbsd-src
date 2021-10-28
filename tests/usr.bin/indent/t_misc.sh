@@ -1,5 +1,5 @@
 #! /bin/sh
-# $NetBSD: t_misc.sh,v 1.2 2021/10/14 18:55:41 rillig Exp $
+# $NetBSD: t_misc.sh,v 1.8 2021/10/24 17:19:49 rillig Exp $
 #
 # Copyright (c) 2021 The NetBSD Foundation, Inc.
 # All rights reserved.
@@ -91,8 +91,250 @@ verbose_profile_body()
 	     cat after.c
 }
 
+atf_test_case 'nested_struct_declarations'
+nested_struct_declarations_body()
+{
+	# Trigger the warning about nested struct declarations.
+
+	cat <<-\EOF > code.c
+		struct s01 { struct s02 { struct s03 { struct s04 {
+		struct s05 { struct s06 { struct s07 { struct s08 {
+		struct s09 { struct s10 { struct s11 { struct s12 {
+		struct s13 { struct s14 { struct s15 { struct s16 {
+		struct s17 { struct s18 { struct s19 { struct s20 {
+		struct s21 { struct s22 { struct s23 { struct s24 {
+		};};};};
+		};};};};
+		};};};};
+		};};};};
+		};};};};
+		};};};};
+	EOF
+	cat <<-\EOF > expected.out
+		struct s01 {
+		 struct s02 {
+		  struct s03 {
+		   struct s04 {
+		    struct s05 {
+		     struct s06 {
+		      struct s07 {
+		       struct s08 {
+		        struct s09 {
+		         struct s10 {
+		          struct s11 {
+		           struct s12 {
+		            struct s13 {
+		             struct s14 {
+		              struct s15 {
+		               struct s16 {
+		                struct s17 {
+		                 struct s18 {
+		                  struct s19 {
+		                   struct s20 {
+		                    struct s21 {
+		                     struct s22 {
+		                      struct s23 {
+		                       struct s24 {
+		                       };
+		                      };
+		                     };
+		                    };
+		                   };
+		                  };
+		                 };
+		                };
+		               };
+		              };
+		             };
+		            };
+		           };
+		          };
+		         };
+		        };
+		       };
+		      };
+		     };
+		    };
+		   };
+		  };
+		 };
+		};
+	EOF
+	cat <<-\EOF > expected.err
+		warning: Standard Input:5: Reached internal limit of 20 struct levels
+		warning: Standard Input:6: Reached internal limit of 20 struct levels
+		warning: Standard Input:6: Reached internal limit of 20 struct levels
+		warning: Standard Input:6: Reached internal limit of 20 struct levels
+		warning: Standard Input:6: Reached internal limit of 20 struct levels
+	EOF
+
+	atf_check -o 'file:expected.out' -e 'file:expected.err' \
+	    "$indent" -i1 -nut < 'code.c'
+}
+
+atf_test_case 'option_P_in_profile_file'
+option_P_in_profile_file_body()
+{
+	# Mentioning another profile via -P has no effect since only a single
+	# profile can be specified on the command line, and there is no
+	# 'include' option.
+
+	# It's syntactically possible to specify a profile file inside another
+	# profile file.  Such a profile file is ignored since only a single
+	# profile file is ever loaded.
+	printf '%s\n' '-P/nonexistent' > .indent.pro
+
+	echo 'syntax # error' > code.c
+
+	atf_check -o 'inline:syntax'"$nl"'#error'"$nl" \
+	    "$indent" < code.c
+}
+
+atf_test_case 'opt'
+opt_body()
+{
+	# Test parsing of command line options from a profile file.
+
+	cat <<-\EOF > code.c
+		int global_var;
+
+		int function(int expr) {
+		switch (expr) { case 1: return 1; default: return 0; }
+		}
+	EOF
+
+	cat << \EOF > .indent.pro
+/* The latter of the two options wins. */
+-di5
+-di12
+
+/*
+ * It is possible to embed comments in the middle of an option, but nobody
+ * does that.
+ */
+-/* comment */bacc
+-T/* define
+a type */custom_type
+
+/* For int options, trailing garbage would lead to an error message. */
+-i3
+
+/*
+ * For float options, trailing garbage is ignored.
+ *
+ * See atof.
+ */
+-cli3.5garbage
+
+-b/*/acc	/* The comment is '/' '*' '/', making the option '-bacc'. */
+EOF
+
+	sed '/[$]/d' << \EOF > code.exp
+/* $ The variable name is indented by 12 characters due to -di12. */
+int	    global_var;
+
+int
+function(int expr)
+{
+   switch (expr) {
+/* $ The indentation is 3 + (int)(3.5 * 3), so 3 + 10.5, so 13. */
+/* $ See parse.c, function parse, 'case switch_expr'. */
+	     case 1:
+/* $ The indentation is 3 + (int)3.5 * 3 + 3, so 3 + 9 + 3, so 15. */
+/* $ See parse.c, function parse, 'case switch_expr'. */
+	       return 1;
+	     default:
+	       return 0;
+   }
+}
+EOF
+
+	atf_check -o 'file:code.exp' \
+	    "$indent" code.c -st
+}
+
+atf_test_case 'opt_npro'
+opt_npro_body()
+{
+	# Mentioning the option -npro in a .pro file has no effect since at
+	# that point, indent has already decided to load the .pro file, and
+	# it only decides once.
+
+	echo ' -npro -di8' > .indent.pro
+	echo 'int var;' > code.c
+	printf 'int\tvar;\n' > code.exp
+
+	atf_check -o 'file:code.exp' \
+	    "$indent" code.c -st
+}
+
+atf_test_case 'opt_U'
+opt_U_body()
+{
+	# From each line of this file, the first word is taken to be a type
+	# name.
+	#
+	# Since neither '/*' nor '' are syntactically valid type names, this
+	# means that all kinds of comments are effectively ignored.  When a
+	# type name is indented by whitespace, it is ignored as well.
+	#
+	# Since only the first word of each line is relevant, any remaining
+	# words can be used for comments.
+	cat <<-\EOF > code.types
+		/* Comments are effectively ignored since they never match. */
+		# This comment is ignored as well.
+		; So is this comment.
+		# The following line is empty and adds a type whose name is empty.
+
+		size_t			from stddef.h
+		off_t			for file offsets
+ 		 ignored_t		is ignored since it is indented
+	EOF
+
+	cat <<-\EOF > code.c
+		int known_1 = (size_t)   *   arg;
+		int known_2 = (off_t)   *   arg;
+		int ignored = (ignored_t)   *   arg;
+	EOF
+	cat <<-\EOF > code.exp
+		int known_1 = (size_t)*arg;
+		int known_2 = (off_t)*arg;
+		int ignored = (ignored_t) * arg;
+	EOF
+
+	atf_check -o 'file:code.exp' \
+	    "$indent" -Ucode.types code.c -di0 -st
+}
+
+atf_test_case 'line_no_counting'
+line_no_counting_body()
+{
+	# Before NetBSD indent.c 1.147 from 2021-10-24, indent reported the
+	# warning in line 2 instead of the correct line 3.
+
+	cat <<-\EOF > code.c
+		void line_no_counting(void)
+		{
+			())
+		}
+	EOF
+
+	cat <<-\EOF > code.err
+		warning: code.c:3: Extra )
+	EOF
+
+	atf_check -o 'ignore' -e 'file:code.err' \
+	    "$indent" code.c -st
+}
+
 atf_init_test_cases()
 {
 	atf_add_test_case 'in_place'
 	atf_add_test_case 'verbose_profile'
+	atf_add_test_case 'nested_struct_declarations'
+	atf_add_test_case 'option_P_in_profile_file'
+	atf_add_test_case 'opt'
+	atf_add_test_case 'opt_npro'
+	atf_add_test_case 'opt_U'
+	atf_add_test_case 'line_no_counting'
 }

@@ -1,4 +1,4 @@
-/*	$NetBSD: kern_event.c,v 1.132 2021/10/13 04:57:19 thorpej Exp $	*/
+/*	$NetBSD: kern_event.c,v 1.138 2021/10/23 18:46:26 thorpej Exp $	*/
 
 /*-
  * Copyright (c) 2008, 2009, 2021 The NetBSD Foundation, Inc.
@@ -63,7 +63,7 @@
 #endif /* _KERNEL_OPT */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: kern_event.c,v 1.132 2021/10/13 04:57:19 thorpej Exp $");
+__KERNEL_RCSID(0, "$NetBSD: kern_event.c,v 1.138 2021/10/23 18:46:26 thorpej Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -101,6 +101,8 @@ static void	kqueue_doclose(struct kqueue *, struct klist *, int);
 static void	knote_detach(struct knote *, filedesc_t *fdp, bool);
 static void	knote_enqueue(struct knote *);
 static void	knote_activate(struct knote *);
+static void	knote_activate_locked(struct knote *);
+static void	knote_deactivate_locked(struct knote *);
 
 static void	filt_kqdetach(struct knote *);
 static int	filt_kqueue(struct knote *, long hint);
@@ -112,10 +114,11 @@ static void	filt_timerexpire(void *x);
 static int	filt_timerattach(struct knote *);
 static void	filt_timerdetach(struct knote *);
 static int	filt_timer(struct knote *, long hint);
+static int	filt_timertouch(struct knote *, struct kevent *, long type);
 static int	filt_userattach(struct knote *);
 static void	filt_userdetach(struct knote *);
 static int	filt_user(struct knote *, long hint);
-static void	filt_usertouch(struct knote *, struct kevent *, long type);
+static int	filt_usertouch(struct knote *, struct kevent *, long type);
 
 static const struct fileops kqueueops = {
 	.fo_name = "kqueue",
@@ -162,6 +165,7 @@ static const struct filterops timer_filtops = {
 	.f_attach = filt_timerattach,
 	.f_detach = filt_timerdetach,
 	.f_event = filt_timer,
+	.f_touch = filt_timertouch,
 };
 
 static const struct filterops user_filtops = {
@@ -208,6 +212,7 @@ static struct kfilter sys_kfilters[] = {
 	{ "EVFILT_TIMER",	EVFILT_TIMER,	0, &timer_filtops, 0 },
 	{ "EVFILT_FS",		EVFILT_FS,	0, &fs_filtops, 0 },
 	{ "EVFILT_USER",	EVFILT_USER,	0, &user_filtops, 0 },
+	{ "EVFILT_EMPTY",	EVFILT_EMPTY,	0, &file_filtops, 0 },
 	{ NULL,			0,		0, NULL, 0 },
 };
 
@@ -273,7 +278,6 @@ static size_t		user_kfiltersz;		/* size of allocated memory */
  * KM_SLEEP is not).
  */
 static krwlock_t	kqueue_filter_lock;	/* lock on filter lists */
-static kmutex_t		kqueue_timer_lock;	/* for EVFILT_TIMER */
 
 #define	KQ_FLUX_WAIT(kq)	(void)cv_wait(&kq->kq_cv, &kq->kq_lock)
 #define	KQ_FLUX_WAKEUP(kq)	cv_broadcast(&kq->kq_cv)
@@ -476,10 +480,10 @@ filter_event(struct knote *kn, long hint)
 	return rv;
 }
 
-static void
+static int
 filter_touch(struct knote *kn, struct kevent *kev, long type)
 {
-	kn->kn_fop->f_touch(kn, kev, type);
+	return kn->kn_fop->f_touch(kn, kev, type);
 }
 
 static kauth_listener_t	kqueue_listener;
@@ -514,7 +518,6 @@ kqueue_init(void)
 {
 
 	rw_init(&kqueue_filter_lock);
-	mutex_init(&kqueue_timer_lock, MUTEX_DEFAULT, IPL_SOFTCLOCK);
 
 	kqueue_listener = kauth_listen_scope(KAUTH_SCOPE_PROCESS,
 	    kqueue_listener_cb, NULL);
@@ -877,10 +880,10 @@ knote_proc_exec(struct proc *p)
 		kq = kn->kn_kq;
 		mutex_spin_enter(&kq->kq_lock);
 		fflags = (kn->kn_fflags |= (kn->kn_sfflags & NOTE_EXEC));
-		mutex_spin_exit(&kq->kq_lock);
 		if (fflags) {
-			knote_activate(kn);
+			knote_activate_locked(kn);
 		}
+		mutex_spin_exit(&kq->kq_lock);
 	}
 
 	mutex_exit(p->p_lock);
@@ -1095,10 +1098,10 @@ knote_proc_fork(struct proc *p1, struct proc *p2)
 			KASSERT(mutex_owned(&kq->kq_lock));
 		}
 		fflags = kn->kn_fflags;
-		mutex_spin_exit(&kq->kq_lock);
 		if (fflags) {
-			knote_activate(kn);
+			knote_activate_locked(kn);
 		}
+		mutex_spin_exit(&kq->kq_lock);
 	}
 
 	mutex_exit(p1->p_lock);
@@ -1141,42 +1144,26 @@ knote_proc_exit(struct proc *p)
 			kn->kn_status |= KN_DETACHED;
 			SLIST_REMOVE_HEAD(&p->p_klist, kn_selnext);
 		}
-		mutex_spin_exit(&kq->kq_lock);
 
 		/*
 		 * Always activate the knote for NOTE_EXIT regardless
 		 * of whether or not the listener cares about it.
 		 * This matches historical behavior.
 		 */
-		knote_activate(kn);
+		knote_activate_locked(kn);
+		mutex_spin_exit(&kq->kq_lock);
 	}
 }
 
-static void
-filt_timerexpire(void *knx)
-{
-	struct knote *kn = knx;
-
-	mutex_enter(&kqueue_timer_lock);
-	kn->kn_data++;
-	knote_activate(kn);
-	if (kn->kn_sdata != (uintptr_t)-1) {
-		KASSERT(kn->kn_sdata > 0 && kn->kn_sdata <= INT_MAX);
-		callout_schedule((callout_t *)kn->kn_hook,
-		    (int)kn->kn_sdata);
-	}
-	mutex_exit(&kqueue_timer_lock);
-}
+#define	FILT_TIMER_NOSCHED	((uintptr_t)-1)
 
 static int
-filt_timerattach(struct knote *kn)
+filt_timercompute(struct kevent *kev, uintptr_t *tticksp)
 {
-	callout_t *calloutp;
-	struct kqueue *kq;
 	struct timespec ts;
-	int tticks, flags = 0;
+	uintptr_t tticks;
 
-	if (kn->kn_sfflags & ~(NOTE_TIMER_UNITMASK | NOTE_ABSTIME)) {
+	if (kev->fflags & ~(NOTE_TIMER_UNITMASK | NOTE_ABSTIME)) {
 		return EINVAL;
 	}
 
@@ -1184,32 +1171,32 @@ filt_timerattach(struct knote *kn)
 	 * Convert the event 'data' to a timespec, then convert the
 	 * timespec to callout ticks.
 	 */
-	switch (kn->kn_sfflags & NOTE_TIMER_UNITMASK) {
+	switch (kev->fflags & NOTE_TIMER_UNITMASK) {
 	case NOTE_SECONDS:
-		ts.tv_sec = kn->kn_sdata;
+		ts.tv_sec = kev->data;
 		ts.tv_nsec = 0;
 		break;
 
 	case NOTE_MSECONDS:		/* == historical value 0 */
-		ts.tv_sec = kn->kn_sdata / 1000;
-		ts.tv_nsec = (kn->kn_sdata % 1000) * 1000000;
+		ts.tv_sec = kev->data / 1000;
+		ts.tv_nsec = (kev->data % 1000) * 1000000;
 		break;
 
 	case NOTE_USECONDS:
-		ts.tv_sec = kn->kn_sdata / 1000000;
-		ts.tv_nsec = (kn->kn_sdata % 1000000) * 1000;
+		ts.tv_sec = kev->data / 1000000;
+		ts.tv_nsec = (kev->data % 1000000) * 1000;
 		break;
 
 	case NOTE_NSECONDS:
-		ts.tv_sec = kn->kn_sdata / 1000000000;
-		ts.tv_nsec = kn->kn_sdata % 1000000000;
+		ts.tv_sec = kev->data / 1000000000;
+		ts.tv_nsec = kev->data % 1000000000;
 		break;
 
 	default:
 		return EINVAL;
 	}
 
-	if (kn->kn_sfflags & NOTE_ABSTIME) {
+	if (kev->fflags & NOTE_ABSTIME) {
 		struct timespec deadline = ts;
 
 		/*
@@ -1220,35 +1207,97 @@ filt_timerattach(struct knote *kn)
 		 */
 		nanotime(&ts);
 
+		/* Absolute timers do not repeat. */
+		kev->data = FILT_TIMER_NOSCHED;
+
 		/* If we're past the deadline, then the event will fire. */
 		if (timespeccmp(&deadline, &ts, <=)) {
-			kn->kn_data = 1;
-			return 0;
+			tticks = FILT_TIMER_NOSCHED;
+			goto out;
 		}
 
 		/* Calculate how much time is left. */
 		timespecsub(&deadline, &ts, &ts);
 	} else {
 		/* EV_CLEAR automatically set for relative timers. */
-		flags |= EV_CLEAR;
+		kev->flags |= EV_CLEAR;
 	}
 
 	tticks = tstohz(&ts);
 
 	/* if the supplied value is under our resolution, use 1 tick */
 	if (tticks == 0) {
-		if (kn->kn_sdata == 0)
+		if (kev->data == 0)
 			return EINVAL;
 		tticks = 1;
+	} else if (tticks > INT_MAX) {
+		return EINVAL;
 	}
 
-	if ((kn->kn_flags & EV_ONESHOT) != 0 ||
-	    (kn->kn_sfflags & NOTE_ABSTIME) != 0) {
+	if ((kev->flags & EV_ONESHOT) != 0) {
 		/* Timer does not repeat. */
-		kn->kn_sdata = (uintptr_t)-1;
+		kev->data = FILT_TIMER_NOSCHED;
 	} else {
-		KASSERT((uintptr_t)tticks != (uintptr_t)-1);
-		kn->kn_sdata = tticks;
+		KASSERT((uintptr_t)tticks != FILT_TIMER_NOSCHED);
+		kev->data = tticks;
+	}
+
+ out:
+	*tticksp = tticks;
+
+	return 0;
+}
+
+static void
+filt_timerexpire(void *knx)
+{
+	struct knote *kn = knx;
+	struct kqueue *kq = kn->kn_kq;
+
+	mutex_spin_enter(&kq->kq_lock);
+	kn->kn_data++;
+	knote_activate_locked(kn);
+	if (kn->kn_sdata != FILT_TIMER_NOSCHED) {
+		KASSERT(kn->kn_sdata > 0 && kn->kn_sdata <= INT_MAX);
+		callout_schedule((callout_t *)kn->kn_hook,
+		    (int)kn->kn_sdata);
+	}
+	mutex_spin_exit(&kq->kq_lock);
+}
+
+static inline void
+filt_timerstart(struct knote *kn, uintptr_t tticks)
+{
+	callout_t *calloutp = kn->kn_hook;
+
+	KASSERT(mutex_owned(&kn->kn_kq->kq_lock));
+	KASSERT(!callout_pending(calloutp));
+
+	if (__predict_false(tticks == FILT_TIMER_NOSCHED)) {
+		kn->kn_data = 1;
+	} else {
+		KASSERT(tticks <= INT_MAX);
+		callout_reset(calloutp, (int)tticks, filt_timerexpire, kn);
+	}
+}
+
+static int
+filt_timerattach(struct knote *kn)
+{
+	callout_t *calloutp;
+	struct kqueue *kq;
+	uintptr_t tticks;
+	int error;
+
+	struct kevent kev = {
+		.flags = kn->kn_flags,
+		.fflags = kn->kn_sfflags,
+		.data = kn->kn_sdata,
+	};
+
+	error = filt_timercompute(&kev, &tticks);
+	if (error) {
+		return error;
 	}
 
 	if (atomic_inc_uint_nv(&kq_ncallouts) >= kq_calloutmax ||
@@ -1260,11 +1309,15 @@ filt_timerattach(struct knote *kn)
 
 	kq = kn->kn_kq;
 	mutex_spin_enter(&kq->kq_lock);
-	kn->kn_flags |= flags;
-	kn->kn_hook = calloutp;
-	mutex_spin_exit(&kq->kq_lock);
 
-	callout_reset(calloutp, tticks, filt_timerexpire, kn);
+	kn->kn_sdata = kev.data;
+	kn->kn_flags = kev.flags;
+	KASSERT(kn->kn_sfflags == kev.fflags);
+	kn->kn_hook = calloutp;
+
+	filt_timerstart(kn, tticks);
+
+	mutex_spin_exit(&kq->kq_lock);
 
 	return (0);
 }
@@ -1275,17 +1328,9 @@ filt_timerdetach(struct knote *kn)
 	callout_t *calloutp;
 	struct kqueue *kq = kn->kn_kq;
 
-	/*
-	 * We don't need to hold the kqueue_timer_lock here; even
-	 * if filt_timerexpire() misses our setting of EV_ONESHOT,
-	 * we are guaranteed that the callout will no longer be
-	 * scheduled even if we attempted to halt it after it already
-	 * started running, even if it rescheduled itself.
-	 */
-
-	mutex_spin_enter(&kq->kq_lock);
 	/* prevent rescheduling when we expire */
-	kn->kn_flags |= EV_ONESHOT;
+	mutex_spin_enter(&kq->kq_lock);
+	kn->kn_sdata = FILT_TIMER_NOSCHED;
 	mutex_spin_exit(&kq->kq_lock);
 
 	calloutp = (callout_t *)kn->kn_hook;
@@ -1302,13 +1347,69 @@ filt_timerdetach(struct knote *kn)
 }
 
 static int
+filt_timertouch(struct knote *kn, struct kevent *kev, long type)
+{
+	struct kqueue *kq = kn->kn_kq;
+	callout_t *calloutp;
+	uintptr_t tticks;
+	int error;
+
+	KASSERT(mutex_owned(&kq->kq_lock));
+
+	switch (type) {
+	case EVENT_REGISTER:
+		/* Only relevant for EV_ADD. */
+		if ((kev->flags & EV_ADD) == 0) {
+			return 0;
+		}
+
+		/*
+		 * Stop the timer, under the assumption that if
+		 * an application is re-configuring the timer,
+		 * they no longer care about the old one.  We
+		 * can safely drop the kq_lock while we wait
+		 * because fdp->fd_lock will be held throughout,
+		 * ensuring that no one can sneak in with an
+		 * EV_DELETE or close the kq.
+		 */
+		KASSERT(mutex_owned(&kq->kq_fdp->fd_lock));
+
+		calloutp = kn->kn_hook;
+		callout_halt(calloutp, &kq->kq_lock);
+		KASSERT(mutex_owned(&kq->kq_lock));
+		knote_deactivate_locked(kn);
+		kn->kn_data = 0;
+
+		error = filt_timercompute(kev, &tticks);
+		if (error) {
+			return error;
+		}
+		kn->kn_sdata = kev->data;
+		kn->kn_flags = kev->flags;
+		kn->kn_sfflags = kev->fflags;
+		filt_timerstart(kn, tticks);
+		break;
+
+	case EVENT_PROCESS:
+		*kev = kn->kn_kevent;
+		break;
+
+	default:
+		panic("%s: invalid type (%ld)", __func__, type);
+	}
+
+	return 0;
+}
+
+static int
 filt_timer(struct knote *kn, long hint)
 {
+	struct kqueue *kq = kn->kn_kq;
 	int rv;
 
-	mutex_enter(&kqueue_timer_lock);
+	mutex_spin_enter(&kq->kq_lock);
 	rv = (kn->kn_data != 0);
-	mutex_exit(&kqueue_timer_lock);
+	mutex_spin_exit(&kq->kq_lock);
 
 	return rv;
 }
@@ -1353,7 +1454,7 @@ filt_user(struct knote *kn, long hint)
 	return hookid;
 }
 
-static void
+static int
 filt_usertouch(struct knote *kn, struct kevent *kev, long type)
 {
 	int ffctrl;
@@ -1410,6 +1511,8 @@ filt_usertouch(struct knote *kn, struct kevent *kev, long type)
 		panic("filt_usertouch() - invalid type (%ld)", type);
 		break;
 	}
+
+	return 0;
 }
 
 /*
@@ -1843,8 +1946,13 @@ kqueue_register(struct kqueue *kq, struct kevent *kev)
 	if (!(kn->kn_fop->f_flags & FILTEROP_ISFD) &&
 	    kn->kn_fop->f_touch != NULL) {
 		mutex_spin_enter(&kq->kq_lock);
-		filter_touch(kn, kev, EVENT_REGISTER);
+		error = filter_touch(kn, kev, EVENT_REGISTER);
 		mutex_spin_exit(&kq->kq_lock);
+		if (__predict_false(error != 0)) {
+			/* Never a new knote (which would consume newkn). */
+			KASSERT(newkn != NULL);
+			goto doneunlock;
+		}
 	} else {
 		kn->kn_sfflags = kev->fflags;
 		kn->kn_sdata = kev->data;
@@ -1856,7 +1964,7 @@ kqueue_register(struct kqueue *kq, struct kevent *kev)
 	 * support events, and the attach routine is
 	 * broken and does not return an error.
 	 */
-done_ev_add:
+ done_ev_add:
 	rv = filter_event(kn, 0);
 	if (rv)
 		knote_activate(kn);
@@ -1873,7 +1981,7 @@ done_ev_add:
 	if ((kev->flags & EV_ENABLE)) {
 		knote_enqueue(kn);
 	}
-doneunlock:
+ doneunlock:
 	mutex_exit(&fdp->fd_lock);
  done:
 	rw_exit(&kqueue_filter_lock);
@@ -2154,19 +2262,17 @@ relock:
 			}
 		} else {
 			/*
-			 * This ONESHOT note is going to be detached
-			 * below.  Mark the knote as not long for this
-			 * world before we release the kq lock so that
-			 * no one else will put it in a state of flux.
+			 * Must NOT drop kq_lock until we can do
+			 * the KNOTE_WILLDETACH() below.
 			 */
-			KNOTE_WILLDETACH(kn);
 		}
 		KASSERT(kn->kn_fop != NULL);
 		touch = (!(kn->kn_fop->f_flags & FILTEROP_ISFD) &&
 				kn->kn_fop->f_touch != NULL);
 		/* XXXAD should be got from f_event if !oneshot. */
+		KASSERT((kn->kn_status & KN_WILLDETACH) == 0);
 		if (touch) {
-			filter_touch(kn, kevp, EVENT_PROCESS);
+			(void)filter_touch(kn, kevp, EVENT_PROCESS);
 		} else {
 			*kevp = kn->kn_kevent;
 		}
@@ -2175,6 +2281,7 @@ relock:
 		influx = 1;
 		if (kn->kn_flags & EV_ONESHOT) {
 			/* delete ONESHOT events after retrieval */
+			KNOTE_WILLDETACH(kn);
 			kn->kn_status &= ~KN_BUSY;
 			kq->kq_count--;
 			KASSERT(kn_in_flux(kn) == false);
@@ -2613,7 +2720,7 @@ knote_enqueue(struct knote *kn)
  * Queue new event for knote.
  */
 static void
-knote_activate(struct knote *kn)
+knote_activate_locked(struct knote *kn)
 {
 	struct kqueue *kq;
 
@@ -2621,10 +2728,9 @@ knote_activate(struct knote *kn)
 
 	kq = kn->kn_kq;
 
-	mutex_spin_enter(&kq->kq_lock);
 	if (__predict_false(kn->kn_status & KN_WILLDETACH)) {
 		/* Don't bother enqueueing a dying knote. */
-		goto out;
+		return;
 	}
 	kn->kn_status |= KN_ACTIVE;
 	if ((kn->kn_status & (KN_QUEUED | KN_DISABLED)) == 0) {
@@ -2637,8 +2743,32 @@ knote_activate(struct knote *kn)
 		cv_broadcast(&kq->kq_cv);
 		selnotify(&kq->kq_sel, 0, NOTE_SUBMIT);
 	}
- out:
+}
+
+static void
+knote_activate(struct knote *kn)
+{
+	struct kqueue *kq = kn->kn_kq;
+
+	mutex_spin_enter(&kq->kq_lock);
+	knote_activate_locked(kn);
 	mutex_spin_exit(&kq->kq_lock);
+}
+
+static void
+knote_deactivate_locked(struct knote *kn)
+{
+	struct kqueue *kq = kn->kn_kq;
+
+	if (kn->kn_status & KN_QUEUED) {
+		kq_check(kq);
+		kn->kn_status &= ~KN_QUEUED;
+		TAILQ_REMOVE(&kq->kq_head, kn, kn_tqe);
+		KASSERT(KQ_COUNT(kq) > 0);
+		kq->kq_count--;
+		kq_check(kq);
+	}
+	kn->kn_status &= ~KN_ACTIVE;
 }
 
 /*

@@ -1,4 +1,4 @@
-/*	$NetBSD: args.c,v 1.56 2021/10/17 18:13:00 rillig Exp $	*/
+/*	$NetBSD: args.c,v 1.60 2021/10/26 19:36:30 rillig Exp $	*/
 
 /*-
  * SPDX-License-Identifier: BSD-4-Clause
@@ -43,7 +43,7 @@ static char sccsid[] = "@(#)args.c	8.1 (Berkeley) 6/6/93";
 
 #include <sys/cdefs.h>
 #if defined(__NetBSD__)
-__RCSID("$NetBSD: args.c,v 1.56 2021/10/17 18:13:00 rillig Exp $");
+__RCSID("$NetBSD: args.c,v 1.60 2021/10/26 19:36:30 rillig Exp $");
 #elif defined(__FreeBSD__)
 __FBSDID("$FreeBSD: head/usr.bin/indent/args.c 336318 2018-07-15 21:04:21Z pstef $");
 #endif
@@ -52,11 +52,11 @@ __FBSDID("$FreeBSD: head/usr.bin/indent/args.c 336318 2018-07-15 21:04:21Z pstef
 
 #include <ctype.h>
 #include <err.h>
+#include <errno.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
 
 #include "indent.h"
 
@@ -89,7 +89,7 @@ static const struct pro {
     short i_min;
     short i_max;
     void *p_var;		/* the associated variable */
-}   pro[] = {
+} pro[] = {
     bool_options("bacc", blanklines_around_conditional_compilation),
     bool_options("bad", blanklines_after_decl),
     bool_options("badp", blanklines_after_decl_at_top),
@@ -160,9 +160,9 @@ load_profile(const char *fname, bool must_exist)
 		comment_ch = ch == '/' && comment_ch == '*' ? -1 : ch;
 	    } else if (isspace((unsigned char)ch)) {
 		break;
-	    } else if (n >= nitems(buf) - 5) {
+	    } else if (n >= array_length(buf) - 5) {
 		diag(1, "buffer overflow in %s, starting with '%.10s'",
-		     fname, buf);
+		    fname, buf);
 		exit(1);
 	    } else
 		buf[n++] = (char)ch;
@@ -286,7 +286,7 @@ set_option(const char *arg, const char *option_source)
     if (set_special_option(arg, option_source))
 	return;
 
-    for (p = pro + nitems(pro); p-- != pro;) {
+    for (p = pro + array_length(pro); p-- != pro;) {
 	param_start = skip_over(arg, p->p_may_negate, p->p_name);
 	if (param_start != NULL)
 	    goto found;
@@ -308,7 +308,7 @@ found:
 	if (!(errno == 0 && *end == '\0' &&
 		p->i_min <= num && num <= p->i_max))
 	    errx(1, "%s: invalid argument \"%s\" for option \"-%s\"",
-		 option_source, param_start, p->p_name);
+		option_source, param_start, p->p_name);
 	*(int *)p->p_var = (int)num;
     }
 }

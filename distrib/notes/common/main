@@ -1,4 +1,4 @@
-.\"	$NetBSD: main,v 1.564 2021/05/27 15:47:42 martin Exp $
+.\"	$NetBSD: main,v 1.567 2021/10/20 23:45:09 gutteridge Exp $
 .\"
 .\" Copyright (c) 1999-2012 The NetBSD Foundation, Inc.
 .\" All rights reserved.
@@ -257,7 +257,7 @@ and
 .Pa etc.\*[setsuffix] .
 In a typical workstation installation you will probably want
 all the installation sets.
-.ie \n[i386]:\n[amd64] \{\
+.if \n[i386]:\n[amd64] \{\
 .It
 Write the boot images
 .Pp
@@ -265,6 +265,11 @@ Many commercial and freeware programs are available to burn CD-ROMs.
 .Pp
 If installing via USB, you must first uncompress the USB image, which
 is gzipped.
+.if \n[amd64] \{\
+Note the \*M architecture has two images, NetBSD-\*V-\*M-install.img.gz
+and NetBSD-\*V-\*M-bios-install.img.gz. The latter is intended for older
+hardware which is unable to boot using a hybrid MBR and GPT image.
+.\}
 .Dl $ Ic "gunzip NetBSD-\*V-\*M-install.img.gz"
 Next, write the USB image to a USB stick/drive.
 Note that this will overwrite any existing data on the device that you
@@ -280,7 +285,6 @@ On Windows, you will need to use a program such as
 .Lk http://sourceforge.net/projects/win32diskimager/ "Win32 Disk Imager" ,
 or
 .Lk https://www.NetBSD.org/~martin/rawrite32 Rawrite32 .
-.if \n[amd64]:\n[i386] \{\
 If you have problems writing a raw image to a floppy,
 the
 .Ic rawrite.exe
@@ -288,7 +292,6 @@ MS-DOS program
 in the
 .Pa \*M/installation/misc/
 directory may be of help.
-.\}
 .\}
 .if \n[macppc] \{\
 .It
@@ -640,7 +643,7 @@ Changes after the release of \n[major].\n[minor].
 Changes in previous
 .Nx
 releases.
-.ie \n[FOR_RELEASE] \{\
+.if \n[FOR_RELEASE] \{\
 .It Li LAST_MINUTE
 Last minute changes and notes about the release.
 .\} \" \n[FOR_RELEASE]

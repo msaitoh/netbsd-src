@@ -1,4 +1,4 @@
-/*	$NetBSD: event.h,v 1.49 2021/10/20 03:08:18 thorpej Exp $	*/
+/*	$NetBSD: event.h,v 1.51 2021/10/23 01:28:33 thorpej Exp $	*/
 
 /*-
  * Copyright (c) 1999,2000,2001 Jonathan Lemon <jlemon@FreeBSD.org>
@@ -45,7 +45,8 @@
 #define	EVFILT_TIMER		6U	/* arbitrary timer (in ms) */
 #define	EVFILT_FS		7U	/* filesystem events */
 #define	EVFILT_USER		8U	/* user events */
-#define	EVFILT_SYSCOUNT		9U	/* number of filters */
+#define	EVFILT_EMPTY		9U
+#define	EVFILT_SYSCOUNT		10U	/* number of filters */
 
 #ifdef EVFILT_NAMES
 static const char *evfiltnames[] = {
@@ -58,6 +59,7 @@ static const char *evfiltnames[] = {
 	"EVFILT_TIMER",
 	"EVFILT_FS",
 	"EVFILT_USER",
+	"EVFILT_EMPTY",
 };
 #endif
 
@@ -230,7 +232,7 @@ struct filterops {
 					/* called when knote is DELETEd */
 	int	(*f_event)	(struct knote *, long);
 					/* called when event is triggered */
-	void	(*f_touch)	(struct knote *, struct kevent *, long);
+	int	(*f_touch)	(struct knote *, struct kevent *, long);
 };
 
 /* filterops flags */

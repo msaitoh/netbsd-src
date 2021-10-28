@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile.kern.inc,v 1.282 2021/09/11 20:28:05 andvar Exp $
+#	$NetBSD: Makefile.kern.inc,v 1.284 2021/10/27 03:06:59 ryo Exp $
 #
 # This file contains common `MI' targets and definitions and it is included
 # at the bottom of each `MD' ${MACHINE}/conf/Makefile.${MACHINE}.

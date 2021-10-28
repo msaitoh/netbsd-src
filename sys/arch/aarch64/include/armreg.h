@@ -1,4 +1,4 @@
-/* $NetBSD: armreg.h,v 1.57 2021/06/19 13:40:00 jmcneill Exp $ */
+/* $NetBSD: armreg.h,v 1.59 2021/10/26 16:58:46 ryo Exp $ */
 
 /*-
  * Copyright (c) 2014 The NetBSD Foundation, Inc.
@@ -74,8 +74,8 @@ reg_##regname##_write(uint64_t __val)				\
 	AARCH64REG_WRITE_INLINE3(regname, regdesc, )
 
 #define AARCH64REG_WRITEIMM_INLINE2(regname, regdesc)		\
-static __inline void						\
-reg_##regname##_write(uint64_t __val)				\
+static __inline void __always_inline				\
+reg_##regname##_write(const uint64_t __val)			\
 {								\
 	__asm __volatile(					\
 	    "msr " #regdesc ", %0" :: "n"(__val) : "memory"	\
@@ -1636,7 +1636,7 @@ struct aarch64_sysctl_cpu_id {
 	uint32_t ac_mvfr2;	/* Media and VFP Feature Register 2 */
 	uint32_t ac_pad;
 
-	uint64_t ac_clidr;	/* Cacle Level ID Register */
+	uint64_t ac_clidr;	/* Cache Level ID Register */
 	uint64_t ac_ctr;	/* Cache Type Register */
 };
 

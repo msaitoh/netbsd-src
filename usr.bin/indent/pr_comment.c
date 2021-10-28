@@ -1,4 +1,4 @@
-/*	$NetBSD: pr_comment.c,v 1.80 2021/10/20 05:14:21 rillig Exp $	*/
+/*	$NetBSD: pr_comment.c,v 1.87 2021/10/26 21:37:27 rillig Exp $	*/
 
 /*-
  * SPDX-License-Identifier: BSD-4-Clause
@@ -43,12 +43,13 @@ static char sccsid[] = "@(#)pr_comment.c	8.1 (Berkeley) 6/6/93";
 
 #include <sys/cdefs.h>
 #if defined(__NetBSD__)
-__RCSID("$NetBSD: pr_comment.c,v 1.80 2021/10/20 05:14:21 rillig Exp $");
+__RCSID("$NetBSD: pr_comment.c,v 1.87 2021/10/26 21:37:27 rillig Exp $");
 #elif defined(__FreeBSD__)
 __FBSDID("$FreeBSD: head/usr.bin/indent/pr_comment.c 334927 2018-06-10 16:44:18Z pstef $");
 #endif
 
 #include <assert.h>
+#include <ctype.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -181,8 +182,8 @@ process_comment(void)
 	 * much will have to be ignored by dump_line(). This is a box comment,
 	 * so nothing changes -- not even indentation.
 	 *
-	 * The comment we're about to read usually comes from inp.buf,
-	 * unless it has been copied into save_com.
+	 * The comment we're about to read usually comes from inp.buf, unless
+	 * it has been copied into save_com.
 	 */
 	const char *start;
 
@@ -212,22 +213,21 @@ process_comment(void)
 	char *t = com.e;
 	com.e = com.s + 2;
 	*com.e = '\0';
-	if (opt.blanklines_before_block_comments && ps.last_token != lbrace)
+	if (opt.blanklines_before_block_comments &&
+		ps.last_token != lsym_lbrace)
 	    blank_line_before = true;
 	dump_line();
 	com.e = com.s = t;
 	com_add_delim();
     }
 
-    /* Start to copy the comment */
+    /* Now copy the comment. */
 
-    for (;;) {			/* this loop will go until the comment is
-				 * copied */
-	switch (*inp.s) {	/* this checks for various special cases */
+    for (;;) {
+	switch (*inp.s) {
 	case '\f':
 	    if (may_wrap) {	/* in a text comment, break the line here */
-		ps.use_ff = true;
-		dump_line();
+		dump_line_ff();
 		last_blank = -1;
 		com_add_delim();
 		inp.s++;
@@ -332,42 +332,26 @@ process_comment(void)
 
 	    ps.last_nl = false;
 
-	    /* XXX: signed character comparison '>' does not work for UTF-8 */
-	    if (now_len > adj_max_line_length &&
-		    may_wrap && com.e[-1] > ' ') {
+	    if (now_len <= adj_max_line_length || !may_wrap)
+		break;
+	    if (isspace((unsigned char)com.e[-1]))
+		break;
 
-		/* the comment is too long, it must be broken up */
-		if (last_blank == -1) {
-		    dump_line();
-		    com_add_delim();
-		    break;
-		}
-
-		com_terminate();	/* mark the end of the last word */
-		com.e = com.buf + last_blank;
+	    if (last_blank == -1) {	/* only a single word in this line */
 		dump_line();
-
 		com_add_delim();
-
-		const char *p = com.buf + last_blank + 1;
-		while (is_hspace(*p))
-		    p++;
-		last_blank = -1;
-
-		/*
-		 * p still points to the last word from the previous line, in
-		 * the same buffer that it is copied to, but to the right of
-		 * the writing region [com.s, com.e). Calling dump_line only
-		 * moved com.e back to com.s, it did not clear the contents of
-		 * the buffer. This ensures that the buffer is already large
-		 * enough.
-		 */
-		while (*p != '\0') {
-		    assert(!is_hspace(*p));
-		    *com.e++ = *p++;
-		}
+		break;
 	    }
-	    break;
+
+	    const char *last_word_s = com.buf + last_blank + 1;
+	    size_t last_word_len = (size_t)(com.e - last_word_s);
+	    com.e = com.buf + last_blank;
+	    dump_line();
+	    com_add_delim();
+
+	    memcpy(com.e, last_word_s, last_word_len);
+	    com.e += last_word_len;
+	    last_blank = -1;
 	}
     }
 }

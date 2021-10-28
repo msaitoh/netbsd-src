@@ -1,4 +1,4 @@
-/* $NetBSD: token_lparen.c,v 1.1 2021/10/18 22:30:34 rillig Exp $ */
+/* $NetBSD: token_lparen.c,v 1.7 2021/10/25 20:16:16 rillig Exp $ */
 /* $FreeBSD$ */
 
 /*
@@ -52,7 +52,7 @@ function(void)
 
     /* GCC statement expression */
     /* expr = ({if(expr)debug();expr;}); */
-/* $ XXX: Generates wrong 'Error@36: Unbalanced parens'. */
+/* $ XXX: Generates wrong 'error: Standard Input:36: Unbalanced parens'. */
 }
 #indent end
 
@@ -92,3 +92,106 @@ int array[] = {
 #indent end
 
 #indent run-equals-input -di0
+
+
+/*
+ * Test want_blank_before_lparen for all possible token types.
+ */
+#indent input
+void cover_want_blank_before_lparen(void)
+{
+	/* ps.last_token can never be 'newline'. */
+	int newline =
+	(3);
+
+	int lparen_or_lbracket = a[(3)];
+	int rparen_or_rbracket = a[3](5);
+	+(unary_op);
+	3 + (binary_op);
+	a++(postfix_op);	/* unlikely to be seen in practice */
+	cond ? (question) : (5);
+	switch (expr) {
+	case (case_label):;
+	}
+	a ? 3 : (colon);
+	(semicolon) = 3;
+	int lbrace[] = {(3)};
+	int rbrace_in_decl = {{3}(4)};	/* syntax error */
+	{}
+	(rbrace_in_stmt)();
+	ident(3);
+	int(decl);
+	a++, (comma)();
+	int comment = /* comment */ (3);	/* comment is skipped */
+	switch (expr) {}
+#define preprocessing
+	(preprocessing)();
+	/* $ XXX: lsym_form_feed should be skipped, just as newline. */
+	(lsym_form_feed)();	/* XXX: should be skipped */
+	for(;;);
+	do(lsym_do)=3;while(0);
+	if(cond);else(lsym_else)();
+	do(lsym_do);while(0);
+	str.(member);		/* syntax error */
+	L("string_prefix");		/* impossible */
+	static (int)storage_class;	/* syntax error */
+	funcname(3);
+	typedef (type_def) new_type;
+	// $ TODO: is keyword_struct_union_enum possible?
+	struct (keyword_struct_union_enum);	/* syntax error */
+}
+#indent end
+
+#indent run -ldi0
+void
+cover_want_blank_before_lparen(void)
+{
+	/* ps.last_token can never be 'newline'. */
+	int newline =
+	(3);
+
+	int lparen_or_lbracket = a[(3)];
+	int rparen_or_rbracket = a[3](5);
+	+(unary_op);
+	3 + (binary_op);
+	a++ (postfix_op);	/* unlikely to be seen in practice */
+	cond ? (question) : (5);
+	switch (expr) {
+	case (case_label):;
+	}
+	a ? 3 : (colon);
+	(semicolon) = 3;
+	int lbrace[] = {(3)};
+	int rbrace_in_decl = {{3} (4)};	/* syntax error */
+	{
+	}
+	(rbrace_in_stmt)();
+	ident(3);
+	int (decl);
+	a++, (comma)();
+	int comment = /* comment */ (3);	/* comment is skipped */
+	switch (expr) {
+	}
+#define preprocessing
+	(preprocessing)();
+
+/* $ XXX: Where has the '\f' gone? It should have been preserved. */
+	(lsym_form_feed)();	/* XXX: should be skipped */
+	for (;;);
+	do
+		(lsym_do) = 3;
+	while (0);
+	if (cond);
+	else
+		(lsym_else)();
+	do
+		(lsym_do);
+	while (0);
+	str.(member);		/* syntax error */
+	L("string_prefix");	/* impossible */
+	static (int)storage_class;	/* syntax error */
+	funcname(3);
+	typedef (type_def) new_type;
+	struct (keyword_struct_union_enum);	/* syntax error */
+}
+#indent end

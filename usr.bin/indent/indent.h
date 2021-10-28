@@ -1,4 +1,4 @@
-/*	$NetBSD: indent.h,v 1.43 2021/10/20 05:41:57 rillig Exp $	*/
+/*	$NetBSD: indent.h,v 1.52 2021/10/26 20:43:35 rillig Exp $	*/
 
 /*-
  * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
@@ -70,46 +70,65 @@ __FBSDID("$FreeBSD: head/usr.bin/indent/indent.h 336333 2018-07-16 05:46:50Z pst
 
 #include <stdbool.h>
 
-typedef enum token_type {
-    end_of_file,
-    newline,
-    lparen_or_lbracket,
-    rparen_or_rbracket,
-    unary_op,			/* e.g. '+' or '&' */
-    binary_op,			/* e.g. '<<' or '+' or '&&' or '/=' */
-    postfix_op,			/* trailing '++' or '--' */
-    question,			/* the '?' from a '?:' expression */
-    case_label,
-    colon,
-    semicolon,
-    lbrace,
-    rbrace,
-    ident,			/* identifier, constant or string */
-    comma,
-    comment,
-    switch_expr,		/* 'switch' '(' <expr> ')' */
-    preprocessing,		/* '#' */
-    form_feed,
-    decl,
-    keyword_for_if_while,	/* 'for', 'if' or 'while' */
-    keyword_do_else,		/* 'do' or 'else' */
-    if_expr,			/* 'if' '(' <expr> ')' */
-    while_expr,			/* 'while' '(' <expr> ')' */
-    for_exprs,			/* 'for' '(' ... ')' */
-    stmt,
-    stmt_list,
-    keyword_else,		/* 'else' */
-    keyword_do,			/* 'do' */
-    do_stmt,			/* 'do' <stmt> */
-    if_expr_stmt,		/* 'if' '(' <expr> ')' <stmt> */
-    if_expr_stmt_else,		/* 'if' '(' <expr> ')' <stmt> 'else' */
-    period,
-    string_prefix,		/* 'L' */
-    storage_class,
-    funcname,
-    type_def,
-    keyword_struct_union_enum
-} token_type;
+typedef enum lexer_symbol {
+    lsym_eof,
+    lsym_preprocessing,		/* '#' */
+    lsym_newline,
+    lsym_form_feed,
+    lsym_comment,
+    lsym_lparen_or_lbracket,
+    lsym_rparen_or_rbracket,
+    lsym_lbrace,
+    lsym_rbrace,
+    lsym_period,
+    lsym_unary_op,		/* e.g. '+' or '&' */
+    lsym_binary_op,		/* e.g. '<<' or '+' or '&&' or '/=' */
+    lsym_postfix_op,		/* trailing '++' or '--' */
+    lsym_question,		/* the '?' from a '?:' expression */
+    lsym_colon,
+    lsym_comma,
+    lsym_semicolon,
+    lsym_typedef,
+    lsym_storage_class,
+    lsym_type,
+    lsym_tag,			/* 'struct', 'union', 'enum' */
+    lsym_case_label,
+    lsym_string_prefix,		/* 'L' */
+    lsym_ident,			/* identifier, constant or string */
+    lsym_funcname,
+    lsym_do,
+    lsym_else,
+    lsym_for,
+    lsym_if,
+    lsym_switch,
+    lsym_while,
+} lexer_symbol;
+
+typedef enum parser_symbol {
+    psym_semicolon,		/* rather a placeholder than a semicolon */
+    psym_lbrace,
+    psym_rbrace,
+    psym_decl,
+    psym_stmt,
+    psym_stmt_list,
+    psym_for_exprs,		/* 'for' '(' ... ')' */
+    psym_if_expr,		/* 'if' '(' expr ')' */
+    psym_if_expr_stmt,		/* 'if' '(' expr ')' stmt */
+    psym_if_expr_stmt_else,	/* 'if' '(' expr ')' stmt 'else' */
+    psym_else,			/* 'else' */
+    psym_switch_expr,		/* 'switch' '(' expr ')' */
+    psym_do,			/* 'do' */
+    psym_do_stmt,		/* 'do' stmt */
+    psym_while_expr,		/* 'while' '(' expr ')' */
+} parser_symbol;
+
+typedef enum stmt_head {
+    hd_0,			/* placeholder for uninitialized */
+    hd_for,
+    hd_if,
+    hd_switch,
+    hd_while,
+} stmt_head;
 
 #define sc_size 5000		/* size of save_com buffer */
 #define label_offset 2		/* number of levels a label is placed to left
@@ -216,7 +235,7 @@ extern struct options {
 				 * uses all spaces */
     bool verbose;		/* whether non-essential error messages are
 				 * printed */
-}       opt;
+} opt;
 
 enum keyword_kind {
     kw_0,
@@ -224,8 +243,11 @@ enum keyword_kind {
     kw_sizeof,
     kw_struct_or_union_or_enum,
     kw_type,
-    kw_for_or_if_or_while,
-    kw_do_or_else,
+    kw_for,
+    kw_if,
+    kw_while,
+    kw_do,
+    kw_else,
     kw_switch,
     kw_case_or_default,
     kw_jump,
@@ -251,10 +273,10 @@ extern bool inhibit_formatting;	/* true if INDENT OFF is in effect */
 
 /* TODO: group the members by purpose, don't sort them alphabetically */
 extern struct parser_state {
-    token_type last_token;
+    lexer_symbol last_token;
 
     int tos;			/* pointer to top of stack */
-    token_type s_ttype[STACKSIZE];
+    parser_symbol s_sym[STACKSIZE];
     int s_ind_level[STACKSIZE];
     float s_case_ind_level[STACKSIZE];
 
@@ -304,15 +326,14 @@ extern struct parser_state {
 				 * to the enclosing statement */
     bool is_case_label;		/* 'case' and 'default' labels are indented
 				 * differently from regular labels */
-    bool search_brace;		/* whether it is necessary to buffer up all
-				 * info up to the start of a stmt after an if,
-				 * while, etc */
-    bool use_ff;		/* whether the current line should be
-				 * terminated with a form feed */
+    bool search_stmt;		/* whether it is necessary to buffer up all
+				 * text up to the start of a statement after
+				 * an 'if', 'while', etc. */
     bool want_blank;		/* whether the following token should be
 				 * prefixed by a blank. (Said prefixing is
 				 * ignored in some cases.) */
-    enum keyword_kind keyword;
+    enum keyword_kind prev_keyword;
+    enum keyword_kind curr_keyword;
     bool dumped_decl_indent;
     bool in_parameter_declaration;
     char procname[100];		/* The name of the current procedure */
@@ -324,12 +345,10 @@ extern struct parser_state {
 	int code_lines;
 	int comment_lines;
     }      stats;
-}            ps;
+} ps;
 
 
-#ifndef nitems
-#define nitems(array) (sizeof (array) / sizeof (array[0]))
-#endif
+#define array_length(array) (sizeof (array) / sizeof (array[0]))
 
 void add_typename(const char *);
 int compute_code_indent(void);
@@ -342,7 +361,6 @@ debug_vis_range(const char *, const char *, const char *,
     const char *);
 void debug_printf(const char *, ...)__printflike(1, 2);
 void debug_println(const char *, ...)__printflike(1, 2);
-const char *token_type_name(token_type);
 #else
 #define		debug_printf(fmt, ...) do { } while (false)
 #define		debug_println(fmt, ...) do { } while (false)
@@ -350,11 +368,13 @@ const char *token_type_name(token_type);
 #endif
 void inbuf_skip(void);
 char inbuf_next(void);
-token_type lexi(struct parser_state *);
+lexer_symbol lexi(struct parser_state *);
 void diag(int, const char *, ...)__printflike(2, 3);
 void dump_line(void);
+void dump_line_ff(void);
 void inbuf_read_line(void);
-void parse(token_type);
+void parse(parser_symbol);
+void parse_hd(stmt_head);
 void process_comment(void);
 void set_option(const char *, const char *);
 void load_profiles(const char *);
