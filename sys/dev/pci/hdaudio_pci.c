@@ -84,6 +84,17 @@ CFATTACH_DECL2_NEW(
     hdaudio_pci_childdet
 );
 
+/* Some devices' sublcass is not PCI_SUBCLASS_MULTIMEDIA_HDAUDIO. */
+static const struct device_compatible_entry compat_data[] = {
+	{ .id = PCI_ID_CODE(PCI_VENDOR_INTEL, PCI_PRODUCT_INTEL_2HS_U_HDA) },
+	{ .id = PCI_ID_CODE(PCI_VENDOR_INTEL, PCI_PRODUCT_INTEL_3HS_U_HDA) },
+	{ .id = PCI_ID_CODE(PCI_VENDOR_INTEL, PCI_PRODUCT_INTEL_4HS_H_CAVS) },
+	{ .id = PCI_ID_CODE(PCI_VENDOR_INTEL, PCI_PRODUCT_INTEL_5HS_LP_HDA) },
+	{ .id = PCI_ID_CODE(PCI_VENDOR_INTEL, PCI_PRODUCT_INTEL_JSL_CAVS) },
+
+	PCI_COMPAT_EOL
+};
+
 /*
  * NetBSD autoconfiguration
  */
@@ -93,12 +104,13 @@ hdaudio_pci_match(device_t parent, cfdata_t match, void *opaque)
 {
 	struct pci_attach_args *pa = opaque;
 
-	if (PCI_CLASS(pa->pa_class) != PCI_CLASS_MULTIMEDIA)
-		return 0;
-	if (PCI_SUBCLASS(pa->pa_class) != PCI_SUBCLASS_MULTIMEDIA_HDAUDIO)
-		return 0;
+	if ((PCI_CLASS(pa->pa_class) == PCI_CLASS_MULTIMEDIA) &&
+	    (PCI_SUBCLASS(pa->pa_class) == PCI_SUBCLASS_MULTIMEDIA_HDAUDIO))
+		return 10;
+	if (pci_compatible_match(pa, compat_data) != 0)
+		return 10;
 
-	return 10;
+	return 0;
 }
 
 static void
