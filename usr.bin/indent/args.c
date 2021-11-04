@@ -1,4 +1,4 @@
-/*	$NetBSD: args.c,v 1.60 2021/10/26 19:36:30 rillig Exp $	*/
+/*	$NetBSD: args.c,v 1.68 2021/10/31 22:38:12 rillig Exp $	*/
 
 /*-
  * SPDX-License-Identifier: BSD-4-Clause
@@ -43,7 +43,7 @@ static char sccsid[] = "@(#)args.c	8.1 (Berkeley) 6/6/93";
 
 #include <sys/cdefs.h>
 #if defined(__NetBSD__)
-__RCSID("$NetBSD: args.c,v 1.60 2021/10/26 19:36:30 rillig Exp $");
+__RCSID("$NetBSD: args.c,v 1.68 2021/10/31 22:38:12 rillig Exp $");
 #elif defined(__FreeBSD__)
 __FBSDID("$FreeBSD: head/usr.bin/indent/args.c 336318 2018-07-15 21:04:21Z pstef $");
 #endif
@@ -52,15 +52,12 @@ __FBSDID("$FreeBSD: head/usr.bin/indent/args.c 336318 2018-07-15 21:04:21Z pstef
 
 #include <ctype.h>
 #include <err.h>
-#include <errno.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "indent.h"
-
-#define INDENT_VERSION	"2.0"
 
 #if __STDC_VERSION__ >= 201112L
 #define assert_type(expr, type) _Generic((expr), type : (expr))
@@ -75,12 +72,7 @@ __FBSDID("$FreeBSD: head/usr.bin/indent/args.c 336318 2018-07-15 21:04:21Z pstef
 #define int_option(name, var, min, max) \
 	{name, false, false, false, min, max, assert_type(&(opt.var), int *)}
 
-/*
- * N.B.: an option whose name is a prefix of another option must come earlier;
- * for example, "l" must come before "lp".
- *
- * See set_special_option for special options.
- */
+/* See set_special_option for special options. */
 static const struct pro {
     const char p_name[5];	/* e.g. "bl", "cli" */
     bool p_is_bool;
@@ -136,6 +128,133 @@ static const struct pro {
     bool_options("v", verbose),
 };
 
+
+static void
+add_typedefs_from_file(const char *fname)
+{
+    FILE *file;
+    char line[BUFSIZ];
+
+    if ((file = fopen(fname, "r")) == NULL) {
+	fprintf(stderr, "indent: cannot open file %s\n", fname);
+	exit(1);
+    }
+    while ((fgets(line, BUFSIZ, file)) != NULL) {
+	/* Remove trailing whitespace */
+	line[strcspn(line, " \t\n\r")] = '\0';
+	register_typename(line);
+    }
+    (void)fclose(file);
+}
+
+static bool
+set_special_option(const char *arg, const char *option_source)
+{
+    const char *arg_end;
+
+    if (strncmp(arg, "-version", 8) == 0) {
+	printf("NetBSD indent 2.1\n");
+	exit(0);
+    }
+
+    if (arg[0] == 'P' || strncmp(arg, "npro", 4) == 0)
+	return true;
+
+    if (strncmp(arg, "cli", 3) == 0) {
+	arg_end = arg + 3;
+	if (arg_end[0] == '\0')
+	    goto need_param;
+	char *end;
+	opt.case_indent = (float)strtod(arg_end, &end);
+	if (*end != '\0')
+	    errx(1, "%s: argument \"%s\" to option \"-%.*s\" must be numeric",
+		option_source, arg_end, (int)(arg_end - arg), arg);
+	return true;
+    }
+
+    if (strncmp(arg, "st", 2) == 0) {
+	if (input == NULL)
+	    input = stdin;
+	if (output == NULL)
+	    output = stdout;
+	return true;
+    }
+
+    if (arg[0] == 'T') {
+	arg_end = arg + 1;
+	if (arg_end[0] == '\0')
+	    goto need_param;
+	register_typename(arg_end);
+	return true;
+    }
+
+    if (arg[0] == 'U') {
+	arg_end = arg + 1;
+	if (arg_end[0] == '\0')
+	    goto need_param;
+	add_typedefs_from_file(arg_end);
+	return true;
+    }
+
+    return false;
+
+need_param:
+    errx(1, "%s: ``%.*s'' requires an argument",
+	option_source, (int)(arg_end - arg), arg);
+    /* NOTREACHED */
+}
+
+static const char *
+skip_over(const char *s, bool may_negate, const char *prefix)
+{
+    if (may_negate && s[0] == 'n')
+	s++;
+    while (*prefix != '\0') {
+	if (*prefix++ != *s++)
+	    return NULL;
+    }
+    return s;
+}
+
+void
+set_option(const char *arg, const char *option_source)
+{
+    const struct pro *p;
+    const char *arg_arg;
+
+    arg++;			/* skip leading '-' */
+    if (set_special_option(arg, option_source))
+	return;
+
+    for (p = pro + array_length(pro); p-- != pro;)
+	if ((arg_arg = skip_over(arg, p->p_may_negate, p->p_name)) != NULL)
+	    goto found;
+    errx(1, "%s: unknown option \"-%s\"", option_source, arg);
+found:
+
+    if (p->p_is_bool) {
+	if (arg_arg[0] != '\0')
+	    errx(1, "%s: unknown option \"-%s\"", option_source, arg);
+
+	*(bool *)p->p_var = p->p_may_negate ? arg[0] != 'n' : p->p_bool_value;
+	return;
+    }
+
+    char *end;
+    long num = strtol(arg_arg, &end, 10);
+    if (*end != '\0')
+	errx(1, "%s: argument \"%s\" to option \"-%s\" must be an integer",
+	    option_source, arg_arg, p->p_name);
+
+    if (!(isdigit((unsigned char)*arg_arg) &&
+	    p->i_min <= num && num <= p->i_max))
+	errx(1,
+	    "%s: argument \"%s\" to option \"-%s\" must be between %d and %d",
+	    option_source, arg_arg, p->p_name, p->i_min, p->i_max);
+
+    *(int *)p->p_var = (int)num;
+}
+
 static void
 load_profile(const char *fname, bool must_exist)
 {
@@ -161,9 +280,8 @@ load_profile(const char *fname, bool must_exist)
 	    } else if (isspace((unsigned char)ch)) {
 		break;
 	    } else if (n >= array_length(buf) - 5) {
-		diag(1, "buffer overflow in %s, starting with '%.10s'",
+		errx(1, "buffer overflow in %s, starting with '%.10s'",
 		    fname, buf);
-		exit(1);
 	    } else
 		buf[n++] = (char)ch;
 	}
@@ -191,124 +309,4 @@ load_profiles(const char *profile_name)
 	load_profile(fname, false);
     }
     load_profile(".indent.pro", false);
-}
-
-static const char *
-skip_over(const char *s, bool may_negate, const char *prefix)
-{
-    if (may_negate && s[0] == 'n')
-	s++;
-    while (*prefix != '\0') {
-	if (*prefix++ != *s++)
-	    return NULL;
-    }
-    return s;
-}
-
-static void
-add_typedefs_from_file(const char *fname)
-{
-    FILE *file;
-    char line[BUFSIZ];
-
-    if ((file = fopen(fname, "r")) == NULL) {
-	fprintf(stderr, "indent: cannot open file %s\n", fname);
-	exit(1);
-    }
-    while ((fgets(line, BUFSIZ, file)) != NULL) {
-	/* Remove trailing whitespace */
-	line[strcspn(line, " \t\n\r")] = '\0';
-	add_typename(line);
-    }
-    (void)fclose(file);
-}
-
-static bool
-set_special_option(const char *arg, const char *option_source)
-{
-    const char *arg_end;
-
-    if (strncmp(arg, "-version", 8) == 0) {
-	printf("FreeBSD indent %s\n", INDENT_VERSION);
-	exit(0);
-    }
-
-    if (arg[0] == 'P' || strncmp(arg, "npro", 4) == 0)
-	return true;
-
-    if (strncmp(arg, "cli", 3) == 0) {
-	arg_end = arg + 3;
-	if (arg_end[0] == '\0')
-	    goto need_param;
-	opt.case_indent = (float)atof(arg_end);
-	return true;
-    }
-
-    if (strncmp(arg, "st", 2) == 0) {
-	if (input == NULL)
-	    input = stdin;
-	if (output == NULL)
-	    output = stdout;
-	return true;
-    }
-
-    if (arg[0] == 'T') {
-	arg_end = arg + 1;
-	if (arg_end[0] == '\0')
-	    goto need_param;
-	add_typename(arg_end);
-	return true;
-    }
-
-    if (arg[0] == 'U') {
-	arg_end = arg + 1;
-	if (arg_end[0] == '\0')
-	    goto need_param;
-	add_typedefs_from_file(arg_end);
-	return true;
-    }
-
-    return false;
-
-need_param:
-    errx(1, "%s: ``%.*s'' requires a parameter",
-	option_source, (int)(arg_end - arg), arg);
-    /* NOTREACHED */
-}
-
-void
-set_option(const char *arg, const char *option_source)
-{
-    const struct pro *p;
-    const char *param_start;
-
-    arg++;			/* skip leading '-' */
-    if (set_special_option(arg, option_source))
-	return;
-
-    for (p = pro + array_length(pro); p-- != pro;) {
-	param_start = skip_over(arg, p->p_may_negate, p->p_name);
-	if (param_start != NULL)
-	    goto found;
-    }
-    errx(1, "%s: unknown option \"-%s\"", option_source, arg);
-
-found:
-    if (p->p_is_bool) {
-	if (param_start[0] != '\0')
-	    errx(1, "%s: unknown option \"-%s\"", option_source, arg);
-	*(bool *)p->p_var = p->p_may_negate ? arg[0] != 'n' : p->p_bool_value;
-    } else {
-	if (!isdigit((unsigned char)*param_start))
-	    errx(1, "%s: option \"-%s\" requires an integer parameter",
-		option_source, p->p_name);
-	errno = 0;
-	char *end;
-	long num = strtol(param_start, &end, 10);
-	if (!(errno == 0 && *end == '\0' &&
-		p->i_min <= num && num <= p->i_max))
-	    errx(1, "%s: invalid argument \"%s\" for option \"-%s\"",
-		option_source, param_start, p->p_name);
-	*(int *)p->p_var = (int)num;
-    }
 }

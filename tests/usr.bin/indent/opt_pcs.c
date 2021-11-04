@@ -1,4 +1,4 @@
-/* $NetBSD: opt_pcs.c,v 1.5 2021/10/24 11:42:57 rillig Exp $ */
+/* $NetBSD: opt_pcs.c,v 1.8 2021/10/31 21:43:43 rillig Exp $ */
 /* $FreeBSD$ */
 
 /*
@@ -39,6 +39,22 @@ example(void)
 	function_call(1);
 	function_call(1, 2, 3);
 }
+#indent end
+
+
+#indent input
+void ( * signal ( void ( * handler ) ( int ) ) ) ( int ) ;
+int var = (function)(arg);
+#indent end
+
+#indent run -npsl -di0 -pcs
+void (*signal(void (*handler) (int))) (int);
+int var = (function) (arg);
+#indent end
+
+#indent run -npsl -di0 -npcs
+void (*signal(void (*handler)(int)))(int);
+int var = (function)(arg);
 #indent end
 
 /*

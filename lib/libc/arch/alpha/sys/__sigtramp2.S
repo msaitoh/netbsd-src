@@ -1,4 +1,4 @@
-/*	$NetBSD: __sigtramp2.S,v 1.5 2020/10/21 01:58:30 thorpej Exp $	*/
+/*	$NetBSD: __sigtramp2.S,v 1.7 2021/11/03 04:52:51 thorpej Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995, 1996 Carnegie-Mellon University.
@@ -40,11 +40,12 @@
  *	sp->	siginfo structure	[0]
  */
 
-#define	CFI_OFFSET(r)	.cfi_offset r, SIZEOF_SIGINFO + UC_GREGS + r*8
+#define	CFI_OFFSET_REG(n, r)	.cfi_offset n, r*8
+#define	CFI_OFFSET(r)		CFI_OFFSET_REG(r, r)
 
 	.cfi_startproc simple
 	.cfi_signal_frame
-	.cfi_def_cfa _REG_SP, 0
+	.cfi_def_cfa _REG_SP, SIZEOF_SIGINFO + UC_GREGS
 	CFI_OFFSET(_REG_V0)
 	CFI_OFFSET(_REG_T0)
 	CFI_OFFSET(_REG_T1)
@@ -71,7 +72,7 @@
 	CFI_OFFSET(_REG_T9)
 	CFI_OFFSET(_REG_T10)
 	CFI_OFFSET(_REG_T11)
-	CFI_OFFSET(_REG_RA)
+	CFI_OFFSET_REG(_REG_RA, _REG_PC)
 	CFI_OFFSET(_REG_T12)	/* a.k.a. _REG_PV */
 	CFI_OFFSET(_REG_AT)
 	CFI_OFFSET(_REG_GP)

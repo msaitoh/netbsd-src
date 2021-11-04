@@ -1,4 +1,4 @@
-/*	$NetBSD: indent.h,v 1.52 2021/10/26 20:43:35 rillig Exp $	*/
+/*	$NetBSD: indent.h,v 1.76 2021/11/03 21:47:35 rillig Exp $	*/
 
 /*-
  * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
@@ -69,20 +69,21 @@ __FBSDID("$FreeBSD: head/usr.bin/indent/indent.h 336333 2018-07-16 05:46:50Z pst
 #endif
 
 #include <stdbool.h>
+#include <stdio.h>
 
 typedef enum lexer_symbol {
     lsym_eof,
     lsym_preprocessing,		/* '#' */
     lsym_newline,
     lsym_form_feed,
-    lsym_comment,
+    lsym_comment,		/* the initial '/ *' or '//' of a comment */
     lsym_lparen_or_lbracket,
     lsym_rparen_or_rbracket,
     lsym_lbrace,
     lsym_rbrace,
     lsym_period,
-    lsym_unary_op,		/* e.g. '+' or '&' */
-    lsym_binary_op,		/* e.g. '<<' or '+' or '&&' or '/=' */
+    lsym_unary_op,		/* e.g. '*', '&', '-' or leading '++' */
+    lsym_binary_op,		/* e.g. '*', '&', '<<', '&&' or '/=' */
     lsym_postfix_op,		/* trailing '++' or '--' */
     lsym_question,		/* the '?' from a '?:' expression */
     lsym_colon,
@@ -90,10 +91,12 @@ typedef enum lexer_symbol {
     lsym_semicolon,
     lsym_typedef,
     lsym_storage_class,
-    lsym_type,
-    lsym_tag,			/* 'struct', 'union', 'enum' */
-    lsym_case_label,
+    lsym_type_at_paren_level_0,
+    lsym_tag,			/* 'struct', 'union' or 'enum' */
+    lsym_case_label,		/* 'case' or 'default' */
     lsym_string_prefix,		/* 'L' */
+    lsym_sizeof,
+    lsym_offsetof,
     lsym_ident,			/* identifier, constant or string */
     lsym_funcname,
     lsym_do,
@@ -102,6 +105,7 @@ typedef enum lexer_symbol {
     lsym_if,
     lsym_switch,
     lsym_while,
+    lsym_return
 } lexer_symbol;
 
 typedef enum parser_symbol {
@@ -131,26 +135,30 @@ typedef enum stmt_head {
 } stmt_head;
 
 #define sc_size 5000		/* size of save_com buffer */
-#define label_offset 2		/* number of levels a label is placed to left
-				 * of code */
 
 
+/* A range of characters, in some cases null-terminated. */
 struct buffer {
-    char *buf;			/* buffer */
-    char *s;			/* start */
-    char *e;			/* end */
-    char *l;			/* limit */
+    char *s;			/* start of the usable text */
+    char *e;			/* end of the usable text */
+    char *buf;			/* start of the allocated memory */
+    char *l;			/* end of the allocated memory */
 };
 
 extern FILE *input;
 extern FILE *output;
 
-extern struct buffer lab;	/* label or preprocessor directive */
-extern struct buffer code;	/* code */
-extern struct buffer com;	/* comment */
-extern struct buffer token;	/* the last token scanned */
+extern struct buffer inp;	/* one line of input, ready to be split into
+				 * tokens */
 
-extern struct buffer inp;
+extern struct buffer token;	/* the current token to be processed, is
+				 * typically copied to the buffer 'code',
+				 * or in some cases to 'lab'. */
+
+extern struct buffer lab;	/* the label or preprocessor directive */
+extern struct buffer code;	/* the main part of the current line of code */
+extern struct buffer com;	/* the trailing comment of the line, or the
+				 * start or end of a multi-line comment */
 
 extern char sc_buf[sc_size];	/* input text is saved here when looking for
 				 * the brace after an if, while, etc */
@@ -237,32 +245,12 @@ extern struct options {
 				 * printed */
 } opt;
 
-enum keyword_kind {
-    kw_0,
-    kw_offsetof,
-    kw_sizeof,
-    kw_struct_or_union_or_enum,
-    kw_type,
-    kw_for,
-    kw_if,
-    kw_while,
-    kw_do,
-    kw_else,
-    kw_switch,
-    kw_case_or_default,
-    kw_jump,
-    kw_storage_class,
-    kw_typedef,
-    kw_inline_or_restrict
-};
-
-
 extern bool found_err;
 extern int blank_lines_to_output;
 extern bool blank_line_before;
 extern bool blank_line_after;
-extern bool break_comma;	/* when true and not in parens, break after a
-				 * comma */
+extern bool break_comma;	/* when true and not in parentheses, break
+				 * after a comma */
 extern float case_ind;		/* indentation level to be used for a "case
 				 * n:" */
 extern bool had_eof;		/* whether input is exhausted */
@@ -271,14 +259,36 @@ extern bool inhibit_formatting;	/* true if INDENT OFF is in effect */
 
 #define	STACKSIZE 256
 
-/* TODO: group the members by purpose, don't sort them alphabetically */
 extern struct parser_state {
-    lexer_symbol last_token;
+    lexer_symbol prev_token;
+    bool prev_is_type;
+    bool curr_is_type;
+    bool curr_newline;
+    bool curr_col_1;		/* whether the current token started in column
+				 * 1 of the unformatted input */
+    bool next_unary;		/* whether the following operator should be
+				 * unary */
 
-    int tos;			/* pointer to top of stack */
-    parser_symbol s_sym[STACKSIZE];
-    int s_ind_level[STACKSIZE];
-    float s_case_ind_level[STACKSIZE];
+    char procname[100];		/* The name of the current procedure */
+
+
+    bool want_blank;		/* whether the following token should be
+				 * prefixed by a blank. (Said prefixing is
+				 * ignored in some cases.) */
+
+    int paren_level;		/* parenthesization level. used to indent
+				 * within statements */
+    /* TODO: rename to next_line_paren_level */
+    int p_l_follow;		/* how to indent the remaining lines of the
+				 * statement */
+    short paren_indents[20];	/* indentation of the operand/argument of each
+				 * level of parentheses or brackets, relative
+				 * to the enclosing statement */
+    int cast_mask;		/* indicates which close parentheses
+				 * potentially close off casts */
+    int not_cast_mask;		/* indicates which close parentheses
+				 * definitely close off something else than
+				 * casts */
 
     int comment_delta;		/* used to set up indentation for all lines of
 				 * a boxed comment after the first one */
@@ -286,58 +296,47 @@ extern struct parser_state {
 				 * before the start of a box comment so that
 				 * forthcoming lines of the comment are
 				 * indented properly */
-    int cast_mask;		/* indicates which close parens potentially
-				 * close off casts */
-    int not_cast_mask;		/* indicates which close parens definitely
-				 * close off something else than casts */
+    int com_ind;		/* indentation of the current comment */
+
     bool block_init;		/* whether inside a block initialization */
     int block_init_level;	/* The level of brace nesting in an
 				 * initialization */
-    bool last_nl;		/* whether the last thing scanned was a
-				 * newline */
     bool init_or_struct;	/* whether there has been a declarator (e.g.
 				 * int or char) and no left parenthesis since
 				 * the last semicolon. When true, a '{' is
 				 * starting a structure definition or an
 				 * initialization list */
-    bool col_1;			/* whether the last token started in column 1 */
-    int com_ind;		/* indentation of the current comment */
+
+    int ind_level;		/* the current indentation level */
+    int ind_level_follow;	/* the level to which ind_level should be set
+				 * after the current line is printed */
+
     int decl_nest;		/* current nesting level for structure or init */
     bool decl_on_line;		/* whether this line of code has part of a
 				 * declaration on it */
-    int ind_level_follow;	/* the level to which ind_level should be set
-				 * after the current line is printed */
     bool in_decl;		/* whether we are in a declaration stmt. The
 				 * processing of braces is then slightly
 				 * different */
+    int just_saw_decl;
+    bool in_parameter_declaration;
+    bool decl_indent_done;	/* whether the indentation for a declaration
+				 * has been added to the code buffer. */
+
     bool in_stmt;
-    int ind_level;		/* the current indentation level */
     bool ind_stmt;		/* whether the next line should have an extra
 				 * indentation level because we are in the
-				 * middle of a stmt */
-    bool next_unary;		/* whether the following operator should be
-				 * unary */
-    int p_l_follow;		/* used to remember how to indent the
-				 * following statement */
-    int paren_level;		/* parenthesization level. used to indent
-				 * within statements */
-    short paren_indents[20];	/* indentation of the operand/argument of each
-				 * level of parentheses or brackets, relative
-				 * to the enclosing statement */
+				 * middle of a statement */
     bool is_case_label;		/* 'case' and 'default' labels are indented
 				 * differently from regular labels */
+
     bool search_stmt;		/* whether it is necessary to buffer up all
 				 * text up to the start of a statement after
 				 * an 'if', 'while', etc. */
-    bool want_blank;		/* whether the following token should be
-				 * prefixed by a blank. (Said prefixing is
-				 * ignored in some cases.) */
-    enum keyword_kind prev_keyword;
-    enum keyword_kind curr_keyword;
-    bool dumped_decl_indent;
-    bool in_parameter_declaration;
-    char procname[100];		/* The name of the current procedure */
-    int just_saw_decl;
+
+    int tos;			/* pointer to top of stack */
+    parser_symbol s_sym[STACKSIZE];
+    int s_ind_level[STACKSIZE];
+    float s_case_ind_level[STACKSIZE];
 
     struct {
 	int comments;
@@ -348,13 +347,8 @@ extern struct parser_state {
 } ps;
 
 
-#define array_length(array) (sizeof (array) / sizeof (array[0]))
+#define array_length(array) (sizeof(array) / sizeof((array)[0]))
 
-void add_typename(const char *);
-int compute_code_indent(void);
-int compute_label_indent(void);
-int indentation_after_range(int, const char *, const char *);
-int indentation_after(int, const char *);
 #ifdef debug
 void
 debug_vis_range(const char *, const char *, const char *,
@@ -366,15 +360,21 @@ void debug_println(const char *, ...)__printflike(1, 2);
 #define		debug_println(fmt, ...) do { } while (false)
 #define		debug_vis_range(prefix, s, e, suffix) do { } while (false)
 #endif
+
+void register_typename(const char *);
+int compute_code_indent(void);
+int compute_label_indent(void);
+int ind_add(int, const char *, const char *);
+
 void inbuf_skip(void);
 char inbuf_next(void);
-lexer_symbol lexi(struct parser_state *);
+lexer_symbol lexi(void);
 void diag(int, const char *, ...)__printflike(2, 3);
 void dump_line(void);
 void dump_line_ff(void);
 void inbuf_read_line(void);
 void parse(parser_symbol);
-void parse_hd(stmt_head);
+void parse_stmt_head(stmt_head);
 void process_comment(void);
 void set_option(const char *, const char *);
 void load_profiles(const char *);
@@ -386,7 +386,7 @@ char *xstrdup(const char *);
 void buf_expand(struct buffer *, size_t);
 
 static inline bool
-is_hspace(char ch)
+ch_isblank(char ch)
 {
     return ch == ' ' || ch == '\t';
 }

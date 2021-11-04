@@ -1,4 +1,4 @@
-/*	$NetBSD: tree.c,v 1.385 2021/10/09 21:56:12 rillig Exp $	*/
+/*	$NetBSD: tree.c,v 1.393 2021/11/01 19:48:51 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -37,7 +37,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(lint)
-__RCSID("$NetBSD: tree.c,v 1.385 2021/10/09 21:56:12 rillig Exp $");
+__RCSID("$NetBSD: tree.c,v 1.393 2021/11/01 19:48:51 rillig Exp $");
 #endif
 
 #include <float.h>
@@ -1024,6 +1024,8 @@ typeok_compare(op_t op,
 	       const tnode_t *ln, const type_t *ltp, tspec_t lt,
 	       const tnode_t *rn, const type_t *rtp, tspec_t rt)
 {
+	const char *lx, *rx;
+
 	if (lt == PTR && rt == PTR) {
 		check_pointer_comparison(op, ln, rn);
 		return true;
@@ -1037,8 +1039,8 @@ typeok_compare(op_t op,
 		return false;
 	}
 
-	const char *lx = lt == PTR ? "pointer" : "integer";
-	const char *rx = rt == PTR ? "pointer" : "integer";
+	lx = lt == PTR ? "pointer" : "integer";
+	rx = rt == PTR ? "pointer" : "integer";
 	/* illegal combination of %s (%s) and %s (%s), op %s */
 	warning(123, lx, type_name(ltp), rx, type_name(rtp), op_name(op));
 	return true;
@@ -1552,11 +1554,13 @@ check_assign_pointer_integer(op_t op, int arg,
 			     const type_t *const ltp, tspec_t const lt,
 			     const type_t *const rtp, tspec_t const rt)
 {
+	const char *lx, *rx;
+
 	if (!((lt == PTR && is_integer(rt)) || (is_integer(lt) && rt == PTR)))
 		return false;
 
-	const char *lx = lt == PTR ? "pointer" : "integer";
-	const char *rx = rt == PTR ? "pointer" : "integer";
+	lx = lt == PTR ? "pointer" : "integer";
+	rx = rt == PTR ? "pointer" : "integer";
 
 	switch (op) {
 	case INIT:
@@ -1771,6 +1775,56 @@ check_enum_int_mismatch(op_t op, int arg, const tnode_t *ln, const tnode_t *rn)
 		    op_name(op));
 		break;
 	}
+}
+
+static void
+check_enum_array_index(const tnode_t *ln, const tnode_t *rn)
+{
+	int max_array_index;
+	int64_t max_enum_value;
+	const struct sym *ec, *max_ec;
+	const type_t *lt, *rt;
+
+	if (ln->tn_op != ADDR || ln->tn_left->tn_op != NAME)
+		return;
+
+	lt = ln->tn_left->tn_type;
+	if (lt->t_tspec != ARRAY || lt->t_incomplete_array)
+		return;
+
+	if (rn->tn_op != CVT || !rn->tn_type->t_is_enum)
+		return;
+	if (rn->tn_left->tn_op != LOAD)
+		return;
+
+	rt = rn->tn_left->tn_type;
+	ec = rt->t_enum->en_first_enumerator;
+	max_ec = ec;
+	lint_assert(ec != NULL);
+	for (ec = ec->s_next; ec != NULL; ec = ec->s_next)
+		if (ec->s_value.v_quad > max_ec->s_value.v_quad)
+			max_ec = ec;
+
+	max_enum_value = max_ec->s_value.v_quad;
+	lint_assert(INT_MIN <= max_enum_value && max_enum_value <= INT_MAX);
+
+	max_array_index = lt->t_dim - 1;
+	if (max_enum_value == max_array_index)
+		return;
+
+	/*
+	 * If the largest enum constant is named '*_NUM_*', it is typically
+	 * not part of the allowed enum values but a marker for the number
+	 * of actual enum values.
+	 */
+	if (max_enum_value == max_array_index + 1 &&
+	    (strstr(max_ec->s_name, "NUM") != NULL ||
+	     strstr(max_ec->s_name, "num") != NULL))
+		return;
+
+	/* maximum value %d of '%s' does not match maximum array index %d */
+	warning(348, (int)max_enum_value, type_name(rt), max_array_index);
+	print_previous_declaration(-1, max_ec);
 }
 
 /*
@@ -2665,14 +2719,15 @@ static type_t *
 merge_qualifiers(type_t *tp1, const type_t *tp2)
 {
 	type_t *ntp, *nstp;
+	bool c1, c2, v1, v2;
 
 	lint_assert(tp1->t_tspec == PTR);
 	lint_assert(tp2->t_tspec == PTR);
 
-	bool c1 = tp1->t_subt->t_const;
-	bool c2 = tp2->t_subt->t_const;
-	bool v1 = tp1->t_subt->t_volatile;
-	bool v2 = tp2->t_subt->t_volatile;
+	c1 = tp1->t_subt->t_const;
+	c2 = tp2->t_subt->t_const;
+	v1 = tp1->t_subt->t_volatile;
+	v2 = tp2->t_subt->t_volatile;
 
 	if (c1 == (c1 | c2) && v1 == (v1 | v2))
 		return tp1;
@@ -2863,6 +2918,7 @@ build_plus_minus(op_t op, tnode_t *ln, tnode_t *rn)
 		lint_assert(is_integer(rn->tn_type->t_tspec));
 
 		check_ctype_macro_invocation(ln, rn);
+		check_enum_array_index(ln, rn);
 
 		ctn = plength(ln->tn_type);
 		if (rn->tn_type->t_tspec != ctn->tn_type->t_tspec)
@@ -3402,14 +3458,16 @@ build_sizeof(const type_t *tp)
 tnode_t *
 build_offsetof(const type_t *tp, const sym_t *sym)
 {
-	tspec_t t = tp->t_tspec;
-	if (t != STRUCT && t != UNION)
+	unsigned int offset_in_bytes;
+	tnode_t *tn;
+
+	if (!is_struct_or_union(tp->t_tspec))
 		/* unacceptable operand of '%s' */
 		error(111, "offsetof");
 
-	// XXX: wrong size, no checking for sym fixme
-	unsigned int offset_in_bytes = type_size_in_bits(tp) / CHAR_SIZE;
-	tnode_t *tn = build_integer_constant(SIZEOF_TSPEC, offset_in_bytes);
+	/* XXX: wrong size, no checking for sym fixme */
+	offset_in_bytes = type_size_in_bits(tp) / CHAR_SIZE;
+	tn = build_integer_constant(SIZEOF_TSPEC, offset_in_bytes);
 	tn->tn_system_dependent = true;
 	return tn;
 }
@@ -3877,7 +3935,7 @@ expr(tnode_t *tn, bool vctx, bool tctx, bool dofreeblk, bool is_do_while)
 }
 
 static bool
-has_side_effect(const tnode_t *tn) // NOLINT(misc-no-recursion)
+has_side_effect(const tnode_t *tn) /* NOLINT(misc-no-recursion) */
 {
 	op_t op = tn->tn_op;
 
@@ -4115,9 +4173,10 @@ void
 check_expr_misc(const tnode_t *tn, bool vctx, bool tctx,
 		bool eqwarn, bool fcall, bool retval_discarded, bool szof)
 {
-	tnode_t	*ln, *rn;
+	tnode_t *ln, *rn;
 	const mod_t *mp;
-	op_t	op;
+	op_t op;
+	bool cvctx, ctctx, eq, discard;
 
 	if (tn == NULL)
 		return;
@@ -4130,11 +4189,11 @@ check_expr_misc(const tnode_t *tn, bool vctx, bool tctx,
 	    szof, fcall, vctx, tctx, retval_discarded, eqwarn))
 		return;
 
-	bool cvctx = mp->m_left_value_context;
-	bool ctctx = mp->m_left_test_context;
-	bool eq = mp->m_warn_if_operand_eq &&
-		  !ln->tn_parenthesized &&
-		  rn != NULL && !rn->tn_parenthesized;
+	cvctx = mp->m_left_value_context;
+	ctctx = mp->m_left_test_context;
+	eq = mp->m_warn_if_operand_eq &&
+	     !ln->tn_parenthesized &&
+	     rn != NULL && !rn->tn_parenthesized;
 
 	/*
 	 * values of operands of ':' are not used if the type of at least
@@ -4144,7 +4203,7 @@ check_expr_misc(const tnode_t *tn, bool vctx, bool tctx,
 	 */
 	if (op == COLON && tn->tn_type->t_tspec == VOID)
 		cvctx = ctctx = false;
-	bool discard = op == CVT && tn->tn_type->t_tspec == VOID;
+	discard = op == CVT && tn->tn_type->t_tspec == VOID;
 	check_expr_misc(ln, cvctx, ctctx, eq, op == CALL, discard, szof);
 
 	switch (op) {

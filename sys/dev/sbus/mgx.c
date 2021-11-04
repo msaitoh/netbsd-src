@@ -1,4 +1,4 @@
-/*	$NetBSD: mgx.c,v 1.17 2021/10/22 19:21:12 macallan Exp $ */
+/*	$NetBSD: mgx.c,v 1.19 2021/10/31 05:31:12 macallan Exp $ */
 
 /*-
  * Copyright (c) 2014 Michael Lorenz
@@ -29,7 +29,7 @@
 /* a console driver for the SSB 4096V-MGX graphics card */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: mgx.c,v 1.17 2021/10/22 19:21:12 macallan Exp $");
+__KERNEL_RCSID(0, "$NetBSD: mgx.c,v 1.19 2021/10/31 05:31:12 macallan Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -1120,7 +1120,7 @@ mgx_mmap(void *v, void *vs, off_t offset, int prot)
 	}
 
 	/*
-	 * Blitter registers at 0x80000000, only in mapped mode.
+	 * Blitter registers at 0x00800000, only in mapped mode.
 	 * Restrict to root, even though I'm fairly sure the DMA engine lives
 	 * elsewhere ( and isn't documented anyway )
 	 */
@@ -1132,9 +1132,9 @@ mgx_mmap(void *v, void *vs, off_t offset, int prot)
 		return -1;
 	}
 	if ((sc->sc_mode == WSDISPLAYIO_MODE_MAPPED) &&
-	    (offset >= 0x80000000) && (offset < 0x80001000)) {
+	    (offset >= MGX_BLTOFFSET) && (offset < MGX_BLTOFFSET + 0x1000)) {
 		return bus_space_mmap(sc->sc_tag, sc->sc_rpaddr,
-		    offset, prot, BUS_SPACE_MAP_LINEAR);
+		    offset - MGX_BLTOFFSET, prot, BUS_SPACE_MAP_LINEAR);
 	}
 	return -1;
 }
@@ -1270,7 +1270,7 @@ mgxmmap(dev_t dev, off_t offset, int prot)
 	}
 
 	/*
-	 * Blitter registers at 0x80000000, only in mapped mode.
+	 * Blitter registers at 0x00800000, only in mapped mode.
 	 * Restrict to root, even though I'm fairly sure the DMA engine lives
 	 * elsewhere ( and isn't documented anyway )
 	 */
@@ -1282,9 +1282,9 @@ mgxmmap(dev_t dev, off_t offset, int prot)
 		return -1;
 	}
 	if ((sc->sc_mode == WSDISPLAYIO_MODE_MAPPED) &&
-	    (offset >= 0x80000000) && (offset < 0x80001000)) {
+	    (offset >= MGX_BLTOFFSET) && (offset < MGX_BLTOFFSET + 0x1000)) {
 		return bus_space_mmap(sc->sc_tag, sc->sc_rpaddr,
-		    offset, prot, BUS_SPACE_MAP_LINEAR);
+		    offset - MGX_BLTOFFSET, prot, BUS_SPACE_MAP_LINEAR);
 	}
 	return -1;
 }

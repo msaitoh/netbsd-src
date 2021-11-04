@@ -1,4 +1,4 @@
-/*	$NetBSD: signal.h,v 1.21 2021/10/27 05:18:51 thorpej Exp $	*/
+/*	$NetBSD: signal.h,v 1.23 2021/10/29 04:13:39 thorpej Exp $	*/
 
 /*
  * Copyright (c) 1982, 1986, 1989, 1991 Regents of the University of California.
@@ -40,6 +40,8 @@
 #include <sys/siginfo.h>
 #include <machine/trap.h>
 
+#define	__HAVE_STRUCT_SIGCONTEXT
+
 /* VAX versioned its sigcontext trampoline ABI (Sept 2002). */
 #define __SIGTRAMP_SIGCONTEXT_VERSION_MAX	2
 #define __SIGTRAMP_SIGCONTEXT_VERSION		2
@@ -59,7 +61,7 @@ typedef int sig_atomic_t;
  * to the handler to allow it to restore state properly if
  * a non-standard exit is performed.
  */
-#if defined(_KERNEL)
+#if defined(_LIBC) || defined(_KERNEL)
 struct sigcontext13 {
 	int	sc_onstack;		/* sigstack state to restore */
 	int	sc_mask;		/* signal mask to restore (old style) */
@@ -69,10 +71,7 @@ struct sigcontext13 {
 	int	sc_pc;			/* pc to restore */
 	int	sc_ps;			/* psl to restore */
 };
-#endif /* _KERNEL */
 
-#if defined(_LIBC) || defined(_KERNEL)
-#define	__HAVE_STRUCT_SIGCONTEXT
 struct sigcontext {
 	int	sc_onstack;		/* sigstack state to restore */
 	int	__sc_mask13;		/* signal mask to restore (old style) */

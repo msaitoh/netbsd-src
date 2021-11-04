@@ -1,4 +1,4 @@
-/*	$NetBSD: wcsdup.c,v 1.3 2008/05/26 13:17:48 haad Exp $	*/
+/*	$NetBSD: wcsdup.c,v 1.5 2021/10/29 11:03:46 nia Exp $	*/
 
 /*
  * Copyright (C) 2006 Aleksey Cheusov
@@ -14,12 +14,13 @@
 #include <sys/cdefs.h>
 
 #if defined(LIBC_SCCS) && !defined(lint) 
-__RCSID("$NetBSD: wcsdup.c,v 1.3 2008/05/26 13:17:48 haad Exp $"); 
+__RCSID("$NetBSD: wcsdup.c,v 1.5 2021/10/29 11:03:46 nia Exp $"); 
 #endif /* LIBC_SCCS and not lint */ 
 
 #include "namespace.h"
 #include <stdlib.h>
 #include <assert.h>
+#include <errno.h>
 #include <wchar.h>
 
 __weak_alias(wcsdup,_wcsdup)
@@ -33,10 +34,12 @@ wcsdup(const wchar_t *str)
 	_DIAGASSERT(str != NULL);
 
 	len = wcslen(str) + 1;
-	copy = malloc(len * sizeof (wchar_t));
 
-	if (!copy)
+	copy = NULL;
+	if (reallocarr(&copy, len, sizeof(wchar_t)) != 0) {
+		errno = ENOMEM;
 		return NULL;
+	}
 
 	return wmemcpy(copy, str, len);
 }

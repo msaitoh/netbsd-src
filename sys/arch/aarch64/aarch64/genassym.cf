@@ -1,4 +1,4 @@
-# $NetBSD: genassym.cf,v 1.35 2021/09/30 21:19:16 skrll Exp $
+# $NetBSD: genassym.cf,v 1.37 2021/10/30 20:23:11 jmcneill Exp $
 #-
 # Copyright (c) 2014 The NetBSD Foundation, Inc.
 # All rights reserved.
@@ -163,6 +163,7 @@ define	L_MD_IB_USER		offsetof(struct lwp, l_md.md_ib_user)
 define	L_MD_DA_USER		offsetof(struct lwp, l_md.md_da_user)
 define	L_MD_DB_USER		offsetof(struct lwp, l_md.md_db_user)
 define	L_MD_GA_USER		offsetof(struct lwp, l_md.md_ga_user)
+define	L_NOPREEMPT		offsetof(struct lwp, l_nopreempt)
 define	LW_SYSTEM		LW_SYSTEM
 
 define	FB_X19			FB_X19
@@ -298,6 +299,8 @@ define	CI_SOFTINTS		offsetof(struct cpu_info, ci_softints)
 define	CI_IDLELWP		offsetof(struct cpu_info, ci_data.cpu_idlelwp)
 define	CI_CC_NINTR		offsetof(struct cpu_info, ci_data.cpu_nintr)
 define	CI_SPLX_RESTART		offsetof(struct cpu_info, ci_splx_restart)
+define	CI_SPLX_SAVEDIPL	offsetof(struct cpu_info, ci_splx_savedipl)
+define	CI_HWPL			offsetof(struct cpu_info, ci_hwpl)
 
 define	V_RESCHED_KPREEMPT	ilog2(RESCHED_KPREEMPT)
 

@@ -1,4 +1,4 @@
-/*	$NetBSD: parse.c,v 1.42 2021/10/26 19:36:30 rillig Exp $	*/
+/*	$NetBSD: parse.c,v 1.47 2021/10/29 23:48:50 rillig Exp $	*/
 
 /*-
  * SPDX-License-Identifier: BSD-4-Clause
@@ -84,6 +84,16 @@ psym_name(parser_symbol psym)
 }
 #endif
 
+static int
+decl_level(void)
+{
+    int level = 0;
+    for (int i = ps.tos - 1; i > 0; i--)
+	if (ps.s_sym[i] == psym_decl)
+	    level++;
+    return level;
+}
+
 /*
  * Shift the token onto the parser stack, or reduce it by combining it with
  * previous tokens.
@@ -91,7 +101,7 @@ psym_name(parser_symbol psym)
 void
 parse(parser_symbol psym)
 {
-    debug_println("parse token: '%s'", psym_name(psym));
+    debug_println("parse token: %s", psym_name(psym));
 
     if (psym != psym_else) {
 	while (ps.s_sym[ps.tos] == psym_if_expr_stmt) {
@@ -106,25 +116,19 @@ parse(parser_symbol psym)
 	ps.search_stmt = opt.brace_same_line;
 	/* indicate that following brace should be on same line */
 
-	if (ps.s_sym[ps.tos] != psym_decl) {	/* only put one declaration
-						 * onto stack */
-	    break_comma = true;	/* while in declaration, newline should be
-				 * forced after comma */
-	    ps.s_sym[++ps.tos] = psym_decl;
-	    ps.s_ind_level[ps.tos] = ps.ind_level_follow;
+	if (ps.s_sym[ps.tos] == psym_decl)
+	    break;		/* only put one declaration onto stack */
 
-	    if (opt.ljust_decl) {
-		ps.ind_level = 0;
-		for (int i = ps.tos - 1; i > 0; --i)
-		    if (ps.s_sym[i] == psym_decl)
-			++ps.ind_level;	/* indentation is number of
-					 * declaration levels deep we are */
-		ps.ind_level_follow = ps.ind_level;
-	    }
-	}
+	break_comma = true;	/* while in a declaration, force a newline
+				 * after comma */
+	ps.s_sym[++ps.tos] = psym_decl;
+	ps.s_ind_level[ps.tos] = ps.ind_level_follow;
+
+	if (opt.ljust_decl)
+	    ps.ind_level_follow = ps.ind_level = decl_level();
 	break;
 
-    case psym_if_expr:		/* 'if' '(' <expr> ')' */
+    case psym_if_expr:
 	if (ps.s_sym[ps.tos] == psym_if_expr_stmt_else && opt.else_if) {
 	    /*
 	     * Reduce "else if" to "if". This saves a lot of stack space in
@@ -134,7 +138,7 @@ parse(parser_symbol psym)
 	}
 	/* FALLTHROUGH */
     case psym_do:
-    case psym_for_exprs:	/* 'for' (...) */
+    case psym_for_exprs:
 	ps.s_sym[++ps.tos] = psym;
 	ps.s_ind_level[ps.tos] = ps.ind_level = ps.ind_level_follow;
 	++ps.ind_level_follow;	/* subsequent statements should be indented 1 */
@@ -164,11 +168,10 @@ parse(parser_symbol psym)
 	ps.s_sym[++ps.tos] = psym_lbrace;
 	ps.s_ind_level[ps.tos] = ps.ind_level;
 	ps.s_sym[++ps.tos] = psym_stmt;
-	/* allow null stmt between braces */
 	ps.s_ind_level[ps.tos] = ps.ind_level_follow;
 	break;
 
-    case psym_while_expr:	/* 'while' '(' <expr> ')' */
+    case psym_while_expr:
 	if (ps.s_sym[ps.tos] == psym_do_stmt) {
 	    /* it is matched with do stmt */
 	    ps.ind_level = ps.ind_level_follow = ps.s_ind_level[ps.tos];
@@ -206,21 +209,17 @@ parse(parser_symbol psym)
 	    diag(1, "Statement nesting error");
 	break;
 
-    case psym_switch_expr:	/* had switch (...) */
+    case psym_switch_expr:
 	ps.s_sym[++ps.tos] = psym_switch_expr;
 	ps.s_case_ind_level[ps.tos] = case_ind;
-	/* save current case indent level */
 	ps.s_ind_level[ps.tos] = ps.ind_level_follow;
-	/* cases should be one level deeper than the switch */
 	case_ind = (float)ps.ind_level_follow + opt.case_indent;
-	/* statements should be two levels deeper */
 	ps.ind_level_follow += (int)opt.case_indent + 1;
 	ps.search_stmt = opt.brace_same_line;
 	break;
 
-    case psym_semicolon:	/* this indicates a simple stmt */
-	break_comma = false;	/* turn off flag to break after commas in a
-				 * declaration */
+    case psym_semicolon:	/* a simple statement */
+	break_comma = false;	/* don't break after comma in a declaration */
 	ps.s_sym[++ps.tos] = psym_stmt;
 	ps.s_ind_level[ps.tos] = ps.ind_level;
 	break;
@@ -238,7 +237,7 @@ parse(parser_symbol psym)
 #ifdef debug
     printf("parse stack:");
     for (int i = 1; i <= ps.tos; ++i)
-	printf(" ('%s' at %d)", psym_name(ps.s_sym[i]), ps.s_ind_level[i]);
+	printf(" %s %d", psym_name(ps.s_sym[i]), ps.s_ind_level[i]);
     if (ps.tos == 0)
 	printf(" empty");
     printf("\n");
@@ -246,7 +245,7 @@ parse(parser_symbol psym)
 }
 
 void
-parse_hd(stmt_head hd)
+parse_stmt_head(stmt_head hd)
 {
     static const parser_symbol psym[] = {
 	[hd_for] = psym_for_exprs,
@@ -257,10 +256,6 @@ parse_hd(stmt_head hd)
     parse(psym[hd]);
 }
 
-/*----------------------------------------------*\
-|   REDUCTION PHASE				 |
-\*----------------------------------------------*/
-
 /*
  * Try to combine the statement on the top of the parse stack with the symbol
  * directly below it, replacing these two symbols with a single symbol.
@@ -270,17 +265,17 @@ reduce_stmt(void)
 {
     switch (ps.s_sym[ps.tos - 1]) {
 
-    case psym_stmt:		/* stmt stmt */
-    case psym_stmt_list:	/* stmt_list stmt */
+    case psym_stmt:
+    case psym_stmt_list:
 	ps.s_sym[--ps.tos] = psym_stmt_list;
 	return true;
 
-    case psym_do:		/* 'do' <stmt> */
+    case psym_do:
 	ps.s_sym[--ps.tos] = psym_do_stmt;
 	ps.ind_level_follow = ps.s_ind_level[ps.tos];
 	return true;
 
-    case psym_if_expr:		/* 'if' '(' <expr> ')' <stmt> */
+    case psym_if_expr:
 	ps.s_sym[--ps.tos] = psym_if_expr_stmt;
 	int i = ps.tos - 1;
 	while (ps.s_sym[i] != psym_stmt &&
@@ -289,25 +284,24 @@ reduce_stmt(void)
 	    --i;
 	ps.ind_level_follow = ps.s_ind_level[i];
 	/*
-	 * for the time being, we will assume that there is no else on this
-	 * if, and set the indentation level accordingly. If an 'else' is
-	 * scanned, it will be fixed up later
+	 * For the time being, assume that there is no 'else' on this 'if',
+	 * and set the indentation level accordingly. If an 'else' is scanned,
+	 * it will be fixed up later.
 	 */
 	return true;
 
-    case psym_switch_expr:	/* 'switch' '(' <expr> ')' <stmt> */
+    case psym_switch_expr:
 	case_ind = ps.s_case_ind_level[ps.tos - 1];
 	/* FALLTHROUGH */
     case psym_decl:		/* finish of a declaration */
-    case psym_if_expr_stmt_else:	/* 'if' '(' <expr> ')' <stmt> 'else'
-					 * <stmt> */
-    case psym_for_exprs:	/* 'for' '(' ... ')' <stmt> */
-    case psym_while_expr:	/* 'while' '(' <expr> ')' <stmt> */
+    case psym_if_expr_stmt_else:
+    case psym_for_exprs:
+    case psym_while_expr:
 	ps.s_sym[--ps.tos] = psym_stmt;
 	ps.ind_level_follow = ps.s_ind_level[ps.tos];
 	return true;
 
-    default:			/* <anything else> <stmt> */
+    default:
 	return false;
     }
 }
@@ -315,21 +309,16 @@ reduce_stmt(void)
 /*
  * Repeatedly try to reduce the top two symbols on the parse stack to a
  * single symbol, until no more reductions are possible.
- *
- * On each reduction, ps.i_l_follow (the indentation for the following line)
- * is set to the indentation level associated with the old TOS.
  */
 static void
 reduce(void)
 {
 again:
-    if (ps.s_sym[ps.tos] == psym_stmt) {
-	if (reduce_stmt())
-	    goto again;
-    } else if (ps.s_sym[ps.tos] == psym_while_expr) {
-	if (ps.s_sym[ps.tos - 1] == psym_do_stmt) {
-	    ps.tos -= 2;
-	    goto again;
-	}
+    if (ps.s_sym[ps.tos] == psym_stmt && reduce_stmt())
+	goto again;
+    if (ps.s_sym[ps.tos] == psym_while_expr &&
+	    ps.s_sym[ps.tos - 1] == psym_do_stmt) {
+	ps.tos -= 2;
+	goto again;
     }
 }

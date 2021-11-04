@@ -1,4 +1,4 @@
-/* $NetBSD: token_comment.c,v 1.8 2021/10/26 21:37:27 rillig Exp $ */
+/* $NetBSD: token_comment.c,v 1.15 2021/10/30 22:36:07 rillig Exp $ */
 /* $FreeBSD$ */
 
 /*
@@ -41,7 +41,7 @@
  * - with varying opt.comment_column (-c0, -c1, -c33, -c80)
  * - with varying opt.decl_comment_column (-cd0, -cd1, -cd20, -cd33, -cd80)
  * - with/without ps.decl_on_line
- * - with/without ps.last_nl
+ * - with/without ps.curr_newline
  *
  * - very long comments that overflow the buffer 'com'
  * - comments that come from save_com
@@ -126,50 +126,222 @@ t(void)
 }
 #indent end
 
-#indent input
-int c(void)
-{
-	if (1) { /*- a christmas tree  *
-				      ***
-				     ***** */
-		    /*- another one *
-				   ***
-				  ***** */
-	    7;
-	}
 
-	if (1) /*- a christmas tree  *
+/*
+ * The first Christmas tree is to the right of the code, therefore the comment
+ * is moved to the code comment column; the follow-up lines of that comment
+ * are moved by the same distance, to preserve the internal layout.
+ *
+ * The other Christmas tree is a standalone block comment, therefore the
+ * comment starts in the code column.
+ *
+ * Since the comments occur between psym_if_expr and the following statement,
+ * they are handled by search_stmt_comment.
+ */
+#indent input
+{
+	if (1) /*- a Christmas tree  *  search_stmt_comment
 				    ***
 				   ***** */
-		    /*- another one *
+		    /*- another one *  search_stmt_comment
 				   ***
 				  ***** */
-	    1;
+		1;
 }
 #indent end
 
 #indent run -bbb
-int
-c(void)
 {
-	if (1) {		/*- a christmas tree  *
-					             ***
-					            ***** */
-		/*- another one *
-			       ***
-			      ***** */
-		7;
-	}
-
-	if (1)			/*- a christmas tree  *
+	if (1)			/*- a Christmas tree  *  search_stmt_comment
 						     ***
 						    ***** */
-		/*- another one *
+		/*- another one *  search_stmt_comment
 			       ***
 			      ***** */
 		1;
 }
 #indent end
+
+
+/*
+ * The first Christmas tree is to the right of the code, therefore the comment
+ * is moved to the code comment column; the follow-up lines of that comment
+ * are moved by the same distance, to preserve the internal layout.
+ *
+ * The other Christmas tree is a standalone block comment, therefore the
+ * comment starts in the code column.
+ */
+#indent input
+{
+	if (7) { /*- a Christmas tree  *
+				      ***
+				     ***** */
+		    /*- another one *
+				   ***
+				  ***** */
+		stmt();
+	}
+}
+#indent end
+
+#indent run -bbb
+{
+	if (7) {		/*- a Christmas tree  *
+					             ***
+					            ***** */
+		/*- another one *
+			       ***
+			      ***** */
+		stmt();
+	}
+}
+#indent end
+
+
+#indent input
+int decl;/*-fixed comment
+	    fixed comment*/
+#indent end
+
+#indent run -di0
+int decl;			/*-fixed comment
+			           fixed comment*/
+#indent end
+/*
+ * XXX: The second line of the above comment contains 11 spaces in a row,
+ * instead of using as many tabs as possible.
+ */
+
+
+#indent input
+{
+	if (0)/*-search_stmt_comment   |
+	   search_stmt_comment         |*/
+		;
+}
+#indent end
+
+#indent run -di0
+{
+	if (0)			/*-search_stmt_comment   |
+			     search_stmt_comment         |*/
+		;
+}
+#indent end
+
+
+/*
+ * Ensure that all text of the comment is preserved when the comment is moved
+ * to the right.
+ */
+#indent input
+int decl;/*-fixed comment
+123456789ab fixed comment*/
+#indent end
+
+#indent run -di0
+int decl;			/*-fixed comment
+		       123456789ab fixed comment*/
+#indent end
+
+
+/*
+ * Ensure that all text of the comment is preserved when the comment is moved
+ * to the right.
+ *
+ * This comment is handled by search_stmt_comment.
+ */
+#indent input
+{
+	if(0)/*-search_stmt_comment
+123456789ab search_stmt_comment   |*/
+	    ;
+}
+#indent end
+
+#indent run -di0
+{
+	if (0)			/*-search_stmt_comment
+		   123456789ab search_stmt_comment   |*/
+		;
+}
+#indent end
+
+
+/*
+ * Ensure that all text of the comment is preserved when the comment is moved
+ * to the left. In this case, the internal layout of the comment cannot be
+ * preserved since the second line already starts in column 1.
+ */
+#indent input
+int decl;					    /*-|fixed comment
+					| minus 12     |
+		| tabs inside		|
+	    |---|
+|-----------|
+tab1+++	tab2---	tab3+++	tab4---	tab5+++	tab6---	tab7+++fixed comment*/
+#indent end
+
+#indent run -di0
+int decl;			/*-|fixed comment
+		    | minus 12     |
+| tabs inside		|
+|---|
+|-----------|
+tab1+++	tab2---	tab3+++	tab4---	tab5+++	tab6---	tab7+++fixed comment*/
+#indent end
+
+
+/*
+ * Ensure that all text of the comment is preserved when the comment is moved
+ * to the left. In this case, the internal layout of the comment cannot be
+ * preserved since the second line already starts in column 1.
+ *
+ * This comment is processed by search_stmt_comment.
+ */
+#indent input
+{
+	if(0)					    /*-|search_stmt_comment
+					| minus 12     |
+		| tabs inside		|
+	    |---|
+|-----------|
+tab1+++	tab2---	tab3+++	tab4---	tab5+++	tab6---	tab7+++fixed comment*/
+		;
+}
+#indent end
+
+#indent run -di0
+{
+	if (0)			/*-|search_stmt_comment
+		    | minus 12     |
+| tabs inside		|
+|---|
+|-----------|
+tab1+++	tab2---	tab3+++	tab4---	tab5+++	tab6---	tab7+++fixed comment*/
+		;
+}
+#indent end
+
+
+/*
+ * Ensure that '{' after a search_stmt_comment is preserved.
+ */
+#indent input
+{
+	if(0)/*comment*/{
+	}
+}
+#indent end
+
+/* The comment in the output has moved to the right of the '{'. */
+#indent run
+{
+	if (0) {		/* comment */
+	}
+}
+#indent end
+
 
 /*
  * The following comments test line breaking when the comment ends with a
@@ -740,4 +912,39 @@ end */
  * comment comment comment comment
  * Ümläute
  */
+#indent end
+
+
+/*
+ *
+ */
+#indent input
+int f(void)
+{
+	if (0)
+		/* 12 1234 123 123456 1234 1234567 123 1234.  */;
+}
+#indent end
+
+/* The comment is too long to fit in a single line. */
+#indent run -l54
+int
+f(void)
+{
+	if (0)
+		/*
+		 * 12 1234 123 123456 1234 1234567 123
+		 * 1234.
+		  */ ;
+}
+#indent end
+
+/* The comment fits in a single line. */
+#indent run
+int
+f(void)
+{
+	if (0)
+		 /* 12 1234 123 123456 1234 1234567 123 1234.  */ ;
+}
 #indent end

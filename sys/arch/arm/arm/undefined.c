@@ -1,4 +1,4 @@
-/*	$NetBSD: undefined.c,v 1.68 2021/10/26 06:34:02 skrll Exp $	*/
+/*	$NetBSD: undefined.c,v 1.72 2021/10/31 16:23:47 skrll Exp $	*/
 
 /*
  * Copyright (c) 2001 Ben Harris.
@@ -44,26 +44,24 @@
  * Created      : 06/01/95
  */
 
+#include "opt_cputypes.h"
 #include "opt_ddb.h"
 #include "opt_dtrace.h"
 #include "opt_kgdb.h"
 
+#include <sys/cdefs.h>
+__KERNEL_RCSID(0, "$NetBSD: undefined.c,v 1.72 2021/10/31 16:23:47 skrll Exp $");
+
 #include <sys/param.h>
+#include <sys/cpu.h>
+#include <sys/kmem.h>
 #ifdef KGDB
 #include <sys/kgdb.h>
 #endif
-
-__KERNEL_RCSID(0, "$NetBSD: undefined.c,v 1.68 2021/10/26 06:34:02 skrll Exp $");
-
-#include <sys/kmem.h>
+#include <sys/proc.h>
 #include <sys/queue.h>
 #include <sys/signal.h>
 #include <sys/systm.h>
-#include <sys/proc.h>
-#include <sys/syslog.h>
-#include <sys/vmmeter.h>
-#include <sys/cpu.h>
-#include <sys/userret.h>
 
 #include <uvm/uvm_extern.h>
 
@@ -97,6 +95,13 @@ install_coproc_handler(int coproc, undef_handler_t handler)
 	uh->uh_handler = handler;
 	install_coproc_handler_static(coproc, uh);
 	return uh;
+}
+
+void
+replace_coproc_handler(int coproc, undef_handler_t handler)
+{
+	LIST_INIT(&undefined_handlers[coproc]);
+	install_coproc_handler(coproc, handler);
 }
 
 void
@@ -202,10 +207,41 @@ gdb_trapper(u_int addr, u_int insn, struct trapframe *tf, int code)
 	return 1;
 }
 
-static struct undefined_handler cp15_uh;
-static struct undefined_handler gdb_uh;
+#ifdef FPU_VFP
+/*
+ * Used to test for a VFP. The following function is installed as a coproc10
+ * handler on the undefined instruction vector and then we issue a VFP
+ * instruction. If ci_vfd_id is set to zero then the VFP did not handle
+ * the instruction so must be absent, or disabled.
+ */
+
+static int
+vfp_test(u_int address, u_int insn, trapframe_t *frame, int fault_code)
+{
+	struct cpu_info * const ci = curcpu();
+
+	frame->tf_pc += INSN_SIZE;
+	ci->ci_vfp_id = 0;
+
+	return 0;
+}
+#endif
+
+static struct undefined_handler cp15_uh = {
+	.uh_handler = cp15_trapper,
+};
+static struct undefined_handler gdb_uh = {
+	.uh_handler = gdb_trapper,
+};
 #ifdef THUMB_CODE
-static struct undefined_handler gdb_uh_thumb;
+static struct undefined_handler gdb_uh_thumb = {
+	.uh_handler = gdb_trapper,
+};
+#endif
+#ifdef FPU_VFP
+struct undefined_handler vfptest_uh = {
+	.uh_handler = vfp_test,
+};
 #endif
 
 #ifdef KDTRACE_HOOKS
@@ -249,15 +285,15 @@ undefined_init(void)
 		LIST_INIT(&undefined_handlers[loop]);
 
 	/* Install handler for CP15 emulation */
-	cp15_uh.uh_handler = cp15_trapper;
 	install_coproc_handler_static(SYSTEM_COPROC, &cp15_uh);
 
 	/* Install handler for GDB breakpoints */
-	gdb_uh.uh_handler = gdb_trapper;
 	install_coproc_handler_static(CORE_UNKNOWN_HANDLER, &gdb_uh);
 #ifdef THUMB_CODE
-	gdb_uh_thumb.uh_handler = gdb_trapper;
 	install_coproc_handler_static(THUMB_UNKNOWN_HANDLER, &gdb_uh_thumb);
+#endif
+#ifdef FPU_VFP
+	install_coproc_handler_static(VFP_COPROC, &vfptest_uh);
 #endif
 }
 
@@ -347,7 +383,6 @@ undefinedinstruction(trapframe_t *tf)
 		fault_instruction = read_insn(fault_pc, user);
 	}
 
-	/* Update vmmeter statistics */
 	curcpu()->ci_data.cpu_ntrap++;
 
 #ifdef THUMB_CODE

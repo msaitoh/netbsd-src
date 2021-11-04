@@ -1,5 +1,5 @@
 #! /bin/sh
-# $NetBSD: t_errors.sh,v 1.5 2021/10/24 17:19:49 rillig Exp $
+# $NetBSD: t_errors.sh,v 1.17 2021/10/30 16:57:18 rillig Exp $
 #
 # Copyright (c) 2021 The NetBSD Foundation, Inc.
 # All rights reserved.
@@ -61,11 +61,11 @@ option_bool_trailing_garbage_body()
 	    -bacchus
 }
 
-atf_test_case 'option_int_missing_parameter'
-option_int_missing_parameter_body()
+atf_test_case 'option_int_missing_argument'
+option_int_missing_argument_body()
 {
 	expect_error \
-	    'indent: Command line: option "-ts" requires an integer parameter' \
+	    'indent: Command line: argument "x" to option "-ts" must be an integer' \
 	    -tsx
 }
 
@@ -89,7 +89,7 @@ atf_test_case 'option_tabsize_negative'
 option_tabsize_negative_body()
 {
 	expect_error \
-	    'indent: Command line: option "-ts" requires an integer parameter' \
+	    'indent: Command line: argument "-1" to option "-ts" must be between 1 and 80' \
 	    -ts-1
 }
 
@@ -97,7 +97,7 @@ atf_test_case 'option_tabsize_zero'
 option_tabsize_zero_body()
 {
 	expect_error \
-	    'indent: Command line: invalid argument "0" for option "-ts"' \
+	    'indent: Command line: argument "0" to option "-ts" must be between 1 and 80' \
 	    -ts0
 }
 
@@ -106,7 +106,7 @@ option_tabsize_large_body()
 {
 	# Integer overflow, on both ILP32 and LP64 platforms.
 	expect_error \
-	    'indent: Command line: invalid argument "81" for option "-ts"' \
+	    'indent: Command line: argument "81" to option "-ts" must be between 1 and 80' \
 	    -ts81
 }
 
@@ -115,7 +115,7 @@ option_tabsize_very_large_body()
 {
 	# Integer overflow, on both ILP32 and LP64 platforms.
 	expect_error \
-	    'indent: Command line: invalid argument "3000000000" for option "-ts"' \
+	    'indent: Command line: argument "3000000000" to option "-ts" must be between 1 and 80' \
 	    -ts3000000000
 }
 
@@ -123,7 +123,7 @@ atf_test_case 'option_indent_size_zero'
 option_indent_size_zero_body()
 {
 	expect_error \
-	    'indent: Command line: invalid argument "0" for option "-i"' \
+	    'indent: Command line: argument "0" to option "-i" must be between 1 and 80' \
 	    -i0
 }
 
@@ -131,8 +131,16 @@ atf_test_case 'option_int_trailing_garbage'
 option_int_trailing_garbage_body()
 {
 	expect_error \
-	    'indent: Command line: invalid argument "3garbage" for option "-i"' \
+	    'indent: Command line: argument "3garbage" to option "-i" must be an integer' \
 	    -i3garbage
+}
+
+atf_test_case 'option_cli_trailing_garbage'
+option_cli_trailing_garbage_body()
+{
+	expect_error \
+	    'indent: Command line: argument "3garbage" to option "-cli" must be numeric' \
+	    -cli3garbage
 }
 
 atf_test_case 'option_buffer_overflow'
@@ -144,9 +152,8 @@ option_buffer_overflow_body()
 	opt="$opt$opt$opt$opt$opt$opt$opt$opt"	# 16384
 	printf '%s\n' "-$opt" > indent.pro
 
-	# TODO: The call to 'diag' should be replaced with 'errx'.
 	expect_error \
-	    'error: Standard Input:1: buffer overflow in indent.pro, starting with '\''-123456781'\''' \
+	    'indent: buffer overflow in indent.pro, starting with '\''-123456781'\''' \
 	    -Pindent.pro
 }
 
@@ -155,15 +162,15 @@ option_special_missing_param_body()
 {
 	# TODO: Write '-cli' instead of only 'cli'.
 	expect_error \
-	    'indent: Command line: ``cli'\'\'' requires a parameter' \
+	    'indent: Command line: ``cli'\'\'' requires an argument' \
 	    -cli
 
 	expect_error \
-	    'indent: Command line: ``T'\'\'' requires a parameter' \
+	    'indent: Command line: ``T'\'\'' requires an argument' \
 	    -T
 
 	expect_error \
-	    'indent: Command line: ``U'\'\'' requires a parameter' \
+	    'indent: Command line: ``U'\'\'' requires an argument' \
 	    -U
 }
 
@@ -244,7 +251,7 @@ argument_too_many_body()
 	echo '/* comment */' > arg1.c
 
 	expect_error \
-	    'indent: unknown parameter: arg3.c' \
+	    'indent: too many arguments: arg3.c' \
 	    arg1.c arg2.c arg3.c arg4.c
 }
 
@@ -340,11 +347,127 @@ preprocessing_unrecognized_body()
 	    "$indent" code.c
 }
 
+atf_test_case 'unbalanced_parentheses_1'
+unbalanced_parentheses_1_body()
+{
+	cat <<-\EOF > code.c
+		int var =
+		(
+		;
+		)
+		;
+	EOF
+	cat <<-\EOF > stderr.exp
+		error: code.c:3: Unbalanced parentheses
+		warning: code.c:4: Extra ')'
+	EOF
+
+	atf_check -s 'exit:1' -e 'file:stderr.exp' \
+	    "$indent" code.c
+}
+
+atf_test_case 'unbalanced_parentheses_2'
+unbalanced_parentheses_2_body()
+{
+	# '({...})' is the GCC extension "Statement expression".
+	cat <<-\EOF > code.c
+		int var =
+		(
+		{
+		1
+		}
+		)
+		;
+	EOF
+	cat <<-\EOF > stderr.exp
+		error: code.c:3: Unbalanced parentheses
+		warning: code.c:6: Extra ')'
+	EOF
+
+	atf_check -s 'exit:1' -e 'file:stderr.exp' \
+	    "$indent" code.c
+}
+
+atf_test_case 'unbalanced_parentheses_3'
+unbalanced_parentheses_3_body()
+{
+	# '({...})' is the GCC extension "Statement expression".
+	cat <<-\EOF > code.c
+		int var =
+		(
+		1
+		}
+		;
+	EOF
+	cat <<-\EOF > stderr.exp
+		error: code.c:4: Unbalanced parentheses
+		error: code.c:4: Statement nesting error
+	EOF
+
+	atf_check -s 'exit:1' -e 'file:stderr.exp' \
+	    "$indent" code.c
+}
+
+atf_test_case 'search_stmt_comment_segv'
+search_stmt_comment_segv_body()
+{
+	# As of NetBSD indent.c 1.188 from 2021-10-30, indent crashes while
+	# trying to format the following artificial code.
+
+	printf '{if(expr\n)/*c*/;}\n' > code.c
+
+	cat <<\EOF > code.exp
+{
+	if (expr
+		)		/* c */
+		;
+}
+EOF
+
+	# TODO: actually produce code.exp instead of an assertion failure.
+	atf_check -s 'signal' -o 'ignore' -e 'match:assert' \
+	    "$indent" code.c -st
+}
+
+atf_test_case 'search_stmt_fits_in_one_line'
+search_stmt_fits_in_one_line_body()
+{
+	# The comment is placed after 'if (0) ...', where it is processed
+	# by search_stmt_comment. That function redirects the input buffer to
+	# a temporary buffer that is not guaranteed to be terminated by '\n'.
+	# Before NetBSD pr_comment.c 1.91 from 2021-10-30, this produced an
+	# assertion failure in fits_in_one_line.
+	cat <<EOF > code.c
+int f(void)
+{
+	if (0)
+		/* 0123456789012345678901 */;
+}
+EOF
+
+	# Indent tries hard to make the comment fit to the 34-character line
+	# length, but it is just not possible.
+	cat <<EOF > expected.out
+int
+f(void)
+{
+	if (0)
+		/*
+		 * 0123456789012345678901
+		  */ ;
+}
+EOF
+
+	atf_check -o 'file:expected.out' \
+	    "$indent" -l34 code.c -st
+}
+
+
 atf_init_test_cases()
 {
 	atf_add_test_case 'option_unknown'
 	atf_add_test_case 'option_bool_trailing_garbage'
-	atf_add_test_case 'option_int_missing_parameter'
+	atf_add_test_case 'option_int_missing_argument'
 	atf_add_test_case 'option_profile_not_found'
 	atf_add_test_case 'option_buffer_overflow'
 	atf_add_test_case 'option_typedefs_not_found'
@@ -354,6 +477,7 @@ atf_init_test_cases()
 	atf_add_test_case 'option_tabsize_large'
 	atf_add_test_case 'option_tabsize_very_large'
 	atf_add_test_case 'option_int_trailing_garbage'
+	atf_add_test_case 'option_cli_trailing_garbage'
 	atf_add_test_case 'option_indent_size_zero'
 	atf_add_test_case 'unterminated_comment'
 	atf_add_test_case 'in_place_wrong_backup'
@@ -367,4 +491,9 @@ atf_init_test_cases()
 	atf_add_test_case 'unexpected_closing_brace_decl'
 	atf_add_test_case 'preprocessing_overflow'
 	atf_add_test_case 'preprocessing_unrecognized'
+	atf_add_test_case 'unbalanced_parentheses_1'
+	atf_add_test_case 'unbalanced_parentheses_2'
+	atf_add_test_case 'unbalanced_parentheses_3'
+	atf_add_test_case 'search_stmt_comment_segv'
+	atf_add_test_case 'search_stmt_fits_in_one_line'
 }

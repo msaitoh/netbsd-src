@@ -1,4 +1,4 @@
-/*	$NetBSD: io.c,v 1.103 2021/10/27 00:04:51 rillig Exp $	*/
+/*	$NetBSD: io.c,v 1.110 2021/11/04 00:13:57 rillig Exp $	*/
 
 /*-
  * SPDX-License-Identifier: BSD-4-Clause
@@ -43,7 +43,7 @@ static char sccsid[] = "@(#)io.c	8.1 (Berkeley) 6/6/93";
 
 #include <sys/cdefs.h>
 #if defined(__NetBSD__)
-__RCSID("$NetBSD: io.c,v 1.103 2021/10/27 00:04:51 rillig Exp $");
+__RCSID("$NetBSD: io.c,v 1.110 2021/11/04 00:13:57 rillig Exp $");
 #elif defined(__FreeBSD__)
 __FBSDID("$FreeBSD: head/usr.bin/indent/io.c 334927 2018-06-10 16:44:18Z pstef $");
 #endif
@@ -106,7 +106,7 @@ dump_line_label(void)
 {
     int ind;
 
-    while (lab.e > lab.s && is_hspace(lab.e[-1]))
+    while (lab.e > lab.s && ch_isblank(lab.e[-1]))
 	lab.e--;
     *lab.e = '\0';
 
@@ -121,7 +121,7 @@ dump_line_label(void)
 	    output_char(*s++);
 	} while (s < lab.e && 'a' <= *s && *s <= 'z');
 
-	while (s < lab.e && is_hspace(*s))
+	while (s < lab.e && ch_isblank(*s))
 	    s++;
 
 	if (s < lab.e) {
@@ -136,7 +136,7 @@ dump_line_label(void)
 	}
     } else
 	output_range(lab.s, lab.e);
-    ind = indentation_after(ind, lab.s);
+    ind = ind_add(ind, lab.s, lab.e);
 
     ps.is_case_label = false;
     return ind;
@@ -153,14 +153,14 @@ dump_line_code(int ind)
 	    /* XXX: the '+ 1' smells like an off-by-one error. */
 	    ps.paren_indents[i] = (short)-(paren_ind + target_ind + 1);
 	    debug_println(
-		"setting pi[%d] from %d to %d for column %d",
+		"setting paren_indents[%d] from %d to %d for column %d",
 		i, paren_ind, ps.paren_indents[i], target_ind + 1);
 	}
     }
 
     ind = output_indent(ind, target_ind);
     output_range(code.s, code.e);
-    return indentation_after(ind, code.s);
+    return ind_add(ind, code.s, code.e);
 }
 
 static void
@@ -186,7 +186,7 @@ dump_line_comment(int ind)
 	}
     }
 
-    /* if comment can't fit on this line, put it on next line */
+    /* if comment can't fit on this line, put it on the next line */
     if (ind > target_ind) {
 	output_char('\n');
 	ind = 0;
@@ -204,8 +204,8 @@ dump_line_comment(int ind)
 }
 
 /*
- * Write a line of formatted source to the output file. The line consists of a
- * label, the code and the comment.
+ * Write a line of formatted source to the output file. The line consists of
+ * the label, the code and the comment.
  */
 static void
 output_line(char line_terminator)
@@ -264,7 +264,7 @@ output_line(char line_terminator)
 
     ps.decl_on_line = ps.in_decl;	/* for proper comment indentation */
     ps.ind_stmt = ps.in_stmt && !ps.in_decl;
-    ps.dumped_decl_indent = false;
+    ps.decl_indent_done = false;
 
     *(lab.e = lab.s) = '\0';	/* reset buffers */
     *(code.e = code.s) = '\0';
@@ -297,40 +297,43 @@ dump_line_ff(void)
 int
 compute_code_indent(void)
 {
-    int target_ind = opt.indent_size * ps.ind_level;
+    int base_ind = ps.ind_level * opt.indent_size;
 
-    if (ps.paren_level != 0) {
-	if (!opt.lineup_to_parens) {
-	    if (2 * opt.continuation_indent == opt.indent_size)
-		target_ind += opt.continuation_indent;
-	    else
-		target_ind += opt.continuation_indent * ps.paren_level;
+    if (ps.paren_level == 0) {
+	if (ps.ind_stmt)
+	    return base_ind + opt.continuation_indent;
+	return base_ind;
+    }
 
-	} else if (opt.lineup_to_parens_always) {
+    if (opt.lineup_to_parens) {
+	if (opt.lineup_to_parens_always) {
 	    /*
 	     * XXX: where does this '- 1' come from?  It looks strange but is
 	     * nevertheless needed for proper indentation, as demonstrated in
 	     * the test opt-lpl.0.
 	     */
-	    target_ind = paren_indent - 1;
-
-	} else {
-	    int w;
-	    int t = paren_indent;
-
-	    if ((w = 1 + indentation_after(t - 1, code.s) - opt.max_line_length) > 0
-		&& 1 + indentation_after(target_ind, code.s) <= opt.max_line_length) {
-		t -= w + 1;
-		if (t > target_ind + 1)
-		    target_ind = t - 1;
-	    } else
-		target_ind = t - 1;
+	    return paren_indent - 1;
 	}
 
-    } else if (ps.ind_stmt)
-	target_ind += opt.continuation_indent;
+	int w;
+	int t = paren_indent;
 
-    return target_ind;
+	/* TODO: remove '+ 1' and '- 1' */
+	if ((w = 1 + ind_add(t - 1, code.s, code.e) - opt.max_line_length) > 0
+	    && 1 + ind_add(base_ind, code.s, code.e) <= opt.max_line_length) {
+	    t -= w + 1;
+	    if (t > base_ind + 1)
+		return t - 1;
+	    return base_ind;
+	}
+
+	return t - 1;
+    }
+
+    if (2 * opt.continuation_indent == opt.indent_size)
+	return base_ind + opt.continuation_indent;
+    else
+	return base_ind + opt.continuation_indent * ps.paren_level;
 }
 
 int
@@ -340,13 +343,13 @@ compute_label_indent(void)
 	return (int)(case_ind * (float)opt.indent_size);
     if (lab.s[0] == '#')
 	return 0;
-    return opt.indent_size * (ps.ind_level - label_offset);
+    return opt.indent_size * (ps.ind_level - 2);
 }
 
 static void
-skip_hspace(const char **pp)
+skip_blank(const char **pp)
 {
-    while (is_hspace(**pp))
+    while (ch_isblank(**pp))
 	(*pp)++;
 }
 
@@ -368,13 +371,13 @@ parse_indent_comment(void)
 
     const char *p = inp.buf;
 
-    skip_hspace(&p);
+    skip_blank(&p);
     if (!skip_string(&p, "/*"))
 	return;
-    skip_hspace(&p);
+    skip_blank(&p);
     if (!skip_string(&p, "INDENT"))
 	return;
-    skip_hspace(&p);
+    skip_blank(&p);
 
     if (*p == '*' || skip_string(&p, "ON"))
 	on = true;
@@ -383,7 +386,7 @@ parse_indent_comment(void)
     else
 	return;
 
-    skip_hspace(&p);
+    skip_blank(&p);
     if (!skip_string(&p, "*/\n"))
 	return;
 
@@ -448,8 +451,8 @@ inbuf_read_line(void)
     inp.s = inp.buf;
     inp.e = p;
 
-    if (p - inp.buf >= 3 && p[-3] == '*' && p[-2] == '/') {
-	if (strncmp(inp.buf, "/**INDENT**", 11) == 0)
+    if (p - inp.s >= 3 && p[-3] == '*' && p[-2] == '/') {
+	if (strncmp(inp.s, "/**INDENT**", 11) == 0)
 	    inbuf_read_line();	/* flush indent error message */
 	else
 	    parse_indent_comment();
@@ -460,9 +463,9 @@ inbuf_read_line(void)
 }
 
 int
-indentation_after_range(int ind, const char *start, const char *end)
+ind_add(int ind, const char *start, const char *end)
 {
-    for (const char *p = start; *p != '\0' && p != end; ++p) {
+    for (const char *p = start; p != end; ++p) {
 	if (*p == '\n' || *p == '\f')
 	    ind = 0;
 	else if (*p == '\t')
@@ -473,10 +476,4 @@ indentation_after_range(int ind, const char *start, const char *end)
 	    ++ind;
     }
     return ind;
-}
-
-int
-indentation_after(int ind, const char *s)
-{
-    return indentation_after_range(ind, s, NULL);
 }

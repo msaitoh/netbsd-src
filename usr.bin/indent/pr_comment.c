@@ -1,4 +1,4 @@
-/*	$NetBSD: pr_comment.c,v 1.87 2021/10/26 21:37:27 rillig Exp $	*/
+/*	$NetBSD: pr_comment.c,v 1.94 2021/11/03 21:47:35 rillig Exp $	*/
 
 /*-
  * SPDX-License-Identifier: BSD-4-Clause
@@ -43,7 +43,7 @@ static char sccsid[] = "@(#)pr_comment.c	8.1 (Berkeley) 6/6/93";
 
 #include <sys/cdefs.h>
 #if defined(__NetBSD__)
-__RCSID("$NetBSD: pr_comment.c,v 1.87 2021/10/26 21:37:27 rillig Exp $");
+__RCSID("$NetBSD: pr_comment.c,v 1.94 2021/11/03 21:47:35 rillig Exp $");
 #elif defined(__FreeBSD__)
 __FBSDID("$FreeBSD: head/usr.bin/indent/pr_comment.c 334927 2018-06-10 16:44:18Z pstef $");
 #endif
@@ -58,7 +58,7 @@ __FBSDID("$FreeBSD: head/usr.bin/indent/pr_comment.c 334927 2018-06-10 16:44:18Z
 static void
 com_add_char(char ch)
 {
-    if (com.e + 1 >= com.l)
+    if (1 >= com.l - com.e)
 	buf_expand(&com, 1);
     *com.e++ = ch;
 }
@@ -69,7 +69,7 @@ com_add_delim(void)
     if (!opt.star_comment_cont)
 	return;
     size_t len = 3;
-    if (com.e + len >= com.l)
+    if (len >= (size_t)(com.l - com.e))
 	buf_expand(&com, len);
     memcpy(com.e, " * ", len);
     com.e += len;
@@ -78,7 +78,7 @@ com_add_delim(void)
 static void
 com_terminate(void)
 {
-    if (com.e + 1 >= com.l)
+    if (1 >= com.l - com.e)
 	buf_expand(&com, 1);
     *com.e = '\0';
 }
@@ -92,10 +92,9 @@ fits_in_one_line(int max_line_length)
 	if (!(p[0] == '*' && p[1] == '/'))
 	    continue;
 
-	int len = indentation_after_range(ps.com_ind + 3, inp.s, p);
-	len += is_hspace(p[-1]) ? 2 : 3;
-	if (len <= max_line_length)
-	    return true;
+	int len = ind_add(ps.com_ind + 3, inp.s, p);
+	len += ch_isblank(p[-1]) ? 2 : 3;
+	return len <= max_line_length;
     }
     return false;
 }
@@ -136,7 +135,7 @@ process_comment(void)
 
     /* Figure where to align and how to treat the comment */
 
-    if (ps.col_1 && !opt.format_col1_comments) {
+    if (ps.curr_col_1 && !opt.format_col1_comments) {
 	may_wrap = false;
 	break_delim = false;
 	com_ind = 0;
@@ -159,9 +158,9 @@ process_comment(void)
 
 	    int target_ind;
 	    if (code.s != code.e)
-		target_ind = indentation_after(compute_code_indent(), code.s);
+		target_ind = ind_add(compute_code_indent(), code.s, code.e);
 	    else if (lab.s != lab.e)
-		target_ind = indentation_after(compute_label_indent(), lab.s);
+		target_ind = ind_add(compute_label_indent(), lab.s, lab.e);
 	    else
 		target_ind = 0;
 
@@ -191,12 +190,12 @@ process_comment(void)
 	 * XXX: ordered comparison between pointers from different objects
 	 * invokes undefined behavior (C99 6.5.8).
 	 */
-	start = inp.s >= save_com && inp.s < save_com + sc_size ?
+	start = inp.s >= sc_buf && inp.s < sc_buf + sc_size ?
 	    sc_buf : inp.buf;
-	ps.n_comment_delta = -indentation_after_range(0, start, inp.s - 2);
+	ps.n_comment_delta = -ind_add(0, start, inp.s - 2);
     } else {
 	ps.n_comment_delta = 0;
-	while (is_hspace(*inp.s))
+	while (ch_isblank(*inp.s))
 	    inp.s++;
     }
 
@@ -214,7 +213,7 @@ process_comment(void)
 	com.e = com.s + 2;
 	*com.e = '\0';
 	if (opt.blanklines_before_block_comments &&
-		ps.last_token != lsym_lbrace)
+		ps.prev_token != lsym_lbrace)
 	    blank_line_before = true;
 	dump_line();
 	com.e = com.s = t;
@@ -231,7 +230,7 @@ process_comment(void)
 		last_blank = -1;
 		com_add_delim();
 		inp.s++;
-		while (is_hspace(*inp.s))
+		while (ch_isblank(*inp.s))
 		    inp.s++;
 	    } else {
 		inbuf_skip();
@@ -250,7 +249,7 @@ process_comment(void)
 	    }
 
 	    last_blank = -1;
-	    if (!may_wrap || ps.last_nl) {	/* if this is a boxed comment,
+	    if (!may_wrap || ps.curr_newline) {	/* if this is a boxed comment,
 						 * we handle the newline */
 		if (com.s == com.e)
 		    com_add_char(' ');
@@ -263,8 +262,8 @@ process_comment(void)
 		    com_add_delim();
 
 	    } else {
-		ps.last_nl = true;
-		if (!is_hspace(com.e[-1]))
+		ps.curr_newline = true;
+		if (!ch_isblank(com.e[-1]))
 		    com_add_char(' ');
 		last_blank = com.e - 1 - com.buf;
 	    }
@@ -280,7 +279,7 @@ process_comment(void)
 			if (*inp.s == '/')
 			    goto end_of_comment;
 		    }
-		} while (is_hspace(*inp.s));
+		} while (ch_isblank(*inp.s));
 	    } else
 		inbuf_skip();
 	    break;		/* end of case for newline */
@@ -300,7 +299,7 @@ process_comment(void)
 		    com_add_char(' ');
 		}
 
-		if (!is_hspace(com.e[-1]) && may_wrap)
+		if (!ch_isblank(com.e[-1]) && may_wrap)
 		    com_add_char(' ');
 		if (token.e[-1] != '/') {
 		    com_add_char('*');
@@ -317,10 +316,10 @@ process_comment(void)
 
 	default:		/* we have a random char */
 	    ;
-	    int now_len = indentation_after_range(ps.com_ind, com.s, com.e);
+	    int now_len = ind_add(ps.com_ind, com.s, com.e);
 	    for (;;) {
 		char ch = inbuf_next();
-		if (is_hspace(ch))
+		if (ch_isblank(ch))
 		    last_blank = com.e - com.buf;
 		com_add_char(ch);
 		now_len++;
@@ -330,7 +329,7 @@ process_comment(void)
 		    break;
 	    }
 
-	    ps.last_nl = false;
+	    ps.curr_newline = false;
 
 	    if (now_len <= adj_max_line_length || !may_wrap)
 		break;
