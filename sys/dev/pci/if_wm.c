@@ -3154,8 +3154,12 @@ alloc_retry:
 
 	sc->sc_txrx_use_workqueue = false;
 
-	if (wm_phy_need_linkdown_discard(sc))
+	if (wm_phy_need_linkdown_discard(sc)) {
+		DPRINTF(sc, WM_DEBUG_LINK,
+		    ("%s: %s: Set linkdown discard flag\n",
+			device_xname(sc->sc_dev), __func__));
 		wm_set_linkdown_discard(sc);
+	}
 
 	wm_init_sysctls(sc);
 
@@ -9494,14 +9498,18 @@ wm_linkintr_gmii(struct wm_softc *sc, uint32_t icr)
 		DPRINTF(sc, WM_DEBUG_LINK, ("%s: LINK: LSC -> up %s\n",
 			device_xname(dev),
 			(status & STATUS_FD) ? "FDX" : "HDX"));
-		if (wm_phy_need_linkdown_discard(sc))
+		if (wm_phy_need_linkdown_discard(sc)) {
+			DPRINTF(sc, WM_DEBUG_LINK,
+			    ("%s: linkintr: Clear linkdown discard flag\n",
+				device_xname(dev)));
 			wm_clear_linkdown_discard(sc);
+		}
 	} else {
 		DPRINTF(sc, WM_DEBUG_LINK, ("%s: LINK: LSC -> down\n",
 			device_xname(dev)));
 		if (wm_phy_need_linkdown_discard(sc)) {
 			DPRINTF(sc, WM_DEBUG_LINK,
-			    ("%s: LINK: Set linkdown discard flag\n",
+			    ("%s: linkintr: Set linkdown discard flag\n",
 				device_xname(dev)));
 			wm_set_linkdown_discard(sc);
 		}
