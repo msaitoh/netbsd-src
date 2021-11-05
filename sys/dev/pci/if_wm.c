@@ -3625,10 +3625,12 @@ wm_ioctl(struct ifnet *ifp, u_long cmd, void *data)
 		WM_CORE_UNLOCK(sc);
 		error = ifmedia_ioctl(ifp, ifr, &sc->sc_mii.mii_media, cmd);
 		if (error == 0 && wm_phy_need_linkdown_discard(sc)) {
-			if (IFM_SUBTYPE(ifr->ifr_media) == IFM_NONE)
+			if (IFM_SUBTYPE(ifr->ifr_media) == IFM_NONE) {
+				DPRINTF(sc, WM_DEBUG_LINK,
+				    ("%s: %s: Set linkdown discard flag\n",
+					device_xname(sc->sc_dev), __func__));
 				wm_set_linkdown_discard(sc);
-			else
-				wm_clear_linkdown_discard(sc);
+			}
 		}
 		break;
 	case SIOCINITIFADDR:
@@ -3644,14 +3646,14 @@ wm_ioctl(struct ifnet *ifp, u_long cmd, void *data)
 			break;
 		}
 		WM_CORE_UNLOCK(sc);
-		if (((ifp->if_flags & IFF_UP) == 0) && wm_phy_need_linkdown_discard(sc))
-			wm_clear_linkdown_discard(sc);
 		/*FALLTHROUGH*/
 	default:
 		if (cmd == SIOCSIFFLAGS && wm_phy_need_linkdown_discard(sc)) {
-			if (((ifp->if_flags & IFF_UP) == 0) && ((ifr->ifr_flags & IFF_UP) != 0)) {
-				wm_clear_linkdown_discard(sc);
-			} else if (((ifp->if_flags & IFF_UP) != 0) && ((ifr->ifr_flags & IFF_UP) == 0)) {
+			if (((ifp->if_flags & IFF_UP) != 0) &&
+			    ((ifr->ifr_flags & IFF_UP) == 0)) {
+				DPRINTF(sc, WM_DEBUG_LINK,
+				    ("%s: %s: Set linkdown discard flag\n",
+					device_xname(sc->sc_dev), __func__));
 				wm_set_linkdown_discard(sc);
 			}
 		}
@@ -7479,7 +7481,9 @@ wm_init_tx_queue(struct wm_softc *sc, struct wm_queue *wmq,
 	wm_init_tx_regs(sc, wmq, txq);
 	wm_init_tx_buffer(sc, txq);
 
-	txq->txq_flags = 0; /* Clear WM_TXQ_NO_SPACE */
+	/* Clear other than WM_TXQ_LINKDOWN_DISCARD */
+	txq->txq_flags &= WM_TXQ_LINKDOWN_DISCARD;
+
 	txq->txq_sending = false;
 }
 
@@ -9495,8 +9499,12 @@ wm_linkintr_gmii(struct wm_softc *sc, uint32_t icr)
 	} else {
 		DPRINTF(sc, WM_DEBUG_LINK, ("%s: LINK: LSC -> down\n",
 			device_xname(dev)));
-		if (wm_phy_need_linkdown_discard(sc))
+		if (wm_phy_need_linkdown_discard(sc)) {
+			DPRINTF(sc, WM_DEBUG_LINK,
+			    ("%s: LINK: Set linkdown discard flag\n",
+				device_xname(dev)));
 			wm_set_linkdown_discard(sc);
+		}
 	}
 	if ((sc->sc_type == WM_T_ICH8) && (link == false))
 		wm_gig_downshift_workaround_ich8lan(sc);
