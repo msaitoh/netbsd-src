@@ -1,4 +1,4 @@
-/* $NetBSD: token_comment.c,v 1.15 2021/10/30 22:36:07 rillig Exp $ */
+/* $NetBSD: token_comment.c,v 1.17 2021/11/04 18:38:37 rillig Exp $ */
 /* $FreeBSD$ */
 
 /*
@@ -948,3 +948,17 @@ f(void)
 		 /* 12 1234 123 123456 1234 1234567 123 1234.  */ ;
 }
 #indent end
+
+
+/*
+ * Test for an edge cases in comment handling, having a block comment inside
+ * a line comment. Before NetBSD pr_comment.c 1.96 from 2021-11-04, indent
+ * wrongly assumed that the comment would end at the '*' '/', tokenizing the
+ * second word 'still' as a type_at_paren_level_0.
+ */
+#indent input
+/* block comment */
+// line comment /* still a line comment */ still a line comment
+#indent end
+
+#indent run-equals-input

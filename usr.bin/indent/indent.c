@@ -1,4 +1,4 @@
-/*	$NetBSD: indent.c,v 1.205 2021/11/03 21:47:35 rillig Exp $	*/
+/*	$NetBSD: indent.c,v 1.207 2021/11/04 20:31:04 rillig Exp $	*/
 
 /*-
  * SPDX-License-Identifier: BSD-4-Clause
@@ -43,7 +43,7 @@ static char sccsid[] = "@(#)indent.c	5.17 (Berkeley) 6/7/93";
 
 #include <sys/cdefs.h>
 #if defined(__NetBSD__)
-__RCSID("$NetBSD: indent.c,v 1.205 2021/11/03 21:47:35 rillig Exp $");
+__RCSID("$NetBSD: indent.c,v 1.207 2021/11/04 20:31:04 rillig Exp $");
 #elif defined(__FreeBSD__)
 __FBSDID("$FreeBSD: head/usr.bin/indent/indent.c 340138 2018-11-04 19:24:49Z oshogbo $");
 #endif
@@ -685,31 +685,31 @@ process_end_of_file(void)
 }
 
 static void
-process_comment_in_code(lexer_symbol lsym, bool *force_nl)
+maybe_break_line(lexer_symbol lsym, bool *force_nl)
 {
-    if (*force_nl &&
-	lsym != lsym_semicolon &&
-	(lsym != lsym_lbrace || !opt.brace_same_line)) {
+    if (!*force_nl)
+	return;
+    if (lsym == lsym_semicolon)
+	return;
+    else if (lsym == lsym_lbrace && opt.brace_same_line)
+	return;
 
-	/* we should force a broken line here */
-	if (opt.verbose)
-	    diag(0, "Line broken");
-	dump_line();
-	ps.want_blank = false;	/* don't insert blank at line start */
-	*force_nl = false;
-    }
+    if (opt.verbose)
+	diag(0, "Line broken");
+    dump_line();
+    ps.want_blank = false;
+    *force_nl = false;
+}
 
-    /* add an extra level of indentation; turned off again by a ';' or '}' */
-    ps.in_stmt = true;
-
-    if (com.s != com.e) {	/* a comment embedded in a line */
-	buf_add_char(&code, ' ');
-	buf_add_buf(&code, &com);
-	buf_add_char(&code, ' ');
-	buf_terminate(&code);
-	buf_reset(&com);
-	ps.want_blank = false;
-    }
+static void
+move_com_to_code(void)
+{
+    buf_add_char(&code, ' ');
+    buf_add_buf(&code, &com);
+    buf_add_char(&code, ' ');
+    buf_terminate(&code);
+    buf_reset(&com);
+    ps.want_blank = false;
 }
 
 static void
@@ -834,6 +834,16 @@ process_rparen_or_rbracket(bool *spaced_expr, bool *force_nl, stmt_head hd)
     ps.search_stmt = opt.brace_same_line;
 }
 
+static bool
+want_blank_before_unary_op(void)
+{
+    if (ps.want_blank)
+	return true;
+    if (token.s[0] == '+' || token.s[0] == '-')
+	return code.e[-1] == token.s[0];
+    return false;
+}
+
 static void
 process_unary_op(int decl_ind, bool tabs_to_var)
 {
@@ -842,7 +852,7 @@ process_unary_op(int decl_ind, bool tabs_to_var)
 	/* pointer declarations */
 	code_add_decl_indent(decl_ind - (int)buf_len(&token), tabs_to_var);
 	ps.decl_indent_done = true;
-    } else if (ps.want_blank)
+    } else if (want_blank_before_unary_op())
 	*code.e++ = ' ';
 
     buf_add_buf(&code, &token);
@@ -1392,8 +1402,13 @@ main_loop(void)
 	if (lsym == lsym_newline || lsym == lsym_form_feed ||
 		lsym == lsym_preprocessing)
 	    force_nl = false;
-	else if (lsym != lsym_comment)
-	    process_comment_in_code(lsym, &force_nl);
+	else if (lsym != lsym_comment) {
+	    maybe_break_line(lsym, &force_nl);
+	    ps.in_stmt = true;	/* add an extra level of indentation; turned
+				 * off again by a ';' or '}' */
+	    if (com.s != com.e)
+		move_com_to_code();
+	}
 
 	buf_reserve(&code, 3);	/* space for 2 characters plus '\0' */
 
