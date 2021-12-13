@@ -2892,7 +2892,6 @@ ixv_set_sysctl_value(struct adapter *adapter, const char *name,
 /************************************************************************
  * ixv_print_debug_info
  *
- *   Called only when em_display_debug_stats is enabled.
  *   Provides a way to take a look at important statistics
  *   maintained by the driver and hardware.
  ************************************************************************/
