@@ -473,6 +473,12 @@ ixv_attach(device_t parent, device_t dev, void *aux)
 	case ixgbe_mbox_api_13:
 		apivstr = "1.3";
 		break;
+	case ixgbe_mbox_api_14:
+		apivstr = "1.4";
+		break;
+	case ixgbe_mbox_api_15:
+		apivstr = "1.5";
+		break;
 	default:
 		apivstr = "unknown";
 		break;
@@ -1081,7 +1087,8 @@ static int
 ixv_negotiate_api(struct adapter *adapter)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
-	int		mbx_api[] = { ixgbe_mbox_api_13,
+	int		mbx_api[] = { ixgbe_mbox_api_15,
+				      ixgbe_mbox_api_13,
 				      ixgbe_mbox_api_12,
 				      ixgbe_mbox_api_11,
 				      ixgbe_mbox_api_10,
