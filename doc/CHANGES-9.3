@@ -1,4 +1,4 @@
-# $NetBSD: CHANGES-9.3,v 1.1.2.39 2021/10/19 10:56:08 martin Exp $
+29~# $NetBSD: CHANGES-9.3,v 1.1.2.59 2021/12/19 16:39:28 martin Exp $
 
 A complete list of changes from the NetBSD 9.2 release to the NetBSD 9.3
 release:
@@ -827,4 +827,301 @@ sys/dev/raidframe/rf_netbsd.h			1.36 (patch)
 
 	RAIDframe could run out of IO buffers.
 	[oster, ticket #1361]
+
+sys/dev/pci/pcidevs				1.1419-1.1440
+sys/dev/pci/pcidevs.h				regen
+sys/dev/pci/pcidevs_data.h			regen
+
+	- Add newer ciss(4) devices.
+	- Add modern QUMRANET/Red Hat VIRTIO range PCI devices.
+	- Add some more product IDs for mcx(4).
+	- Add current generation NVIDIA graphics cards (3050-3090 etc.).
+	- Add RDC R6022 PCI-Host bridge.
+	- Add a whole bunch of radeon devices.
+	- Add Realtek RTL8821CE.
+	- Add Intel 660p SSD, and expand the 760p description.
+	- Add Intel I219's version number.
+	- Add Intel I219V 15-19 and I219LM 16-19.
+	- Add Intel I225V, I225LM and WiFi 6 AX201.
+	- Add newer Intel PCH internal devices.
+	- Add Intel Jasper Lake devices.
+	- PDC20265 is Ultra/100, not 66.
+	- Fix Realtek RTL8125 description.
+	- Sort Cavium devices.
+	[msaitoh, ticket #1362]
+
+share/man/man4/wm.4				1.42
+sys/dev/pci/files.pci				1.434
+sys/dev/pci/if_wm.c				1.690,1.692-1.693,1.697-1.704,
+						1.706-1.715 via patch
+
+	- Add missing drain for pcq in wm_stop_locked().
+	- Add support for I219V 15-19 and I219LM 16-19.
+	- Fix Tx stall.
+	- Use wm_flush_desc_rings() workaround more on I219.
+	- Change DMA physical address in wm_flush_desc_rings() to match other
+	  OSes.
+	- Check return value correctly in wm_lv_jumbo_workaround_ich8lan().
+	- Add new sysctl hw.wmN.debug_flags. This sysctl can be used if
+	  WM_DEBUG is set.
+	- Add some sysctl values for debugging TX/RX queues.
+	- Use atomic_{load,store}_relaxed for evcnt 64 bit counter.
+	- WM_EVENT_COUNTER is enabled by default on 64 bit architectures.
+	- Remove extra unlock/lock processing around if_percpuq_enqueue().
+	- Refactor rxq->rxq_ptr updating.
+	- Stop legacy interrupts before calling softint.
+	- Disable printf()s in wm_flush_desc_rings() because the code is
+	  verified.
+	- Print I219's version number.
+	- Uniform INTx/MSI handler's Tx/Rx behavior to MSI-X's one.
+	- Fix return value of interrupt handler.
+	- Only print an error about missing I/O BARs for chips that need it.
+	- Do not return a void value from a void function.
+	- Fix comment.
+	- Whitespace fixes. No functional change.
+	[msaitoh, ticket #1363]
+
+sys/dev/usb/if_urtwn.c				1.101
+sys/dev/usb/usbdevs				1.798
+sys/dev/usb/usbdevs.h				(regen)
+sys/dev/usb/usbdevs_data.h			(regen)
+
+	urtwn(4): add Edimax N150 adapter.
+	[jnemeth, ticket #1364]
+
+usr.bin/ftp/fetch.c				1.233
+
+	ftp(1): use raw write(2) instead of fwrite(3) to avoid stream
+	corruption because of the progress bar interrupts.
+	[lukem, ticket #1365]
+
+usr.bin/ftp/ftp.c				1.173
+
+	ftp(1): validate address from PASV and LPSV response.
+	[lukem, ticket #1366]
+
+usr.bin/ftp/ftp.c				1.174
+
+	ftp(1): cleanup after previous security fix.
+	[lukem, ticket #1367]
+
+share/man/man4/options.4			1.520
+sys/conf/files					1.1288
+sys/kern/uipc_mbuf.c				1.244
+
+	- Fix a bug that NMBCLUSTERS(kern.mbuf.nmbclusters) can't be changed
+	  by sysctl.
+	- Update NMBCLUSTERS and add NMBCLUSTERS_MAX in options(4).
+	[msaitoh, ticket #1368]
+
+sys/net/if_ethersubr.c				1.302
+
+	Fix handling of VLAN 0 tag.
+	[ryo, ticket #1369]
+
+lib/libcrypt/crypt-sha1.c			1.10
+
+	libcrypt: Fix a floating point exception when a low number of HMAC-SHA1
+	iterations are specified.
+	[nia, ticket #1370]
+
+bin/sh/main.c					1.87 (patch),1.88
+bin/sh/memalloc.c				1.34,1.35
+bin/sh/memalloc.h				1.19,1.20
+bin/sh/options.c				1.56
+bin/sh/sh.1					1.235 (patch)
+bin/sh/shell.h					1.31
+
+	sh(1): PR 56464: read $HOME/.profile (instead of ./profile).
+	Do not read it at all in a privileged shell (setuid or setgid).
+	[kre, ticket #1371]
+
+bin/sh/cd.c					1.51
+bin/sh/sh.1					1.236 (patch)
+
+	sh(1): PR 45390: fix cd/$PWD follies.
+	[kre, ticket #1372]
+
+sys/dev/pci/if_wm.c				1.716-1.718 via patch
+sys/dev/pci/if_wmreg.h				1.121
+sys/dev/mii/ihphy.c				1.20
+
+	- Fix a bug that device timeout still happens when the link is down
+	  on ICH/PCH. Fixes PR kern/56478.
+	- Add some sysctl info for debugging.
+	- ihphy(4): Don't power down the PHY when the interface goes down.
+	- Use macro. Fix comment.
+	[msaitoh, ticket #1373]
+
+sys/dev/pci/ixgbe/ixgbe.h			1.81-1.83
+sys/dev/pci/ixgbe/ixgbe.c			1.291-1.292 via patch
+sys/dev/pci/ixgbe/ixgbe_type.h			1.50
+sys/dev/pci/ixgbe/ixv.c				1.167-1.168 via patch
+sys/dev/pci/ixgbe/ix_txrx.c			1.94
+
+	- Fix a bug that a near 64KB TSO segment can't send.
+	- Reduce bus_dmamap_sync() cost.
+	- Use macro. Fix typos in comment.
+	[msaitoh, ticket #1374]
+
+sys/arch/x86/x86/cpu_topology.c			1.20
+usr.sbin/cpuctl/arch/i386.c			1.123
+
+	amd64: fix cpu topology detection for zen3 systems.
+	[mrg, ticket #1375]
+
+distrib/notes/common/main			1.566,1.567
+
+	Add a note to the install documentations for amd64
+	explaining the legacy amd64-bios-install image.
+	[gutteridge, ticket #1376]
+ 
+sys/dev/pci/piixpm.c				patch
+
+	PR 56525: fix a bug that I2C access panics on old AMD chipset
+	(e.g SB600).
+	[msaitoh, ticket #1378]
+
+usr.bin/msgs/pathnames.h			1.5
+
+	msgs(1): avoid executing /usr/bin/Mail, it no longer exists.
+	[nia, ticket #1379]
+
+sys/dev/pci/pcidevs				1.1441-1.1444
+sys/dev/pci/pcidevs.h				regen
+sys/dev/pci/pcidevs_data.h			regen
+
+	- Add Intel Gemini Lake TXE HECI 1.
+	- Add Intel Elkhart Lake and Rocket Lake devices.
+	- Update Jasper Lake's Processor Transaction Routers.
+	[msaitoh, ticket #1380]
+
+sys/dev/pci/ichsmb.c				1.69, 1.71, 1.73-1.75 via patch
+	- Add Intel 400, 495, and 500 series support.
+	- Add Intel Jasper Lake and Elkhart Lake support.
+	- Ignore the SMBALERT# interrupt. Same as other OSes.
+	[msaitoh, ticket #1381]
+
+sys/dev/pci/pucdata.c				1.106-1.112
+share/man/man4/puc.4				1.42-1.43
+
+	- Add NetMos NM9900 Quad and Octal serial card.
+	- Add ASIX AX99100 PCIe 4port serial card.
+	- Add Oxford Semiconductor Exsys EX-41098 PCI serial card.
+	[msaitoh, ticket #1382]
+
+sys/dev/sdmmc/sdhc.c				1.110, 1.112
+sys/dev/sdmmc/sdmmc_mem.c			1.74
+sys/dev/pci/sdhc_pci.c				1.18
+
+	- Support 64bit BAR.
+	- Use unsigned to avoid undefined behavior in hwrite[12]() and
+	  sdmmc_mem_sd_switch().
+	- Fix typo in comment.
+	[msaitoh, ticket #1383]
+
+sys/dev/pci/pcireg.h			1.152-1.154, 1.156-1.161
+sys/dev/pci/pci_subr.c			1.222, 1.227-1.232 via patch
+sys/dev/pci/nvme_pci.c			1.31
+sys/dev/pci/pci.c			1.158, 1.163
+sys/dev/pci/ppb.c			1.74
+
+	- When parsing Enhanced Allocation entries, use the correct calculation
+	  for finding the next entry.
+	- Add 32.0GT/s to the list of pcie speeds (PCIe 5.x.).
+	- Add Some PCI config information:
+	  - Lane Margining at the Receiver
+	  - NVME admin interface
+	  - UFSHCI
+	  - InfiniBand
+	  - Host fabric
+	  - HDA 1.0 with vendor ext
+	  - USB4 HCI
+	  - MIPI I3C
+	  - Cellular controller/modem (+ Ethernet)
+	- Change PCI_VENDOR_MASK and PCI_PRODUCT_MASK to unsigned values, to
+	  prevent sign extension of product ID when shifted up into place in
+	  PCI_ID_CODE(). Fixes PR kern/56176.
+	- Add LCAP & LCAP2 definitions.
+	- Use PCI-SIG official acronyms for some macros.
+	- Fix typo in some messages.
+	- Fix typo in comments.
+	- Whitespace fixes.
+	[msaitoh, ticket #1384]
+
+sys/arch/x86/x86/procfs_machdep.c		1.40-1.42
+
+	- Add v_spec_ctrl, avx512_fp16, sme, sev, sev_es, sgx, sgx_lc,
+	  serialize and tsxldtrk.
+	- Whitespace fix.
+	[msaitoh, ticket #1385]
+
+sys/dev/usb/ehci.c				1.287
+
+	ehci(4): fix suspend/resume locking.
+	[riastradh, ticket #1386]
+
+sys/dev/i2c/sdtemp.c				1.41
+
+	sdtemp(4): use aprint_debug instead of aprint_error for expected
+	failure.
+	[msaitoh, ticket #1387]
+
+sys/dev/i2c/spdmem_i2c.c			1.23-1.25 via patch
+
+	- Carefully access to the I2C bus in the match function.
+	- Improve bank reset code for DDR4.
+	[msaitoh, ticket #1388]
+
+sys/arch/x86/x86/identcpu.c			1.103-1.105
+
+	Identify Vortex86EX2.
+	[msaitoh, ticket #1389]
+
+sys/arch/x86/x86/identcpu.c			1.121
+
+	Make a numeric literal unsigned as it is bit-negated.
+	[msaitoh, ticket #1390]
+
+sys/arch/x86/include/specialreg.h		1.171, 1.173-1.178
+sys/arch/x86/x86/identcpu.c			1.106, 1.117, 1.122 via patch
+sys/dev/nvmm/x86/nvmm_x86.c			1.18
+sys/external/bsd/drm2/drm/drm_cache.c		1.14
+sys/external/bsd/drm2/include/asm/cpufeature.h	1.5
+usr.sbin/cpuctl/arch/i386.c			1.114-1.117
+
+	- Add LA57, PKE, PKS, CET, CET_U, CET_S, HWP, KL, AVX512_BF16, TME_EN
+	  and PCONFIG.
+	- Rename some macros to match the x86 specification and the other OSes.
+	- Print CPUID 0x8000008 %ebx on Intel, too.
+	- Print CPUID leaf 7 subleaf 1.
+	- Identify Tiger Lake, 3rd gen Xeon Scalable (Ice Lake), Elkhart Lake
+	  and Jasper Lake.
+	- Add comment.
+	- KNF. Whitespace fix.
+	[msaitoh, ticket #1391]
+
+sys/dev/ipmi.c					1.6-1.9
+
+	ipmi(4): various stability improvements and fix for PR 56539.
+	[hauke, ticket #1392]
+
+sys/dev/cgd.c					1.141
+
+	cgd(4): PR 56546: wait for worker threads to complete before
+	destroying mutex.
+	[riastradh, ticket #1393]
+
+sys/dev/raidframe/rf_diskqueue.c		1.63 (patch)
+
+	raid(4): add missing buf_destroy() call.
+	[mrg, ticket #1394]
+
+sys/dev/usb/usb_quirks.c			1.101
+sys/dev/usb/usbdevs				1.799
+sys/dev/usb/usbdevs.h				(regen)
+sys/dev/usb/usbdevs_data.h			(regen)
+
+	Add two additional cyperpower UPS ids to be ignored as HID devices.
+	[mrg, ticket #1395]
 
