@@ -1096,8 +1096,11 @@ ixv_negotiate_api(struct adapter *adapter)
 	int		i = 0;
 
 	while (mbx_api[i] != ixgbe_mbox_api_unknown) {
-		if (ixgbevf_negotiate_api_version(hw, mbx_api[i]) == 0)
+		if (ixgbevf_negotiate_api_version(hw, mbx_api[i]) == 0) {
+			if (hw->api_version >= ixgbe_mbox_api_15)
+				ixgbe_upgrade_mbx_params_vf(hw);
 			return (0);
+		}
 		i++;
 	}
 
