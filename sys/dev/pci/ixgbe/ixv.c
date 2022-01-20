@@ -878,7 +878,7 @@ ixv_msix_que(void *arg)
 	u32		newitr = 0;
 
 	ixv_disable_queue(adapter, que->msix);
-	++que->irqs.ev_count;
+	IXGBE_EVC_ADD(&que->irqs, 1);
 
 #ifdef __NetBSD__
 	/* Don't run ixgbe_rxeof in interrupt context */
@@ -964,7 +964,7 @@ ixv_msix_mbx(void *arg)
 	struct adapter	*adapter = arg;
 	struct ixgbe_hw *hw = &adapter->hw;
 
-	++adapter->admin_irqev.ev_count;
+	IXGBE_EVC_ADD(&adapter->admin_irqev, 1);
 	/* NetBSD: We use auto-clear, so it's not required to write VTEICR */
 
 	/* Link status change */
@@ -1303,14 +1303,14 @@ ixv_handle_timer(struct work *wk, void *context)
 		v6 += txr->q_enomem_tx_dma_setup;
 		v7 += txr->q_tso_err;
 	}
-	adapter->efbig_tx_dma_setup.ev_count = v0;
-	adapter->mbuf_defrag_failed.ev_count = v1;
-	adapter->efbig2_tx_dma_setup.ev_count = v2;
-	adapter->einval_tx_dma_setup.ev_count = v3;
-	adapter->other_tx_dma_setup.ev_count = v4;
-	adapter->eagain_tx_dma_setup.ev_count = v5;
-	adapter->enomem_tx_dma_setup.ev_count = v6;
-	adapter->tso_err.ev_count = v7;
+	IXGBE_EVC_STORE(&adapter->efbig_tx_dma_setup, v0);
+	IXGBE_EVC_STORE(&adapter->mbuf_defrag_failed, v1);
+	IXGBE_EVC_STORE(&adapter->efbig2_tx_dma_setup, v2);
+	IXGBE_EVC_STORE(&adapter->einval_tx_dma_setup, v3);
+	IXGBE_EVC_STORE(&adapter->other_tx_dma_setup, v4);
+	IXGBE_EVC_STORE(&adapter->eagain_tx_dma_setup, v5);
+	IXGBE_EVC_STORE(&adapter->enomem_tx_dma_setup, v6);
+	IXGBE_EVC_STORE(&adapter->tso_err, v7);
 
 	/*
 	 * Check the TX queues status
@@ -1363,7 +1363,7 @@ ixv_handle_timer(struct work *wk, void *context)
 watchdog:
 	device_printf(adapter->dev, "Watchdog timeout -- resetting\n");
 	adapter->ifp->if_flags &= ~IFF_RUNNING;
-	adapter->watchdog_events.ev_count++;
+	IXGBE_EVC_ADD(&adapter->watchdog_events, 1);
 	ixv_init_locked(adapter);
 	IXGBE_CORE_UNLOCK(adapter);
 } /* ixv_handle_timer */
@@ -2425,7 +2425,7 @@ ixv_init_stats(struct adapter *adapter)
 #define UPDATE_STAT_32(reg, last, count)		\
 {							\
 	u32 current = IXGBE_READ_REG(hw, (reg));	\
-	count.ev_count += current - last;		\
+	IXGBE_EVC_ADD(&count, (u64)current - (last));	\
 	(last) = current;				\
 }
 
@@ -2434,7 +2434,7 @@ ixv_init_stats(struct adapter *adapter)
 	u64 cur_lsb = IXGBE_READ_REG(hw, (lsb));	\
 	u64 cur_msb = IXGBE_READ_REG(hw, (msb));	\
 	u64 current = ((cur_msb << 32) | cur_lsb);	\
-	count.ev_count += current - last;		\
+	IXGBE_EVC_ADD(&count, current - (last));	\
 	(last) = current;				\
 }
 
@@ -2777,27 +2777,27 @@ ixv_clear_evcnt(struct adapter *adapter)
 	int i;
 
 	/* Driver Statistics */
-	adapter->efbig_tx_dma_setup.ev_count = 0;
-	adapter->mbuf_defrag_failed.ev_count = 0;
-	adapter->efbig2_tx_dma_setup.ev_count = 0;
-	adapter->einval_tx_dma_setup.ev_count = 0;
-	adapter->other_tx_dma_setup.ev_count = 0;
-	adapter->eagain_tx_dma_setup.ev_count = 0;
-	adapter->enomem_tx_dma_setup.ev_count = 0;
-	adapter->watchdog_events.ev_count = 0;
-	adapter->tso_err.ev_count = 0;
-	adapter->admin_irqev.ev_count = 0;
-	adapter->link_workev.ev_count = 0;
+	IXGBE_EVC_STORE(&adapter->efbig_tx_dma_setup, 0);
+	IXGBE_EVC_STORE(&adapter->mbuf_defrag_failed, 0);
+	IXGBE_EVC_STORE(&adapter->efbig2_tx_dma_setup, 0);
+	IXGBE_EVC_STORE(&adapter->einval_tx_dma_setup, 0);
+	IXGBE_EVC_STORE(&adapter->other_tx_dma_setup, 0);
+	IXGBE_EVC_STORE(&adapter->eagain_tx_dma_setup, 0);
+	IXGBE_EVC_STORE(&adapter->enomem_tx_dma_setup, 0);
+	IXGBE_EVC_STORE(&adapter->watchdog_events, 0);
+	IXGBE_EVC_STORE(&adapter->tso_err, 0);
+	IXGBE_EVC_STORE(&adapter->admin_irqev, 0);
+	IXGBE_EVC_STORE(&adapter->link_workev, 0);
 
 	for (i = 0; i < adapter->num_queues; i++, rxr++, txr++) {
-		adapter->queues[i].irqs.ev_count = 0;
-		adapter->queues[i].handleq.ev_count = 0;
-		adapter->queues[i].req.ev_count = 0;
-		txr->tso_tx.ev_count = 0;
-		txr->no_desc_avail.ev_count = 0;
-		txr->total_packets.ev_count = 0;
+		IXGBE_EVC_STORE(&adapter->queues[i].irqs, 0);
+		IXGBE_EVC_STORE(&adapter->queues[i].handleq, 0);
+		IXGBE_EVC_STORE(&adapter->queues[i].req, 0);
+		IXGBE_EVC_STORE(&txr->tso_tx, 0);
+		IXGBE_EVC_STORE(&txr->no_desc_avail, 0);
+		IXGBE_EVC_STORE(&txr->total_packets, 0);
 #ifndef IXGBE_LEGACY_TX
-		txr->pcq_drops.ev_count = 0;
+		IXGBE_EVC_STORE(&txr->pcq_drops, 0);
 #endif
 		txr->q_efbig_tx_dma_setup = 0;
 		txr->q_mbuf_defrag_failed = 0;
@@ -2808,37 +2808,37 @@ ixv_clear_evcnt(struct adapter *adapter)
 		txr->q_enomem_tx_dma_setup = 0;
 		txr->q_tso_err = 0;
 
-		rxr->rx_packets.ev_count = 0;
-		rxr->rx_bytes.ev_count = 0;
-		rxr->rx_copies.ev_count = 0;
-		rxr->no_mbuf.ev_count = 0;
-		rxr->rx_discarded.ev_count = 0;
+		IXGBE_EVC_STORE(&rxr->rx_packets, 0);
+		IXGBE_EVC_STORE(&rxr->rx_bytes, 0);
+		IXGBE_EVC_STORE(&rxr->rx_copies, 0);
+		IXGBE_EVC_STORE(&rxr->no_mbuf, 0);
+		IXGBE_EVC_STORE(&rxr->rx_discarded, 0);
 	}
 
 	/* MAC stats get their own sub node */
 
-	stats->ipcs.ev_count = 0;
-	stats->l4cs.ev_count = 0;
-	stats->ipcs_bad.ev_count = 0;
-	stats->l4cs_bad.ev_count = 0;
+	IXGBE_EVC_STORE(&stats->ipcs, 0);
+	IXGBE_EVC_STORE(&stats->l4cs, 0);
+	IXGBE_EVC_STORE(&stats->ipcs_bad, 0);
+	IXGBE_EVC_STORE(&stats->l4cs_bad, 0);
 
 	/*
 	 * Packet Reception Stats.
 	 * Call ixv_init_stats() to save last VF counters' values.
 	 */
 	ixv_init_stats(adapter);
-	stats->vfgprc.ev_count = 0;
-	stats->vfgorc.ev_count = 0;
-	stats->vfmprc.ev_count = 0;
-	stats->vfgptc.ev_count = 0;
-	stats->vfgotc.ev_count = 0;
+	IXGBE_EVC_STORE(&stats->vfgprc, 0);
+	IXGBE_EVC_STORE(&stats->vfgorc, 0);
+	IXGBE_EVC_STORE(&stats->vfmprc, 0);
+	IXGBE_EVC_STORE(&stats->vfgptc, 0);
+	IXGBE_EVC_STORE(&stats->vfgotc, 0);
 
 	/* Mailbox Stats */
-	hw->mbx.stats.msgs_tx.ev_count = 0;
-	hw->mbx.stats.msgs_rx.ev_count = 0;
-	hw->mbx.stats.acks.ev_count = 0;
-	hw->mbx.stats.reqs.ev_count = 0;
-	hw->mbx.stats.rsts.ev_count = 0;
+	IXGBE_EVC_STORE(&hw->mbx.stats.msgs_tx, 0);
+	IXGBE_EVC_STORE(&hw->mbx.stats.msgs_rx, 0);
+	IXGBE_EVC_STORE(&hw->mbx.stats.acks, 0);
+	IXGBE_EVC_STORE(&hw->mbx.stats.reqs, 0);
+	IXGBE_EVC_STORE(&hw->mbx.stats.rsts, 0);
 
 } /* ixv_clear_evcnt */
 
@@ -3237,7 +3237,7 @@ ixv_handle_que(void *context)
 	struct ifnet	*ifp = adapter->ifp;
 	bool		more;
 
-	que->handleq.ev_count++;
+	IXGBE_EVC_ADD(&que->handleq, 1);
 
 	if (ifp->if_flags & IFF_RUNNING) {
 		more = ixgbe_rxeof(que);
@@ -3253,7 +3253,7 @@ ixv_handle_que(void *context)
 			ixgbe_legacy_start_locked(ifp, txr);
 		IXGBE_TX_UNLOCK(txr);
 		if (more) {
-			que->req.ev_count++;
+			IXGBE_EVC_ADD(&que->req, 1);
 			if (adapter->txrx_use_workqueue) {
 				/*
 				 * "enqueued flag" is not required here
@@ -3519,7 +3519,7 @@ ixv_handle_admin(struct work *wk, void *context)
 
 	IXGBE_CORE_LOCK(adapter);
 
-	++adapter->link_workev.ev_count;
+	IXGBE_EVC_ADD(&adapter->link_workev, 1);
 	adapter->hw.mac.ops.check_link(&adapter->hw, &adapter->link_speed,
 	    &adapter->link_up, FALSE);
 	ixv_update_link_status(adapter);

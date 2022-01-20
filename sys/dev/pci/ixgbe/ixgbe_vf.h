@@ -101,11 +101,11 @@ struct ixgbevf_hw_stats {
 	struct evcnt l4cs;
 	struct evcnt l4cs_bad;
 
-	u64 last_vfgprc;
-	u64 last_vfgptc;
+	u32 last_vfgprc;
+	u32 last_vfgptc;
 	u64 last_vfgorc;
 	u64 last_vfgotc;
-	u64 last_vfmprc;
+	u32 last_vfmprc;
 
 	struct evcnt vfgprc;
 	struct evcnt vfgptc;
