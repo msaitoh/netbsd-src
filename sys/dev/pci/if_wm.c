@@ -8966,14 +8966,6 @@ wm_txeof(struct wm_txqueue *txq, u_int limit)
 	 */
 	for (i = txq->txq_sdirty; txq->txq_sfree != WM_TXQUEUELEN(txq);
 	     i = WM_NEXTTXS(txq, i), txq->txq_sfree++) {
-		if (limit-- == 0) {
-			more = true;
-			DPRINTF(sc, WM_DEBUG_TX,
-			    ("%s: TX: loop limited, job %d is not processed\n",
-				device_xname(sc->sc_dev), i));
-			break;
-		}
-
 		txs = &txq->txq_soft[i];
 
 		DPRINTF(sc, WM_DEBUG_TX, ("%s: TX: checking job %d\n",
@@ -8987,6 +8979,14 @@ wm_txeof(struct wm_txqueue *txq, u_int limit)
 		if ((status & WTX_ST_DD) == 0) {
 			wm_cdtxsync(txq, txs->txs_lastdesc, 1,
 			    BUS_DMASYNC_PREREAD);
+			break;
+		}
+
+		if (limit-- == 0) {
+			more = true;
+			DPRINTF(sc, WM_DEBUG_TX,
+			    ("%s: TX: loop limited, job %d is not processed\n",
+				device_xname(sc->sc_dev), i));
 			break;
 		}
 
@@ -9295,14 +9295,6 @@ wm_rxeof(struct wm_rxqueue *rxq, u_int limit)
 	KASSERT(mutex_owned(rxq->rxq_lock));
 
 	for (i = rxq->rxq_ptr;; i = WM_NEXTRX(i)) {
-		if (limit-- == 0) {
-			more = true;
-			DPRINTF(sc, WM_DEBUG_RX,
-			    ("%s: RX: loop limited, descriptor %d is not processed\n",
-				device_xname(sc->sc_dev), i));
-			break;
-		}
-
 		rxs = &rxq->rxq_soft[i];
 
 		DPRINTF(sc, WM_DEBUG_RX,
@@ -9321,6 +9313,14 @@ wm_rxeof(struct wm_rxqueue *rxq, u_int limit)
 #endif
 
 		if (!wm_rxdesc_dd(rxq, i, status)) {
+			break;
+		}
+
+		if (limit-- == 0) {
+			more = true;
+			DPRINTF(sc, WM_DEBUG_RX,
+			    ("%s: RX: loop limited, descriptor %d is not processed\n",
+				device_xname(sc->sc_dev), i));
 			break;
 		}
 
