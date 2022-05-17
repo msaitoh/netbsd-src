@@ -9956,14 +9956,18 @@ wm_intr_legacy(void *arg)
 		WM_Q_EVCNT_INCR(rxq, intr);
 	}
 #endif
-	/*
-	 * wm_rxeof() does *not* call upper layer functions directly,
-	 * as if_percpuq_enqueue() just call softint_schedule().
-	 * So, we can call wm_rxeof() in interrupt context.
-	 */
-	more = wm_rxeof(rxq, rxlimit);
+	if (rxlimit > 0) {
+		/*
+		 * wm_rxeof() does *not* call upper layer functions directly,
+		 * as if_percpuq_enqueue() just call softint_schedule().
+		 * So, we can call wm_rxeof() in interrupt context.
+		 */
+		more = wm_rxeof(rxq, rxlimit);
+	} else
+		more = true;
 
 	mutex_exit(rxq->rxq_lock);
+
 	mutex_enter(txq->txq_lock);
 
 	if (txq->txq_stopping) {
@@ -9979,10 +9983,12 @@ wm_intr_legacy(void *arg)
 		WM_Q_EVCNT_INCR(txq, txdw);
 	}
 #endif
-	more |= wm_txeof(txq, txlimit);
-	if (!IF_IS_EMPTY(&ifp->if_snd))
+	if (txlimit > 0) {
+		more |= wm_txeof(txq, txlimit);
+		if (!IF_IS_EMPTY(&ifp->if_snd))
+			more = true;
+	} else
 		more = true;
-
 	mutex_exit(txq->txq_lock);
 	WM_CORE_LOCK(sc);
 
@@ -10094,8 +10100,11 @@ wm_txrxintr_msix(void *arg)
 	}
 
 	WM_Q_EVCNT_INCR(txq, txdw);
-	txmore = wm_txeof(txq, txlimit);
-	/* wm_deferred start() is done in wm_handle_queue(). */
+	if (txlimit > 0) {
+		txmore = wm_txeof(txq, txlimit);
+		/* wm_deferred start() is done in wm_handle_queue(). */
+	} else
+		txmore = true;
 	mutex_exit(txq->txq_lock);
 
 	DPRINTF(sc, WM_DEBUG_RX,
@@ -10108,7 +10117,10 @@ wm_txrxintr_msix(void *arg)
 	}
 
 	WM_Q_EVCNT_INCR(rxq, intr);
-	rxmore = wm_rxeof(rxq, rxlimit);
+	if (rxlimit > 0) {
+		rxmore = wm_rxeof(rxq, rxlimit);
+	} else
+		rxmore = true;
 	mutex_exit(rxq->rxq_lock);
 
 	wm_itrs_writereg(sc, wmq);
