@@ -3551,7 +3551,6 @@ ixv_configure_interrupts(struct adapter *adapter)
 		return -1;
 	}
 
-	adapter->msix_mem = (void *)1; /* XXX */
 	aprint_normal_dev(dev,
 	    "Using MSI-X interrupts with %d vectors\n", msgs);
 	adapter->num_queues = queues;
