@@ -350,7 +350,7 @@ static int ixgbe_smart_speed = ixgbe_smart_speed_on;
  * MSI-X should be the default for best performance,
  * but this allows it to be forced off for testing.
  */
-static int ixgbe_enable_msix = 0;
+static int ixgbe_enable_msix = 1;
 SYSCTL_INT(_hw_ix, OID_AUTO, enable_msix, CTLFLAG_RDTUN, &ixgbe_enable_msix, 0,
     "Enable MSI-X interrupts");
 
@@ -5319,13 +5319,8 @@ ixgbe_legacy_irq(void *arg)
 		/* Disable queue 0 interrupt */
 		eims_disable |= 1UL << 0;
 
-	} else {
-		printf("%s: orig = %08x. enable = %08x. Was %08x\n", __func__,
-		    eims_orig,
-		    eims_enable | (eims_orig & IXGBE_EIMC_RTX_QUEUE),
-		    eims_enable | IXGBE_EIMC_RTX_QUEUE);
-		eims_enable |= eims_orig & IXGBE_EIMC_RTX_QUEUE;
-	}
+	} else
+		eims_enable |= IXGBE_EIMC_RTX_QUEUE;
 
 	ixgbe_intr_admin_common(adapter, eicr, &eims_disable);
 
