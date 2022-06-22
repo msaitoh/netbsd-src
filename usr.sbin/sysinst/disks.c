@@ -1,4 +1,4 @@
-/*	$NetBSD: disks.c,v 1.80 2022/05/16 18:44:38 martin Exp $ */
+/*	$NetBSD: disks.c,v 1.85 2022/06/20 18:06:28 martin Exp $ */
 
 /*
  * Copyright 1997 Piermont Information Systems Inc.
@@ -112,6 +112,8 @@ getfslabelname(uint f, uint f_version)
 		return "tmpfs";
 	else if (f == FS_MFS)
 		return "mfs";
+	else if (f == FS_EFI_SP)
+		return msg_string(MSG_fs_type_efi_sp);
 	else if (f == FS_BSDFFS && f_version > 0)
 		return f_version == 2 ?
 		    msg_string(MSG_fs_type_ffsv2) : msg_string(MSG_fs_type_ffs);
@@ -777,12 +779,13 @@ delete_scheme(struct pm_devs *p)
 }
 
 
-static void
+static bool
 convert_copy(struct disk_partitions *old_parts,
     struct disk_partitions *new_parts)
 {
 	struct disk_part_info oinfo, ninfo;
 	part_id i;
+	bool err = false;
 
 	for (i = 0; i < old_parts->num_part; i++) {
 		if (!old_parts->pscheme->get_part_info(old_parts, i, &oinfo))
@@ -797,17 +800,23 @@ convert_copy(struct disk_partitions *old_parts,
 					old_parts->pscheme->
 					    secondary_partitions(
 					    old_parts, oinfo.start, false);
-				if (sec_part)
-					convert_copy(sec_part, new_parts);
+				if (sec_part && !convert_copy(sec_part,
+				    new_parts))
+					err = true;
 			}
 			continue;
 		}
 
 		if (!new_parts->pscheme->adapt_foreign_part_info(new_parts,
-			    &ninfo, old_parts->pscheme, &oinfo))
+			    &ninfo, old_parts->pscheme, &oinfo)) {
+			err = true;
 			continue;
-		new_parts->pscheme->add_partition(new_parts, &ninfo, NULL);
+		}
+		if (!new_parts->pscheme->add_partition(new_parts, &ninfo,
+		    NULL))
+			err = true;
 	}
+	return !err;
 }
 
 bool
@@ -836,10 +845,10 @@ convert_scheme(struct pm_devs *p, bool is_boot_drive, const char **err_msg)
 		return false;
 	}
 
-	convert_copy(old_parts, new_parts);
-
-	if (new_parts->num_part == 0 && old_parts->num_part != 0) {
+	if (!convert_copy(old_parts, new_parts)) {
 		/* need to cleanup */
+		if (err_msg)
+			*err_msg = MSG_cvtscheme_error;
 		new_parts->pscheme->free(new_parts);
 		return false;
 	}
@@ -881,6 +890,7 @@ find_disks(const char *doingwhat, bool allow_cur_system)
 	int i = 0, dno, wno, skipped = 0;
 	int already_found, numdisks, selected_disk = -1;
 	int menu_no, w_menu_no;
+	size_t max_desc_len;
 	struct pm_devs *pm_i, *pm_last = NULL;
 	bool any_wedges = false;
 
@@ -895,6 +905,13 @@ find_disks(const char *doingwhat, bool allow_cur_system)
 	refresh();
 	/* Kill typeahead, it won't be what the user had in mind */
 	fpurge(stdin);
+	/*
+	 * we need space for the menu box and the row label,
+	 * this sums up to 7 characters.
+	 */
+	max_desc_len = getmaxx(stdscr) - 8;
+	if (max_desc_len >= __arraycount(disks[0].dd_descr))
+		max_desc_len = __arraycount(disks[0].dd_descr) - 1;
 
 	/*
 	 * partman_go: <0 - we want to see menu with extended partitioning
@@ -923,6 +940,7 @@ find_disks(const char *doingwhat, bool allow_cur_system)
 					any_wedges = true;
 					wedge_menu[wno].opt_name =
 					    disks[i].dd_descr;
+					disks[i].dd_descr[max_desc_len] = 0;
 					wedge_menu[wno].opt_flags = OPT_EXIT;
 					wedge_menu[wno].opt_action =
 					    set_menu_select;
@@ -931,6 +949,7 @@ find_disks(const char *doingwhat, bool allow_cur_system)
 				} else {
 					dsk_menu[dno].opt_name =
 					    disks[i].dd_descr;
+					disks[i].dd_descr[max_desc_len] = 0;
 					dsk_menu[dno].opt_flags = OPT_EXIT;
 					dsk_menu[dno].opt_action =
 					    set_menu_select;
@@ -963,6 +982,8 @@ find_disks(const char *doingwhat, bool allow_cur_system)
 				msg_fmt_display(MSG_ask_disk, "%s", doingwhat);
 				i = -1;
 				process_menu(menu_no, &i);
+				if (i == -1)
+					return -1;
 				if (disk_no[i] == -2) {
 					/* do wedges menu */
 					if (w_menu_no == -1) {
@@ -1201,6 +1222,27 @@ sort_part_usage_by_mount(const void *a, const void *b)
 	return (uintptr_t)a < (uintptr_t)b ? -1 : 1;
 }
 
+/*
+ * Are we able to newfs this type of file system?
+ * Keep in sync with switch labels below!
+ */
+bool
+can_newfs_fstype(unsigned int t)
+{
+	switch (t) {
+	case FS_APPLEUFS:
+	case FS_BSDFFS:
+	case FS_BSDLFS:
+	case FS_MSDOS:
+	case FS_EFI_SP:
+	case FS_SYSVBFS:
+	case FS_V7:
+	case FS_EX2FS:
+		return true;
+	}
+	return false;
+}
+
 int
 make_filesystems(struct install_partition_desc *install)
 {
@@ -1312,6 +1354,7 @@ make_filesystems(struct install_partition_desc *install)
 			fsname = "lfs";
 			break;
 		case FS_MSDOS:
+		case FS_EFI_SP:
 			asprintf(&newfs, "/sbin/newfs_msdos");
 			mnt_opts = "-tmsdos";
 			fsname = "msdos";

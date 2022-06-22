@@ -1,4 +1,4 @@
-/*	$NetBSD: err.c,v 1.167 2022/05/31 00:01:35 rillig Exp $	*/
+/*	$NetBSD: err.c,v 1.175 2022/06/21 21:18:30 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -37,10 +37,9 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID)
-__RCSID("$NetBSD: err.c,v 1.167 2022/05/31 00:01:35 rillig Exp $");
+__RCSID("$NetBSD: err.c,v 1.175 2022/06/21 21:18:30 rillig Exp $");
 #endif
 
-#include <sys/types.h>
 #include <stdarg.h>
 #include <stdlib.h>
 
@@ -53,7 +52,7 @@ int	nerr;
 int	sytxerr;
 
 
-const char *const msgs[] = {
+static const char *const msgs[] = {
 	"empty declaration",					      /* 0 */
 	"old style declaration; add 'int'",			      /* 1 */
 	"empty declaration",					      /* 2 */
@@ -67,7 +66,7 @@ const char *const msgs[] = {
 	"duplicate '%s'",					      /* 10 */
 	"bit-field initializer out of range",			      /* 11 */
 	"compiler takes size of function",			      /* 12 */
-	"incomplete enum type: %s",				      /* 13 */
+	"incomplete enum type '%s'",				      /* 13 */
 	"",							      /* 14 */
 	"function returns illegal type '%s'",			      /* 15 */
 	"array of function is illegal",				      /* 16 */
@@ -75,47 +74,47 @@ const char *const msgs[] = {
 	"illegal use of 'void'",				      /* 18 */
 	"void type for '%s'",					      /* 19 */
 	"negative array dimension (%d)",			      /* 20 */
-	"redeclaration of formal parameter %s",			      /* 21 */
+	"redeclaration of formal parameter '%s'",		      /* 21 */
 	"incomplete or misplaced function definition",		      /* 22 */
 	"undefined label '%s'",					      /* 23 */
-	"cannot initialize function: %s",			      /* 24 */
-	"cannot initialize typedef: %s",			      /* 25 */
-	"cannot initialize extern declaration: %s",		      /* 26 */
-	"redeclaration of %s",					      /* 27 */
-	"redefinition of %s",					      /* 28 */
-	"previously declared extern, becomes static: %s",	      /* 29 */
-	"redeclaration of %s; ANSI C requires static",		      /* 30 */
+	"cannot initialize function '%s'",			      /* 24 */
+	"cannot initialize typedef '%s'",			      /* 25 */
+	"cannot initialize extern declaration '%s'",		      /* 26 */
+	"redeclaration of '%s'",				      /* 27 */
+	"redefinition of '%s'",					      /* 28 */
+	"'%s' was previously declared extern, becomes static",	      /* 29 */
+	"redeclaration of '%s'; ANSI C requires static",	      /* 30 */
 	"'%s' has incomplete type '%s'",			      /* 31 */
-	"argument type defaults to 'int': %s",			      /* 32 */
-	"duplicate member name: %s",				      /* 33 */
+	"type of argument '%s' defaults to 'int'",		      /* 32 */
+	"duplicate member name '%s'",				      /* 33 */
 	"nonportable bit-field type '%s'",			      /* 34 */
 	"illegal bit-field type '%s'",				      /* 35 */
 	"illegal bit-field size: %d",				      /* 36 */
 	"zero size bit-field",					      /* 37 */
 	"function illegal in structure or union",		      /* 38 */
-	"zero sized array in struct is a C99 extension: %s",	      /* 39 */
+	"zero-sized array '%s' in struct is a C99 extension",	      /* 39 */
 	"",			/* never used */		      /* 40 */
 	"bit-field in union is very unusual",			      /* 41 */
 	"forward reference to enum type",			      /* 42 */
-	"redefinition hides earlier one: %s",			      /* 43 */
-	"declaration introduces new type in ANSI C: %s %s",	      /* 44 */
+	"redefinition of '%s' hides earlier one",		      /* 43 */
+	"declaration of '%s %s' introduces new type in ANSI C",	      /* 44 */
 	"base type is really '%s %s'",				      /* 45 */
 	"%s tag '%s' redeclared as %s",				      /* 46 */
 	"zero sized %s is a C99 feature",			      /* 47 */
-	"overflow in enumeration values: %s",			      /* 48 */
+	"enumeration value '%s' overflows",			      /* 48 */
 	"anonymous struct/union members is a C11 feature",	      /* 49 */
-	"a function is declared as an argument: %s",		      /* 50 */
+	"argument '%s' has function type, should be pointer",	      /* 50 */
 	"parameter mismatch: %d declared, %d defined",		      /* 51 */
-	"cannot initialize parameter: %s",			      /* 52 */
-	"declared argument %s is missing",			      /* 53 */
+	"cannot initialize parameter '%s'",			      /* 52 */
+	"declared argument '%s' is missing",			      /* 53 */
 	"trailing ',' prohibited in enum declaration",		      /* 54 */
 	"integral constant expression expected",		      /* 55 */
 	"integral constant too large",				      /* 56 */
-	"enumeration constant hides parameter: %s",		      /* 57 */
-	"type does not match prototype: %s",			      /* 58 */
-	"formal parameter lacks name: param #%d",		      /* 59 */
+	"enumeration constant '%s' hides parameter",		      /* 57 */
+	"type of '%s' does not match prototype",		      /* 58 */
+	"formal parameter #%d lacks name",			      /* 59 */
 	"void must be sole parameter",				      /* 60 */
-	"void parameter cannot have name: %s",			      /* 61 */
+	"void parameter '%s' cannot have name",			      /* 61 */
 	"function prototype parameters must have types",	      /* 62 */
 	"prototype does not match old-style definition",	      /* 63 */
 	"()-less function definition",				      /* 64 */
@@ -139,30 +138,30 @@ const char *const msgs[] = {
 	"\\x undefined in traditional C",			      /* 82 */
 	"storage class after type is obsolescent",		      /* 83 */
 	"ANSI C requires formal parameter before '...'",	      /* 84 */
-	"dubious tag declaration: %s %s",			      /* 85 */
-	"automatic hides external declaration: %s",		      /* 86 */
-	"static hides external declaration: %s",		      /* 87 */
-	"typedef hides external declaration: %s",		      /* 88 */
-	"typedef redeclared: %s",				      /* 89 */
-	"inconsistent redeclaration of extern: %s",		      /* 90 */
-	"declaration hides parameter: %s",			      /* 91 */
-	"inconsistent redeclaration of static: %s",		      /* 92 */
-	"dubious static function at block level: %s",		      /* 93 */
-	"function has illegal storage class: %s",		      /* 94 */
-	"declaration hides earlier one: %s",			      /* 95 */
-	"cannot dereference non-pointer type",			      /* 96 */
+	"dubious tag declaration '%s %s'",			      /* 85 */
+	"automatic '%s' hides external declaration",		      /* 86 */
+	"static '%s' hides external declaration",		      /* 87 */
+	"typedef '%s' hides external declaration",		      /* 88 */
+	"typedef '%s' redeclared",				      /* 89 */
+	"inconsistent redeclaration of extern '%s'",		      /* 90 */
+	"declaration of '%s' hides parameter",			      /* 91 */
+	"inconsistent redeclaration of static '%s'",		      /* 92 */
+	"dubious static function '%s' at block level",		      /* 93 */
+	"function '%s' has illegal storage class",		      /* 94 */
+	"declaration of '%s' hides earlier one",		      /* 95 */
+	"cannot dereference non-pointer type '%s'",		      /* 96 */
 	"suffix U is illegal in traditional C",			      /* 97 */
 	"suffixes F and L are illegal in traditional C",	      /* 98 */
 	"'%s' undefined",					      /* 99 */
-	"unary + is illegal in traditional C",			      /* 100 */
+	"unary '+' is illegal in traditional C",		      /* 100 */
 	"type '%s' does not have member '%s'",			      /* 101 */
-	"illegal member use: %s",				      /* 102 */
+	"illegal use of member '%s'",				      /* 102 */
 	"left operand of '.' must be struct or union, not '%s'",      /* 103 */
 	"left operand of '->' must be pointer to struct or union, not '%s'", /* 104 */
 	"non-unique member requires struct/union %s",		      /* 105 */
 	"left operand of '->' must be pointer",			      /* 106 */
-	"operands of '%s' have incompatible types (%s != %s)",	      /* 107 */
-	"operand of '%s' has invalid type (%s)",		      /* 108 */
+	"operands of '%s' have incompatible types '%s' and '%s'",     /* 107 */
+	"operand of '%s' has invalid type '%s'",		      /* 108 */
 	"void type illegal in expression",			      /* 109 */
 	"pointer to function is not allowed here",		      /* 110 */
 	"unacceptable operand of '%s'",				      /* 111 */
@@ -280,18 +279,18 @@ const char *const msgs[] = {
 	"end-of-loop code not reached",				      /* 223 */
 	"cannot recover from previous errors",			      /* 224 */
 	"static function called but not defined: %s()",		      /* 225 */
-	"static variable %s unused",				      /* 226 */
+	"static variable '%s' unused",				      /* 226 */
 	"const object %s should have initializer",		      /* 227 */
 	"function cannot return const or volatile object",	      /* 228 */
 	"converting '%s' to '%s' is questionable",		      /* 229 */
 	"nonportable character comparison '%s %d'",		      /* 230 */
 	"argument '%s' unused in function '%s'",		      /* 231 */
 	"label '%s' unused in function '%s'",			      /* 232 */
-	"struct %s never defined",				      /* 233 */
-	"union %s never defined",				      /* 234 */
-	"enum %s never defined",				      /* 235 */
-	"static function %s unused",				      /* 236 */
-	"redeclaration of formal parameter %s",			      /* 237 */
+	"struct '%s' never defined",				      /* 233 */
+	"union '%s' never defined",				      /* 234 */
+	"enum '%s' never defined",				      /* 235 */
+	"static function '%s' unused",				      /* 236 */
+	"redeclaration of formal parameter '%s'",		      /* 237 */
 	"initialization of union is illegal in traditional C",	      /* 238 */
 	"constant argument to '!'",				      /* 239 */
 	"assignment of different structures (%s != %s)",	      /* 240 */
@@ -314,16 +313,16 @@ const char *const msgs[] = {
 	"extra characters in lint comment",			      /* 257 */
 	"unterminated string constant",				      /* 258 */
 	"argument #%d is converted from '%s' to '%s' due to prototype", /* 259 */
-	"previous declaration of %s",				      /* 260 */
-	"previous definition of %s",				      /* 261 */
+	"previous declaration of '%s'",				      /* 260 */
+	"previous definition of '%s'",				      /* 261 */
 	"\\\" inside character constants undefined in traditional C", /* 262 */
 	"\\? undefined in traditional C",			      /* 263 */
 	"\\v undefined in traditional C",			      /* 264 */
 	"%s does not support 'long long'",			      /* 265 */
 	"'long double' is illegal in traditional C",		      /* 266 */
 	"shift equal to size of object",			      /* 267 */
-	"variable declared inline: %s",				      /* 268 */
-	"argument declared inline: %s",				      /* 269 */
+	"variable '%s' declared inline",			      /* 268 */
+	"argument '%s' declared inline",			      /* 269 */
 	"function prototypes are illegal in traditional C",	      /* 270 */
 	"switch expression must be of type 'int' in traditional C",   /* 271 */
 	"empty translation unit",				      /* 272 */
@@ -361,14 +360,14 @@ const char *const msgs[] = {
 	"ANSI C forbids conversion of %s to %s, arg #%d",	      /* 304 */
 	"ANSI C forbids conversion of %s to %s, op %s",		      /* 305 */
 	"constant truncated by conversion, op %s",		      /* 306 */
-	"static variable %s set but not used",			      /* 307 */
+	"static variable '%s' set but not used",		      /* 307 */
 	"invalid type for _Complex",				      /* 308 */
 	"extra bits set to 0 in conversion of '%s' to '%s', op '%s'", /* 309 */
 	"symbol renaming can't be used on function arguments",	      /* 310 */
 	"symbol renaming can't be used on automatic variables",	      /* 311 */
 	"%s does not support // comments",			      /* 312 */
 	"struct or union member name in initializer is a C99 feature",/* 313 */
-	"%s is not a structure or a union",			      /* 314 */
+	"",		/* never used */			      /* 314 */
 	"GCC style struct or union member name in initializer",	      /* 315 */
 	"__FUNCTION__/__PRETTY_FUNCTION__ is a GCC extension",	      /* 316 */
 	"__func__ is a C99 feature",				      /* 317 */

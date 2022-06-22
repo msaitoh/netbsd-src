@@ -1,4 +1,4 @@
-/*	$NetBSD: tree.c,v 1.452 2022/05/30 08:14:52 rillig Exp $	*/
+/*	$NetBSD: tree.c,v 1.458 2022/06/21 22:21:49 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -37,7 +37,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID)
-__RCSID("$NetBSD: tree.c,v 1.452 2022/05/30 08:14:52 rillig Exp $");
+__RCSID("$NetBSD: tree.c,v 1.458 2022/06/21 22:21:49 rillig Exp $");
 #endif
 
 #include <float.h>
@@ -48,7 +48,6 @@ __RCSID("$NetBSD: tree.c,v 1.452 2022/05/30 08:14:52 rillig Exp $");
 #include <string.h>
 
 #include "lint1.h"
-#include "cgram.h"
 
 typedef struct integer_constraints {
 	int64_t		smin;	/* signed minimum */
@@ -563,11 +562,11 @@ struct_or_union_member(tnode_t *tn, op_t op, sym_t *msym)
 	str = NULL;
 	t = (tp = tn->tn_type)->t_tspec;
 	if (op == POINT) {
-		if (t == STRUCT || t == UNION)
+		if (is_struct_or_union(t))
 			str = tp->t_str;
 	} else if (op == ARROW && t == PTR) {
 		t = (tp = tp->t_subt)->t_tspec;
-		if (t == STRUCT || t == UNION)
+		if (is_struct_or_union(t))
 			str = tp->t_str;
 	}
 
@@ -643,10 +642,10 @@ struct_or_union_member(tnode_t *tn, op_t op, sym_t *msym)
 	 */
 	if (str != NULL) {
 		if (eq && !allow_c90) {
-			/* illegal member use: %s */
+			/* illegal use of member '%s' */
 			warning(102, msym->s_name);
 		} else {
-			/* illegal member use: %s */
+			/* illegal use of member '%s' */
 			error(102, msym->s_name);
 		}
 		return msym;
@@ -726,7 +725,7 @@ build_binary(tnode_t *ln, op_t op, bool sys, tnode_t *rn)
 	 * Apply class conversions to the left operand, but only if its
 	 * value is needed or it is compared with zero.
 	 */
-	if (mp->m_value_context || mp->m_requires_bool)
+	if (mp->m_value_context || mp->m_compares_with_zero)
 		ln = cconv(ln);
 	/*
 	 * The right operand is almost always in a test or value context,
@@ -745,7 +744,7 @@ build_binary(tnode_t *ln, op_t op, bool sys, tnode_t *rn)
 	if (mp->m_comparison)
 		check_integer_comparison(op, ln, rn);
 
-	if (mp->m_value_context || mp->m_requires_bool)
+	if (mp->m_value_context || mp->m_compares_with_zero)
 		ln = promote(op, false, ln);
 	if (mp->m_binary && op != ARROW && op != POINT &&
 	    op != ASSIGN && op != RETURN && op != INIT) {
@@ -854,7 +853,7 @@ build_binary(tnode_t *ln, op_t op, bool sys, tnode_t *rn)
 	 * it is compared with zero and if this operand is a constant.
 	 */
 	if (hflag && !constcond_flag &&
-	    mp->m_requires_bool &&
+	    mp->m_compares_with_zero &&
 	    (ln->tn_op == CON ||
 	     ((mp->m_binary && op != QUEST) && rn->tn_op == CON)) &&
 	    /* XXX: rn->tn_system_dependent should be checked as well */
@@ -866,7 +865,7 @@ build_binary(tnode_t *ln, op_t op, bool sys, tnode_t *rn)
 	/* Fold if the operator requires it */
 	if (mp->m_fold_constant_operands) {
 		if (ln->tn_op == CON && (!mp->m_binary || rn->tn_op == CON)) {
-			if (mp->m_requires_bool) {
+			if (mp->m_compares_with_zero) {
 				ntn = fold_bool(ntn);
 			} else if (is_floating(ntn->tn_type->t_tspec)) {
 				ntn = fold_float(ntn);
@@ -1077,12 +1076,12 @@ typeok_address(const mod_t *mp,
 }
 
 static bool
-typeok_indir(tspec_t t)
+typeok_indir(const type_t *tp, tspec_t t)
 {
-	/* until now there were no type checks for this operator */
+
 	if (t != PTR) {
-		/* cannot dereference non-pointer type */
-		error(96);
+		/* cannot dereference non-pointer type '%s' */
+		error(96, type_name(tp));
 		return false;
 	}
 	return true;
@@ -1093,7 +1092,7 @@ typeok_plus(op_t op,
 	    const type_t *ltp, tspec_t lt,
 	    const type_t *rtp, tspec_t rt)
 {
-	/* operands have scalar types (checked above) */
+	/* operands have scalar types (checked in typeok) */
 	if ((lt == PTR && !is_integer(rt)) || (rt == PTR && !is_integer(lt))) {
 		warn_incompatible_types(op, ltp, lt, rtp, rt);
 		return false;
@@ -1106,11 +1105,9 @@ typeok_minus(op_t op,
 	     const type_t *ltp, tspec_t lt,
 	     const type_t *rtp, tspec_t rt)
 {
-	/* operands have scalar types (checked above) */
-	if (lt == PTR && (!is_integer(rt) && rt != PTR)) {
-		warn_incompatible_types(op, ltp, lt, rtp, rt);
-		return false;
-	} else if (rt == PTR && lt != PTR) {
+	/* operands have scalar types (checked in typeok) */
+	if ((lt == PTR && rt != PTR && !is_integer(rt)) ||
+	    (lt != PTR && rt == PTR)) {
 		warn_incompatible_types(op, ltp, lt, rtp, rt);
 		return false;
 	}
@@ -1133,7 +1130,7 @@ typeok_shr(const mod_t *mp,
 	olt = before_conversion(ln)->tn_type->t_tspec;
 	ort = before_conversion(rn)->tn_type->t_tspec;
 
-	/* operands have integer types (checked above) */
+	/* operands have integer types (checked in typeok) */
 	if (pflag && !is_uinteger(olt)) {
 		/*
 		 * The left operand is signed. This means that
@@ -1272,7 +1269,7 @@ typeok_colon_pointer(const mod_t *mp, const type_t *ltp, const type_t *rtp)
 	tspec_t rst = rstp->t_tspec;
 
 	if ((lst == VOID && rst == FUNC) || (lst == FUNC && rst == VOID)) {
-		/* (void *)0 handled above */
+		/* (void *)0 is handled in typeok_colon */
 		/* TODO: C99 behaves like C90 here. */
 		if (!allow_trad && !allow_c99)
 			/* ANSI C forbids conversion of %s to %s, op %s */
@@ -1349,7 +1346,7 @@ typeok_assign(op_t op, const tnode_t *ln, const type_t *ltp, tspec_t lt)
 		/* %soperand of '%s' must be lvalue */
 		error(114, "left ", op_name(op));
 		return false;
-	} else if (ltp->t_const || ((lt == STRUCT || lt == UNION) &&
+	} else if (ltp->t_const || (is_struct_or_union(lt) &&
 				    has_constant_member(ltp))) {
 		if (allow_c90)
 			/* %soperand of '%s' must be modifiable lvalue */
@@ -1414,7 +1411,7 @@ typeok_op(op_t op, const mod_t *mp, int arg,
 	case DECAFT:
 		return typeok_incdec(op, ln, ltp);
 	case INDIR:
-		return typeok_indir(lt);
+		return typeok_indir(ltp, lt);
 	case ADDR:
 		return typeok_address(mp, ln, ltp, lt);
 	case PLUS:
@@ -1863,7 +1860,7 @@ check_assign_types_compatible(op_t op, int arg,
 	if (is_arithmetic(lt) && (is_arithmetic(rt) || rt == BOOL))
 		return true;
 
-	if ((lt == STRUCT || lt == UNION) && (rt == STRUCT || rt == UNION))
+	if (is_struct_or_union(lt) && is_struct_or_union(rt))
 		/* both are struct or union */
 		return ltp->t_str == rtp->t_str;
 
@@ -2509,7 +2506,7 @@ should_warn_about_pointer_cast(const type_t *nstp, tspec_t nst,
 	if (is_incomplete(nstp) || is_incomplete(ostp))
 		return false;
 
-	if ((nst == STRUCT || nst == UNION) && nstp->t_str != ostp->t_str)
+	if (is_struct_or_union(nst) && nstp->t_str != ostp->t_str)
 		return true;
 
 	if (nst == CHAR || nst == UCHAR)
@@ -2889,8 +2886,7 @@ warn_incompatible_types(op_t op,
 		/* void type illegal in expression */
 		error(109);
 	} else if (op == ASSIGN) {
-		if ((lt == STRUCT || lt == UNION) &&
-		    (rt == STRUCT || rt == UNION)) {
+		if (is_struct_or_union(lt) && is_struct_or_union(rt)) {
 			/* assignment of different structures (%s != %s) */
 			error(240, tspec_name(lt), tspec_name(rt));
 		} else {
@@ -2898,12 +2894,12 @@ warn_incompatible_types(op_t op,
 			error(171, type_name(ltp), type_name(rtp));
 		}
 	} else if (mp->m_binary) {
-		/* operands of '%s' have incompatible types (%s != %s) */
+		/* operands of '%s' have incompatible types '%s' and '%s' */
 		error(107, mp->m_name, tspec_name(lt), tspec_name(rt));
 	} else {
 		lint_assert(rt == NOTSPEC);
-		/* operand of '%s' has invalid type (%s) */
-		error(108, mp->m_name, tspec_name(lt));
+		/* operand of '%s' has invalid type '%s' */
+		error(108, mp->m_name, type_name(ltp));
 	}
 }
 
@@ -2923,7 +2919,7 @@ warn_incompatible_pointers(const mod_t *mp,
 	lt = ltp->t_subt->t_tspec;
 	rt = rtp->t_subt->t_tspec;
 
-	if ((lt == STRUCT || lt == UNION) && (rt == STRUCT || rt == UNION)) {
+	if (is_struct_or_union(lt) && is_struct_or_union(rt)) {
 		if (mp == NULL) {
 			/* illegal structure pointer combination */
 			warning(244);
@@ -3218,9 +3214,9 @@ build_colon(bool sys, tnode_t *ln, tnode_t *rn)
 		tp = ln->tn_type;
 	} else if (lt == VOID || rt == VOID) {
 		tp = gettyp(VOID);
-	} else if (lt == STRUCT || lt == UNION) {
+	} else if (is_struct_or_union(lt)) {
 		/* Both types must be identical. */
-		lint_assert(rt == STRUCT || rt == UNION);
+		lint_assert(is_struct_or_union(rt));
 		lint_assert(ln->tn_type->t_str == rn->tn_type->t_str);
 		if (is_incomplete(ln->tn_type)) {
 			/* unknown operand size, op %s */
@@ -3854,7 +3850,7 @@ cast(tnode_t *tn, type_t *tp)
 		/* Casting to a struct is an undocumented GCC extension. */
 		if (!(allow_gcc && nt == STRUCT))
 			goto invalid_cast;
-	} else if (ot == STRUCT || ot == UNION) {
+	} else if (is_struct_or_union(ot)) {
 		goto invalid_cast;
 	} else if (ot == VOID) {
 		/* improper cast of void expression */
@@ -3994,7 +3990,7 @@ check_function_arguments(type_t *ftp, tnode_t *args)
 			/* void expressions may not be arguments, arg #%d */
 			error(151, n);
 			return NULL;
-		} else if ((at == STRUCT || at == UNION) &&
+		} else if (is_struct_or_union(at) &&
 			   is_incomplete(arg->tn_left->tn_type)) {
 			/* argument cannot have unknown size, arg #%d */
 			error(152, n);
@@ -4392,7 +4388,7 @@ check_expr_misc(const tnode_t *tn, bool vctx, bool cond,
 		return;
 
 	cvctx = mp->m_value_context;
-	ccond = mp->m_requires_bool;
+	ccond = mp->m_compares_with_zero;
 	eq = mp->m_warn_if_operand_eq &&
 	     !ln->tn_parenthesized &&
 	     rn != NULL && !rn->tn_parenthesized;

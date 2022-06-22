@@ -1,4 +1,4 @@
-[//]: # ($NetBSD: README.md,v 1.4 2022/04/16 20:18:51 rillig Exp $)
+[//]: # ($NetBSD: README.md,v 1.6 2022/06/17 18:54:53 rillig Exp $)
 
 # Introduction
 
@@ -59,9 +59,9 @@ it needs to be copied using `block_dup_type` or `expr_dup_type`.
 
 ## tnode_t
 
-When lint parses an expressions,
+When lint parses an expression,
 it builds a tree of nodes representing the AST.
-Each node has an operator, which defines which other members may be accessed.
+Each node has an operator that defines which other members may be accessed.
 The operators and their properties are defined in `ops.def`.
 Some examples for operators:
 
@@ -160,7 +160,9 @@ The comment `/* expect+1: ... */` expects a diagnostic to be generated for the
 code 1 line below, `/* expect-5: ... */` expects a diagnostic to be generated
 for the code 5 lines above.
 Each `expect` comment must be in a single line.
-There may be other code or comments in the same line.
+At the start and the end of the comment, the placeholder `...` stands for an
+arbitrary sequence of characters.
+There may be other code or comments in the same line of the `.c` file.
 
 Each diagnostic has its own test `msg_???.c` that triggers the corresponding
 diagnostic.

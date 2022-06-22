@@ -1,4 +1,4 @@
-/*	$NetBSD: disklabel.c,v 1.44 2021/08/08 21:50:10 andvar Exp $	*/
+/*	$NetBSD: disklabel.c,v 1.48 2022/06/21 16:08:25 martin Exp $	*/
 
 /*
  * Copyright 2018 The NetBSD Foundation, Inc.
@@ -520,6 +520,8 @@ disklabel_delete(struct disk_partitions *arg, part_id id,
 			if (parts->install_target ==
 			    parts->l.d_partitions[part].p_offset)
 				parts->install_target = -1;
+			parts->dp.free_space +=
+			    parts->l.d_partitions[part].p_size;
 			parts->l.d_partitions[part].p_size = 0;
 			parts->l.d_partitions[part].p_offset = 0;
 			parts->l.d_partitions[part].p_fstype = FS_UNUSED;
@@ -780,7 +782,8 @@ disklabel_get_part_info(const struct disk_partitions *arg, part_id id,
 			    parts->l.d_partitions[part].p_fstype == FS_UNUSED)
 				info->flags |=
 				    PTI_PSCHEME_INTERNAL|PTI_RAW_PART;
-			if (info->start == parts->install_target)
+			if (info->start == parts->install_target &&
+			    parts->l.d_partitions[part].p_fstype != FS_UNUSED)
 				info->flags |= PTI_INSTALL_TARGET;
 #if RAW_PART == 3
 			if (part == (RAW_PART-1) && parts->dp.parent != NULL &&
@@ -821,6 +824,16 @@ disklabel_set_part_info(struct disk_partitions *arg, part_id id,
 			was_inst_target = parts->l.d_partitions[part].p_offset
 			    == parts->install_target;
 			parts->l.d_partitions[part].p_offset = info->start;
+			if (part != RAW_PART
+#if RAW_PART == 3
+				&& (part != RAW_PART-1 ||
+				    parts->dp.parent == NULL)
+#endif
+							) {
+				parts->dp.free_space +=
+				    parts->l.d_partitions[part].p_size -
+				    info->size;
+			}
 			parts->l.d_partitions[part].p_size = info->size;
 			parts->l.d_partitions[part].p_fstype =
 			    dl_part_type_from_generic(info->nat_type);
@@ -939,7 +952,8 @@ disklabel_can_add_partition(const struct disk_partitions *arg)
 	if (disklabel_get_free_spaces_internal(parts, &space, 1,
 	    parts->ptn_alignment, parts->ptn_alignment, 0, -1) < 1)
 		return false;
-
+	if (parts->l.d_npartitions < dl_maxpart)
+		return true;
 	for (i = 0; i < parts->l.d_npartitions; i++) {
 		if (i == RAW_PART)
 			continue;

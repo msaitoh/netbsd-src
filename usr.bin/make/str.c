@@ -1,4 +1,4 @@
-/*	$NetBSD: str.c,v 1.91 2022/05/13 21:42:30 rillig Exp $	*/
+/*	$NetBSD: str.c,v 1.93 2022/06/11 09:24:07 rillig Exp $	*/
 
 /*
  * Copyright (c) 1988, 1989, 1990, 1993
@@ -71,7 +71,7 @@
 #include "make.h"
 
 /*	"@(#)str.c	5.8 (Berkeley) 6/1/90"	*/
-MAKE_RCSID("$NetBSD: str.c,v 1.91 2022/05/13 21:42:30 rillig Exp $");
+MAKE_RCSID("$NetBSD: str.c,v 1.93 2022/06/11 09:24:07 rillig Exp $");
 
 
 static HashTable interned_strings;
@@ -219,7 +219,7 @@ Substring_Words(const char *str, bool expand)
 				if (word_start == NULL)
 					word_start = word_end;
 				*word_end++ = '\\';
-				/* catch '\' at end of line */
+				/* catch lonely '\' at end of string */
 				if (str_p[1] == '\0')
 					continue;
 				ch = *++str_p;
@@ -317,16 +317,14 @@ in_range(char e1, char c, char e2)
  * The following special characters are known *?\[] (as in fnmatch(3)).
  *
  * XXX: this function does not detect or report malformed patterns.
+ *
+ * See varmod-match.mk for examples and edge cases.
  */
 bool
 Str_Match(const char *str, const char *pat)
 {
-	for (;;) {
-		if (*pat == '\0')
-			return *str == '\0';
-
-		/* A '*' in the pattern matches any substring. */
-		if (*pat == '*') {
+	for (; *pat != '\0'; pat++, str++) {
+		if (*pat == '*') {	/* match any substring */
 			pat++;
 			while (*pat == '*')
 				pat++;
@@ -341,17 +339,10 @@ Str_Match(const char *str, const char *pat)
 		if (*str == '\0')
 			return false;
 
-		/* A '?' in the pattern matches any single character. */
-		if (*pat == '?')
-			goto thisCharOK;
+		if (*pat == '?')	/* match any single character */
+			continue;
 
-		/*
-		 * A '[' in the pattern matches a character from a list.
-		 * The '[' is followed by the list of acceptable characters,
-		 * or by ranges (two characters separated by '-'). In these
-		 * character lists, the backslash is an ordinary character.
-		 */
-		if (*pat == '[') {
+		if (*pat == '[') {	/* match a character from a list */
 			bool neg = pat[1] == '^';
 			pat += neg ? 2 : 1;
 
@@ -361,15 +352,6 @@ Str_Match(const char *str, const char *pat)
 						break;
 					return false;
 				}
-				/*
-				 * XXX: This naive comparison makes the
-				 * control flow of the pattern parser
-				 * dependent on the actual value of the
-				 * string.  This is unpredictable.  It may be
-				 * though that the code only looks wrong but
-				 * actually all code paths result in the same
-				 * behavior.  This needs further tests.
-				 */
 				if (*pat == *str)
 					break;
 				if (pat[1] == '-') {
@@ -387,26 +369,16 @@ Str_Match(const char *str, const char *pat)
 				pat++;
 			if (*pat == '\0')
 				pat--;
-			goto thisCharOK;
+			continue;
 		}
 
-		/*
-		 * A backslash in the pattern matches the character following
-		 * it exactly.
-		 */
-		if (*pat == '\\') {
+		if (*pat == '\\')	/* match the next character exactly */
 			pat++;
-			if (*pat == '\0')
-				return false;
-		}
 
 		if (*pat != *str)
 			return false;
-
-	thisCharOK:
-		pat++;
-		str++;
 	}
+	return *str == '\0';
 }
 
 void

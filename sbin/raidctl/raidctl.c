@@ -1,4 +1,4 @@
-/*      $NetBSD: raidctl.c,v 1.74 2021/08/02 20:31:15 oster Exp $   */
+/*      $NetBSD: raidctl.c,v 1.78 2022/06/14 08:06:18 kre Exp $   */
 
 /*-
  * Copyright (c) 1996, 1997, 1998 The NetBSD Foundation, Inc.
@@ -39,7 +39,7 @@
 #include <sys/cdefs.h>
 
 #ifndef lint
-__RCSID("$NetBSD: raidctl.c,v 1.74 2021/08/02 20:31:15 oster Exp $");
+__RCSID("$NetBSD: raidctl.c,v 1.78 2022/06/14 08:06:18 kre Exp $");
 #endif
 
 
@@ -63,6 +63,8 @@ __RCSID("$NetBSD: raidctl.c,v 1.74 2021/08/02 20:31:15 oster Exp $");
 #include <dev/raidframe/raidframeio.h>
 #include "rf_configure.h"
 #include "prog_ops.h"
+
+#define	CONFIGURE_TEST	1	/* must be different from any raidframe ioctl */
 
 void	do_ioctl(int, u_long, void *, const char *);
 static  void rf_configure(int, char*, int);
@@ -133,9 +135,9 @@ main(int argc,char *argv[])
 	last_unit = 0;
 	openmode = O_RDWR;	/* default to read/write */
 
-	while ((ch = getopt(argc, argv, "a:A:Bc:C:f:F:g:GiI:l:LmM:r:R:sSpPuU:v"))
-	       != -1)
-		switch(ch) {
+	while ((ch = getopt(argc, argv,
+	    "a:A:Bc:C:f:F:g:GiI:l:LmM:r:R:sSpPt:uU:v")) != -1)
+		switch (ch) {
 		case 'a':
 			action = RAIDFRAME_ADD_HOT_SPARE;
 			get_comp(component, optarg, sizeof(component));
@@ -223,6 +225,16 @@ main(int argc,char *argv[])
 			while (i < 3)
 				parityparams[i++] = 0;
 			break;
+		case 'p':
+			action = RAIDFRAME_CHECK_PARITY;
+			openmode = O_RDONLY;
+			num_options++;
+			break;
+		case 'P':
+			action = RAIDFRAME_CHECK_PARITY;
+			do_rewrite = 1;
+			num_options++;
+			break;
 		case 'r':
 			action = RAIDFRAME_REMOVE_HOT_SPARE;
 			get_comp(component, optarg, sizeof(component));
@@ -243,14 +255,10 @@ main(int argc,char *argv[])
 			openmode = O_RDONLY;
 			num_options++;
 			break;
-		case 'p':
-			action = RAIDFRAME_CHECK_PARITY;
-			openmode = O_RDONLY;
-			num_options++;
-			break;
-		case 'P':
-			action = RAIDFRAME_CHECK_PARITY;
-			do_rewrite = 1;
+		case 't':
+			action = CONFIGURE_TEST;
+			strlcpy(config_filename, optarg,
+			    sizeof(config_filename));
 			num_options++;
 			break;
 		case 'u':
@@ -276,7 +284,20 @@ main(int argc,char *argv[])
 	argc -= optind;
 	argv += optind;
 
-	if ((num_options > 1) || (argc == 0)) 
+	if (num_options > 1)
+		usage();
+
+	if (action == CONFIGURE_TEST) {
+		RF_Config_t cfg;
+
+		if (argc != 0)
+			usage();
+		if (rf_MakeConfig(config_filename, &cfg) != 0)
+			exit(1);
+		exit(0);;
+	}
+
+	if (argc != 1)
 		usage();
 
 	if (prog_init && prog_init() == -1)
@@ -294,7 +315,7 @@ main(int argc,char *argv[])
 
 	raidID = DISKUNIT(st.st_rdev);
 
-	switch(action) {
+	switch (action) {
 	case RAIDFRAME_ADD_HOT_SPARE:
 		add_hot_spare(fd, component);
 		break;
@@ -490,7 +511,8 @@ rf_get_device_status(int fd)
 			} else {
 				printf("%s status is: %s.  Skipping label.\n",
 				       device_config.spares[i].devname,
-				       device_status(device_config.spares[i].status));
+				       device_status(
+					   device_config.spares[i].status));
 			}		
 		}
 	}
@@ -636,14 +658,9 @@ rf_output_configuration(int fd, const char *name)
 	nspares = MIN(device_config.nspares,
 	                __arraycount(device_config.spares));
 	
-	/*
-	 * After NetBSD 9, convert this to not output the numRow's value,
-	 * which is no longer required or ever used.
-	 */
 	printf("START array\n");
-	printf("# numRow numCol numSpare\n");
-	printf("%d %d %d\n", 1, device_config.cols,
-	    device_config.nspares);
+	printf("# numCol numSpare\n");
+	printf("%d %d\n", device_config.cols, device_config.nspares);
 	printf("\n");
 
 	printf("START disks\n");
@@ -966,7 +983,8 @@ check_parity(int fd, int do_rewrite, char *dev_name)
 				     get started. */
 			if (verbose) {
 				printf("Parity Re-write status:\n");
-				do_meter(fd, RAIDFRAME_CHECK_PARITYREWRITE_STATUS_EXT);
+				do_meter(fd,
+				    RAIDFRAME_CHECK_PARITYREWRITE_STATUS_EXT);
 			} else {
 				do_ioctl(fd, 
 					 RAIDFRAME_CHECK_PARITYREWRITE_STATUS, 
@@ -975,13 +993,14 @@ check_parity(int fd, int do_rewrite, char *dev_name)
 					 );
 				while( percent_done < 100 ) {
 					sleep(3); /* wait a bit... */
-					do_ioctl(fd, RAIDFRAME_CHECK_PARITYREWRITE_STATUS, 
-						 &percent_done, "RAIDFRAME_CHECK_PARITYREWRITE_STATUS");
+					do_ioctl(fd,
+					   RAIDFRAME_CHECK_PARITYREWRITE_STATUS,
+						 &percent_done,
+				    "RAIDFRAME_CHECK_PARITYREWRITE_STATUS");
 				}
 
 			}
-			       printf("%s: Parity Re-write complete\n",
-				      dev_name);
+			printf("%s: Parity Re-write complete\n", dev_name);
 		} else {
 			/* parity is wrong, and is not being fixed.
 			   Exit w/ an error. */
@@ -1175,7 +1194,8 @@ get_time_string(char *string, size_t len, int simple_time)
 #endif
 		
 		if (hours > 0) {
-			snprintf(hours_buffer,sizeof hours_buffer,"%02d:",hours);
+			snprintf(hours_buffer,sizeof hours_buffer,
+			    "%02d:",hours);
 		} else {
 			snprintf(hours_buffer,sizeof hours_buffer,"   ");
 		}
@@ -1195,7 +1215,9 @@ usage(void)
 {
 	const char *progname = getprogname();
 
-	fprintf(stderr, "usage: %s [-v] -A [yes | no | softroot | hardroot] dev\n", progname);
+	fprintf(stderr,
+	    "usage: %s [-v] -A [yes | no | softroot | hardroot] dev\n",
+	    progname);
 	fprintf(stderr, "       %s [-v] -a component dev\n", progname);
 	fprintf(stderr, "       %s [-v] -B dev\n", progname);
 	fprintf(stderr, "       %s [-v] -C config_file dev\n", progname);
@@ -1215,6 +1237,7 @@ usage(void)
 	fprintf(stderr, "       %s [-v] -r component dev\n", progname); 
 	fprintf(stderr, "       %s [-v] -S dev\n", progname);
 	fprintf(stderr, "       %s [-v] -s dev\n", progname);
+	fprintf(stderr, "       %s [-v] -t config_file\n", progname);
 	fprintf(stderr, "       %s [-v] -U unit dev\n", progname);
 	fprintf(stderr, "       %s [-v] -u dev\n", progname);
 	exit(1);

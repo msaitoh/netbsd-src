@@ -1,4 +1,4 @@
-/*	$NetBSD: var.c,v 1.1021 2022/05/14 12:25:16 rillig Exp $	*/
+/*	$NetBSD: var.c,v 1.1025 2022/06/14 19:57:56 rillig Exp $	*/
 
 /*
  * Copyright (c) 1988, 1989, 1990, 1993
@@ -139,7 +139,7 @@
 #include "metachar.h"
 
 /*	"@(#)var.c	8.3 (Berkeley) 3/19/94" */
-MAKE_RCSID("$NetBSD: var.c,v 1.1021 2022/05/14 12:25:16 rillig Exp $");
+MAKE_RCSID("$NetBSD: var.c,v 1.1025 2022/06/14 19:57:56 rillig Exp $");
 
 /*
  * Variables are defined using one of the VAR=value assignments.  Their
@@ -4138,15 +4138,15 @@ ParseVarname(const char **pp, char startc, char endc,
 	*pp = p;
 }
 
-static VarParseResult
-ValidShortVarname(char varname, const char *start)
+static bool
+IsShortVarnameValid(char varname, const char *start)
 {
 	if (varname != '$' && varname != ':' && varname != '}' &&
 	    varname != ')' && varname != '\0')
-		return VPR_OK;
+		return true;
 
 	if (!opts.strict)
-		return VPR_ERR;	/* XXX: Missing error message */
+		return false;	/* XXX: Missing error message */
 
 	if (varname == '$')
 		Parse_Error(PARSE_FATAL,
@@ -4157,7 +4157,7 @@ ValidShortVarname(char varname, const char *start)
 		Parse_Error(PARSE_FATAL,
 		    "Invalid variable name '%c', at \"%s\"", varname, start);
 
-	return VPR_ERR;
+	return false;
 }
 
 /*
@@ -4172,12 +4172,11 @@ ParseVarnameShort(char varname, const char **pp, GNode *scope,
 {
 	char name[2];
 	Var *v;
-	VarParseResult vpr;
+	const char *val;
 
-	vpr = ValidShortVarname(varname, *pp);
-	if (vpr != VPR_OK) {
-		(*pp)++;
-		*out_false_res = vpr;
+	if (!IsShortVarnameValid(varname, *pp)) {
+		(*pp)++;	/* only skip the '$' */
+		*out_false_res = VPR_ERR;
 		*out_false_val = var_Error;
 		return false;
 	}
@@ -4185,41 +4184,39 @@ ParseVarnameShort(char varname, const char **pp, GNode *scope,
 	name[0] = varname;
 	name[1] = '\0';
 	v = VarFind(name, scope, true);
-	if (v == NULL) {
-		const char *val;
-		*pp += 2;
+	if (v != NULL) {
+		/* No need to advance *pp, the calling code handles this. */
+		*out_true_var = v;
+		return true;
+	}
 
-		val = UndefinedShortVarValue(varname, scope);
-		if (val == NULL)
-			val = emode == VARE_UNDEFERR
-			    ? var_Error : varUndefined;
+	*pp += 2;
 
-		if (opts.strict && val == var_Error) {
-			Parse_Error(PARSE_FATAL,
-			    "Variable \"%s\" is undefined", name);
-			*out_false_res = VPR_ERR;
-			*out_false_val = val;
-			return false;
-		}
+	val = UndefinedShortVarValue(varname, scope);
+	if (val == NULL)
+		val = emode == VARE_UNDEFERR ? var_Error : varUndefined;
 
-		/*
-		 * XXX: This looks completely wrong.
-		 *
-		 * If undefined expressions are not allowed, this should
-		 * rather be VPR_ERR instead of VPR_UNDEF, together with an
-		 * error message.
-		 *
-		 * If undefined expressions are allowed, this should rather
-		 * be VPR_UNDEF instead of VPR_OK.
-		 */
-		*out_false_res = emode == VARE_UNDEFERR
-		    ? VPR_UNDEF : VPR_OK;
+	if (opts.strict && val == var_Error) {
+		Parse_Error(PARSE_FATAL,
+		    "Variable \"%s\" is undefined", name);
+		*out_false_res = VPR_ERR;
 		*out_false_val = val;
 		return false;
 	}
 
-	*out_true_var = v;
-	return true;
+	/*
+	 * XXX: This looks completely wrong.
+	 *
+	 * If undefined expressions are not allowed, this should
+	 * rather be VPR_ERR instead of VPR_UNDEF, together with an
+	 * error message.
+	 *
+	 * If undefined expressions are allowed, this should rather
+	 * be VPR_UNDEF instead of VPR_OK.
+	 */
+	*out_false_res = emode == VARE_UNDEFERR ? VPR_UNDEF : VPR_OK;
+	*out_false_val = val;
+	return false;
 }
 
 /* Find variables like @F or <D. */
@@ -4523,8 +4520,7 @@ Var_Parse(const char **pp, GNode *scope, VarEvalMode emode, FStr *out_val)
 	if (v->inUse) {
 		if (scope->fname != NULL) {
 			fprintf(stderr, "In a command near ");
-			PrintLocation(stderr, false,
-			    scope->fname, scope->lineno);
+			PrintLocation(stderr, false, scope);
 		}
 		Fatal("Variable %s is recursive.", v->name.str);
 	}

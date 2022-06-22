@@ -1,7 +1,7 @@
-/*	$NetBSD: msg_086.c,v 1.3 2021/01/31 11:12:07 rillig Exp $	*/
+/*	$NetBSD: msg_086.c,v 1.5 2022/06/20 21:13:36 rillig Exp $	*/
 # 3 "msg_086.c"
 
-// Test for message: automatic hides external declaration: %s [86]
+// Test for message: automatic '%s' hides external declaration [86]
 
 /* lint1-flags: -S -g -h -w */
 
@@ -10,7 +10,8 @@ extern int identifier;
 int
 local_auto(void)
 {
-	int identifier = 3;	/* expect: 86 */
+	/* expect+1: warning: automatic 'identifier' hides external declaration [86] */
+	int identifier = 3;
 	return identifier;
 }
 

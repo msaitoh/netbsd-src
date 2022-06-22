@@ -1,5 +1,5 @@
 #! /bin/sh
-# $NetBSD: accept.sh,v 1.9 2022/04/16 09:22:25 rillig Exp $
+# $NetBSD: accept.sh,v 1.11 2022/06/19 11:50:42 rillig Exp $
 #
 # Copyright (c) 2021 The NetBSD Foundation, Inc.
 # All rights reserved.
@@ -28,21 +28,21 @@
 
 # usage: accept.sh <pattern>...
 #
-#	Accept the actual output from running the lint tests and save them
-#	back into the .exp files.
+#	Run one or more lint tests, saving their output in the corresponding
+#	.exp files, for incorporating the messages into the .c files as
+#	'expect' comments.
 
 set -eu
 
 : "${archsubdir:=$(make -v ARCHSUBDIR)}"
 . './t_integration.sh'		# for configure_test_case
 
+done_tests=''
 for pattern in "$@"; do
 	# shellcheck disable=SC2231
-	for test in *$pattern*.c; do
-		base=${test%.*}
-		cfile="$base.c"
+	for cfile in *$pattern*.c; do
+		base=${cfile%.*}
 		expfile="$base.exp"
-		tmpfile="$base.exp.tmp"
 		ln_file="$base.exp-ln"
 
 		configure_test_case "$cfile"
@@ -57,30 +57,22 @@ for pattern in "$@"; do
 
 		# shellcheck disable=SC2154
 		# shellcheck disable=SC2086
-		if "$lint1" $flags "$base.c" "$ln_file" > "$tmpfile"; then
-			if [ -s "$tmpfile" ]; then
+		if "$lint1" $flags "$base.c" "$ln_file" > "$expfile"; then
+			if [ -s "$expfile" ]; then
 				echo "$base produces output but exits successfully"
-				sed 's,^,| ,' "$tmpfile"
+				sed 's,^,| ,' "$expfile"
 			fi
-			rm -f "$expfile" "$tmpfile"
 		elif [ $? -ge 128 ]; then
 			echo "$base crashed"
 			continue
-		else
-			if [ -f "$tmpfile" ] && cmp -s "$tmpfile" "$expfile"; then
-				rm "$tmpfile"
-			else
-				echo "replacing $base"
-				mv "$tmpfile" "$expfile"
-			fi
 		fi
 
 		case "$base" in (msg_*)
 			if grep 'This message is not used\.' "$cfile" >/dev/null; then
 				: 'Skip further checks.'
-			elif [ ! -f "$expfile" ]; then
+			elif [ ! -s "$expfile" ]; then
 				echo "$base should produce warnings"
-			elif grep '^TODO: "Add example code' "$base.c" >/dev/null; then
+			elif grep '^TODO: "Add example code' "$cfile" >/dev/null; then
 				: 'ok, this test is not yet written'
 			else
 				msgid=${base}
@@ -88,13 +80,15 @@ for pattern in "$@"; do
 				msgid=${msgid#msg_0}
 				msgid=${msgid#msg_}
 				msgid=${msgid%%_*}
-				if ! grep "\\[$msgid\\]" "$expfile" >/dev/null; then
+				if ! grep "\\[$msgid\\]\$" "$expfile" >/dev/null; then
 					echo "$base should trigger the message '$msgid'"
 				fi
 			fi
 		esac
+
+		done_tests="$done_tests $cfile"
 	done
 done
 
-# shellcheck disable=SC2035
-lua '../check-expect.lua' *.c
+# shellcheck disable=SC2086
+lua './check-expect.lua' $done_tests

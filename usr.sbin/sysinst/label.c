@@ -1,4 +1,4 @@
-/*	$NetBSD: label.c,v 1.33 2021/05/09 11:06:20 martin Exp $	*/
+/*	$NetBSD: label.c,v 1.41 2022/06/21 15:46:10 martin Exp $	*/
 
 /*
  * Copyright 1997 Jonathan Stone
@@ -36,7 +36,7 @@
 
 #include <sys/cdefs.h>
 #if defined(LIBC_SCCS) && !defined(lint)
-__RCSID("$NetBSD: label.c,v 1.33 2021/05/09 11:06:20 martin Exp $");
+__RCSID("$NetBSD: label.c,v 1.41 2022/06/21 15:46:10 martin Exp $");
 #endif
 
 #include <sys/types.h>
@@ -101,7 +101,7 @@ real_partition(const struct partition_usage_set *pset, int index)
 
 /*
  * Check partitioning for overlapping partitions.
- * Returns 0 if no overlapping partition found, nonzero otherwise.
+ * Returns true if no overlapping partition found.
  * Sets reference arguments ovly1 and ovly2 to the indices of
  * overlapping partitions if any are found.
  */
@@ -113,6 +113,9 @@ checklabel(struct disk_partitions *parts,
 	struct disk_part_info info;
 	daddr_t istart, iend, jstart, jend;
 	unsigned int fs_type, fs_sub_type;
+
+	if (parts->num_part == 0)
+		return true;
 
 	for (i = 0; i < parts->num_part - 1; i ++ ) {
 		if (!parts->pscheme->get_part_info(parts, i, &info))
@@ -258,14 +261,18 @@ edit_fs_start(menudesc *m, void *arg)
 
 	start = getpartoff(edit->pset->parts, edit->info.start);
 	if (edit->info.size != 0) {
-		/* Try to keep end in the same place */
-		end = edit->info.start + edit->info.size;
-		if (end < start)
-			edit->info.size = edit->pset->parts->pscheme->
-			    max_free_space_at(edit->pset->parts,
-			    edit->info.start);
-		else
-			edit->info.size = end - start;
+		if (start < (edit->info.start+edit->info.size)) {
+			/* Try to keep end in the same place */
+			end = edit->info.start + edit->info.size;
+			if (end < start)
+				edit->info.size = edit->pset->parts->pscheme->
+				    max_free_space_at(edit->pset->parts,
+				    edit->info.start);
+			else
+				edit->info.size = end - start;
+		} else {
+			edit->info.size = 0;
+		}
 	}
 	edit->info.start = start;
 	return 0;
@@ -279,8 +286,9 @@ edit_fs_size(menudesc *m, void *arg)
 	daddr_t size;
 
 	/* get original partition data, in case start moved already */
-	edit->pset->parts->pscheme->get_part_info(edit->pset->parts,
-	    edit->id, &pinfo);
+	if (!edit->pset->parts->pscheme->get_part_info(edit->pset->parts,
+	    edit->id, &pinfo))
+		pinfo = edit->info;
 	/* ask for new size with old start and current values */
 	size = getpartsize(edit->pset->parts, pinfo.start,
 	    edit->info.start, edit->info.size);
@@ -500,7 +508,7 @@ renumber_partitions(struct partition_usage_set *pset)
 		if (!pset->parts->pscheme->get_part_info(pset->parts, pno,
 		    &info))
 			continue;
-		for (i = 0; i < pset->parts->num_part; i++) {
+		for (i = 0; i < pset->num; i++) {
 			if (pset->infos[i].cur_start != info.start)
 				continue;
 			if (pset->infos[i].cur_flags != info.flags)
@@ -517,19 +525,21 @@ renumber_partitions(struct partition_usage_set *pset)
 		}
 	}
 
-	memcpy(pset->infos, ninfos, sizeof(*pset->infos)*pset->parts->num_part);
-	free(ninfos);
+	free(pset->infos);
+	pset->infos = ninfos;
+	pset->num = pset->parts->num_part;
 }
 
 /*
  * Most often used file system types, we offer them in a first level menu.
  */
 static const uint edit_fs_common_types[] =
-    { FS_BSDFFS, FS_SWAP, FS_MSDOS, FS_BSDLFS, FS_EX2FS };
+    { FS_BSDFFS, FS_SWAP, FS_MSDOS, FS_EFI_SP, FS_BSDLFS, FS_EX2FS };
 
 /*
  * Functions for uncommon file system types - we offer the full list,
- * but put FFSv2 and FFSv1 at the front.
+ * but put FFSv2 and FFSv1 at the front and duplicate FS_MSDOS as
+ * EFI system partition.
  */
 static void
 init_fs_type_ext(menudesc *menu, void *arg)
@@ -560,6 +570,13 @@ init_fs_type_ext(menudesc *menu, void *arg)
 		if (i == t) {
 			menu->cursel = ndx;
 			break;
+		}
+		if (i == FS_MSDOS) {
+			ndx++;
+			if (t == FS_EFI_SP) {
+				menu->cursel = ndx;
+				break;
+			}
 		}
 		ndx++;
 	}
@@ -596,6 +613,14 @@ set_fstype_ext(menudesc *menu, void *arg)
 			goto found_type;
 		}
 		ndx++;
+		if (i == FS_MSDOS) {
+			ndx++;
+			if (ndx == (size_t)menu->cursel) {
+				edit->info.fs_type = FS_EFI_SP;
+				edit->info.fs_sub_type = 0;
+				goto found_type;
+			}
+		}
 	}
 	return 1;
 
@@ -623,7 +648,7 @@ edit_fs_type_ext(menudesc *menu, void *arg)
 	int m;
 	size_t i, ndx, cnt;
 
-	cnt = __arraycount(fstypenames);
+	cnt = __arraycount(fstypenames)+1;
 	opts = calloc(cnt, sizeof(*opts));
 	if (opts == NULL)
 		return 1;
@@ -645,6 +670,11 @@ edit_fs_type_ext(menudesc *menu, void *arg)
 		opts[ndx].opt_name = fstypenames[i];
 		opts[ndx].opt_action = set_fstype_ext;
 		ndx++;
+		if (i == FS_MSDOS) {
+			opts[ndx] = opts[ndx-1];
+			opts[ndx].opt_name = getfslabelname(FS_EFI_SP, 0);
+			ndx++;
+		}
 	}
 	opts[ndx].opt_name = msg_string(MSG_fs_type_ext2old);
 	opts[ndx].opt_action = set_fstype_ext;
@@ -954,6 +984,8 @@ edit_ptn(menudesc *menu, void *arg)
 		edit.info.last_mounted = edit.wanted->mount;
 		if (is_new_part) {
 			edit.wanted->parts = pset->parts;
+			if (!can_newfs_fstype(edit.wanted->fs_type))
+				edit.wanted->instflags &= ~PUIINST_NEWFS;
 			edit.wanted->cur_part_id = pset->parts->pscheme->
 			    add_partition(pset->parts, &edit.info, &err);
 			if (edit.wanted->cur_part_id == NO_PART)
@@ -975,6 +1007,9 @@ edit_ptn(menudesc *menu, void *arg)
 			if (!pset->parts->pscheme->set_part_info(pset->parts,
 			    edit.id, &edit.info, &err))
 				err_msg_win(err);
+			else
+				pset->cur_free_space += edit.old_info.size -
+				    edit.info.size;
 		}
 
 		/*
@@ -1004,7 +1039,7 @@ edit_ptn(menudesc *menu, void *arg)
 		}
 		remember_deleted(pset,
 		    pset->infos[edit.index].parts);
-		pset->cur_free_space += pset->infos[edit.index].size;
+		pset->cur_free_space += edit.info.size;
 		memmove(pset->infos+edit.index,
 		    pset->infos+edit.index+1,
 		    sizeof(*pset->infos)*(pset->num-edit.index));
@@ -1057,8 +1092,7 @@ update_edit_ptn_menu(menudesc *m, void *arg)
 			/* can only install onto PT_root partitions */
 			continue;
 		if (m->opts[i].opt_action == edit_fs_preserve &&
-		    t != FS_BSDFFS && t != FS_BSDLFS && t != FS_APPLEUFS &&
-		    t != FS_MSDOS && t != FS_EX2FS) {
+		    !can_newfs_fstype(t)) {
 			/* Can not newfs this filesystem */
 			edit->wanted->instflags &= ~PUIINST_NEWFS;
 			continue;

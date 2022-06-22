@@ -120,7 +120,7 @@ int main() {
 }
 EOF
 
-	c++ -fsanitize=thread -o test -pg test.cc
+	c++ -fsanitize=thread -static -o test -pg test.cc
 	paxctl +a test
 	atf_check -s ignore -o ignore -e match:"WARNING: ThreadSanitizer: data race on vptr \(ctor/dtor vs virtual call\)" ./test
 }
@@ -168,9 +168,9 @@ EOF
 	atf_check -s ignore -o ignore -e match:"WARNING: ThreadSanitizer: data race on vptr \(ctor/dtor vs virtual call\)" ./test
 }
 vptr_race_pie_body(){
-	
+
 	#check whether -pie flag is supported on this architecture
-	if ! c++ -pie -dM -E - < /dev/null 2>/dev/null >/dev/null; then 
+	if ! c++ -pie -dM -E - < /dev/null 2>/dev/null >/dev/null; then
 		atf_set_skip "c++ -pie not supported on this architecture"
 	fi
 	cat > test.cc << EOF

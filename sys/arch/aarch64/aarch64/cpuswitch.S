@@ -1,4 +1,4 @@
-/* $NetBSD: cpuswitch.S,v 1.35 2022/05/31 07:40:25 ryo Exp $ */
+/* $NetBSD: cpuswitch.S,v 1.38 2022/06/07 08:08:31 ryo Exp $ */
 
 /*-
  * Copyright (c) 2014, 2020 The NetBSD Foundation, Inc.
@@ -38,7 +38,7 @@
 #include "opt_ddb.h"
 #include "opt_kasan.h"
 
-RCSID("$NetBSD: cpuswitch.S,v 1.35 2022/05/31 07:40:25 ryo Exp $")
+RCSID("$NetBSD: cpuswitch.S,v 1.38 2022/06/07 08:08:31 ryo Exp $")
 
 	ARMV8_DEFINE_OPTIONS
 
@@ -61,8 +61,13 @@ ENTRY_NP(cpu_switchto)
 	stp	x27, x28, [sp, #TF_X27]
 	stp	x29, x30, [sp, #TF_X29]
 #ifdef DDB
-	str	lr, [sp, #TF_PC]		/* for backtrace */
-	str	xzr, [sp, #TF_SP]		/* mark as switchframe */
+	/* mark as switchframe for backtrace */
+	.if TF_SP + 8 == TF_PC
+	stp	xzr, lr, [sp, #TF_SP]
+	.else
+	str	xzr, [sp, #TF_SP]
+	str	lr, [sp, #TF_PC]
+	.endif
 #endif
 
 	/*
@@ -153,12 +158,14 @@ END(cpu_switchto)
  * }
  */
 ENTRY_NP(cpu_switchto_softint)
+#ifdef DDB
+	mov	x7, sp			/* keep original sp for backtrace */
+#endif
 	stp	x19, x20, [sp, #-16]!	/* save */
 	sub	sp, sp, #TF_SIZE	/* make switchframe */
 	adr	x2, softint_cleanup	/* return address for cpu_switchto() */
-	mov	x20, lr			/* x20 := original lr */
 	mrs	x19, daif		/* x19 := original interrupt mask */
-	stp	x19, x20, [sp, #TF_X19]
+	stp	x19, lr, [sp, #TF_X19]	/* x20 := original lr */
 	stp	x21, x22, [sp, #TF_X21]
 	stp	x23, x24, [sp, #TF_X23]
 	stp	x25, x26, [sp, #TF_X25]
@@ -176,7 +183,13 @@ ENTRY_NP(cpu_switchto_softint)
 #ifdef KASAN
 	/* clear the new stack */
 	stp	x0, x1, [sp, #-16]!
+#ifdef DDB
+	stp	x7, lr, [sp, #-16]!	/* original sp and lr */
+#endif
 	bl	_C_LABEL(kasan_softint)
+#ifdef DDB
+	ldp	x7, lr, [sp], #16
+#endif
 	ldp	x0, x1, [sp], #16
 #endif
 
@@ -208,9 +221,18 @@ ENTRY_NP(cpu_switchto_softint)
 #endif
 	ENABLE_INTERRUPT
 
+#ifdef DDB
+	/* for db_trace.c:db_sp_trace() */
+	stp	x7, lr, [sp, #-16]!	/* push original sp,lr for backtrace info */
+#endif
+
 	/* softint_dispatch(pinned_lwp, ipl) */
 	mov	x0, x19			/* x0 := pinned_lwp */
 	bl	_C_LABEL(softint_dispatch)
+
+#ifdef DDB
+	add	sp, sp, #16		/* pop backtrace info */
+#endif
 
 	ldr	x6, [x19, #L_PCB]	/* x6 = lwp_getpcb(curlwp) */
 	ldr	x4, [x6, #PCB_TF]	/* x4 := pinned_lwp->l_addr->pcb_tf */
@@ -241,9 +263,8 @@ ENTRY_NP(cpu_switchto_softint)
 1:
 #endif
 
-	ldp	x19, x20, [sp, #TF_X19]
+	ldp	x19, lr, [sp, #TF_X19]	/* restore pinned_lwp lr */
 	msr	daif, x19		/* restore interrupt mask */
-	mov	lr, x20			/* restore pinned_lwp lr */
 
 	add	sp, sp, #TF_SIZE	/* unwind switchframe */
 	ldp	x19, x20, [sp], #16	/* restore */

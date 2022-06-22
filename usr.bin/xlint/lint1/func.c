@@ -1,4 +1,4 @@
-/*	$NetBSD: func.c,v 1.138 2022/05/26 13:40:49 rillig Exp $	*/
+/*	$NetBSD: func.c,v 1.141 2022/06/20 21:13:35 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -37,7 +37,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID)
-__RCSID("$NetBSD: func.c,v 1.138 2022/05/26 13:40:49 rillig Exp $");
+__RCSID("$NetBSD: func.c,v 1.141 2022/06/20 21:13:35 rillig Exp $");
 #endif
 
 #include <stdlib.h>
@@ -283,7 +283,7 @@ funcdef(sym_t *fsym)
 	for (arg = fsym->s_type->t_args; arg != NULL; arg = arg->s_next) {
 		if (arg->s_scl == ABSTRACT) {
 			lint_assert(arg->s_name == unnamed);
-			/* formal parameter lacks name: param #%d */
+			/* formal parameter #%d lacks name */
 			error(59, n);
 		} else {
 			lint_assert(arg->s_name != unnamed);
@@ -310,10 +310,10 @@ funcdef(sym_t *fsym)
 			if (dowarn && !fsym->s_osdef) {
 				/* TODO: error in C99 mode as well? */
 				if (!allow_trad && !allow_c99)
-					/* redeclaration of %s */
+					/* redeclaration of '%s' */
 					error(27, fsym->s_name);
 				else
-					/* redeclaration of %s */
+					/* redeclaration of '%s' */
 					warning(27, fsym->s_name);
 				print_previous_declaration(-1, rdsym);
 			}
@@ -621,7 +621,7 @@ check_controlling_expression(tnode_t *tn)
 		return NULL;
 	}
 
-	if (tn != NULL && Tflag && !is_typeok_bool_operand(tn)) {
+	if (tn != NULL && Tflag && !is_typeok_bool_compares_with_zero(tn)) {
 		/* controlling expression must be bool, not '%s' */
 		error(333, tspec_name(tn->tn_type->t_tspec));
 	}
