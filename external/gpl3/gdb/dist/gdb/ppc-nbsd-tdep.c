@@ -177,6 +177,10 @@ ppcnbsd_init_abi (struct gdbarch_info info,
 {
   nbsd_init_abi (info, gdbarch);
 
+  /* NetBSD doesn't support the 128-bit `long double' from the psABI.  */
+  set_gdbarch_long_double_bit (gdbarch, 64);
+  set_gdbarch_long_double_format (gdbarch, floatformats_ieee_double);
+
   /* For NetBSD, this is an on again, off again thing.  Some systems
      do use the broken struct convention, and some don't.  */
   set_gdbarch_return_value (gdbarch, ppcnbsd_return_value);
@@ -197,6 +201,8 @@ void
 _initialize_ppcnbsd_tdep ()
 {
   gdbarch_register_osabi (bfd_arch_powerpc, 0, GDB_OSABI_NETBSD,
+			  ppcnbsd_init_abi);
+  gdbarch_register_osabi (bfd_arch_rs6000, 0, GDB_OSABI_NETBSD,
 			  ppcnbsd_init_abi);
 
   /* Avoid initializing the register offsets again if they were
