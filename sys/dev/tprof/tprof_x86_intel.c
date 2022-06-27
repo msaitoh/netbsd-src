@@ -86,6 +86,7 @@ __KERNEL_RCSID(0, "$NetBSD: tprof_x86_intel.c,v 1.4 2022/05/26 13:02:04 msaitoh 
 #define	PERFEVTSEL_E		__BIT(18)
 #define	PERFEVTSEL_PC		__BIT(19)
 #define	PERFEVTSEL_INT		__BIT(20)
+#define	PERFEVTSEL_ANY		__BIT(21)
 #define	PERFEVTSEL_EN		__BIT(22)
 #define	PERFEVTSEL_INV		__BIT(23)
 #define	PERFEVTSEL_COUNTER_MASK	__BITS(24, 31)
