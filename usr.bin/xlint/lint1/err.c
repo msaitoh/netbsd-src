@@ -1,4 +1,4 @@
-/*	$NetBSD: err.c,v 1.176 2022/06/22 19:23:17 rillig Exp $	*/
+/*	$NetBSD: err.c,v 1.181 2022/07/05 22:50:41 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -37,11 +37,13 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID)
-__RCSID("$NetBSD: err.c,v 1.176 2022/06/22 19:23:17 rillig Exp $");
+__RCSID("$NetBSD: err.c,v 1.181 2022/07/05 22:50:41 rillig Exp $");
 #endif
 
+#include <limits.h>
 #include <stdarg.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "lint1.h"
 
@@ -191,7 +193,7 @@ static const char *const msgs[] = {
 	"converting '%s' to '%s' may cause alignment problem",	      /* 135 */
 	"cannot do pointer arithmetic on operand of unknown size",    /* 136 */
 	"",			/* unused */			      /* 137 */
-	"unknown operand size, op %s",				      /* 138 */
+	"unknown operand size, op '%s'",			      /* 138 */
 	"division by 0",					      /* 139 */
 	"modulus by 0",						      /* 140 */
 	"integer overflow detected, op '%s'",			      /* 141 */
@@ -264,7 +266,7 @@ static const char *const msgs[] = {
 	"break outside loop or switch",				      /* 208 */
 	"continue outside loop",				      /* 209 */
 	"enum type mismatch between '%s' and '%s' in initialization", /* 210 */
-	"function has return type '%s' but returns '%s'",		      /* 211 */
+	"function has return type '%s' but returns '%s'",	      /* 211 */
 	"cannot return incomplete type",			      /* 212 */
 	"void function '%s' cannot return value",		      /* 213 */
 	"function '%s' expects to return value",		      /* 214 */
@@ -293,7 +295,7 @@ static const char *const msgs[] = {
 	"redeclaration of formal parameter '%s'",		      /* 237 */
 	"initialization of union is illegal in traditional C",	      /* 238 */
 	"constant argument to '!'",				      /* 239 */
-	"assignment of different structures (%s != %s)",	      /* 240 */
+	"",			/* unused */			      /* 240 */
 	"dubious operation on enum, op '%s'",			      /* 241 */
 	"combination of '%s' and '%s', op '%s'",		      /* 242 */
 	"dubious comparison of enums, op '%s'",			      /* 243 */
@@ -405,12 +407,28 @@ static const char *const msgs[] = {
 	"non type argument to alignof is a GCC extension",	      /* 349 */
 };
 
+static bool	is_suppressed[sizeof(msgs) / sizeof(msgs[0])];
+
 static struct include_level {
 	const char *filename;
 	int lineno;
 	struct include_level *by;
 } *includes;
 
+void
+suppress_messages(char *ids)
+{
+	char *ptr, *end;
+	unsigned long id;
+
+	for (ptr = strtok(ids, ","); ptr != NULL; ptr = strtok(NULL, ",")) {
+		id = strtoul(ptr, &end, 10);
+		if (*end != '\0' || ptr == end ||
+		    id >= sizeof(msgs) / sizeof(msgs[0]))
+			errx(1, "invalid error message id '%s'", ptr);
+		is_suppressed[id] = true;
+	}
+}
 
 void
 update_location(const char *filename, int lineno, bool is_begin, bool is_end)
@@ -499,7 +517,7 @@ verror_at(int msgid, const pos_t *pos, va_list ap)
 {
 	const	char *fn;
 
-	if (ERR_ISSET(msgid, &msgset))
+	if (is_suppressed[msgid])
 		return;
 
 	fn = lbasename(pos->p_file);
@@ -515,7 +533,7 @@ vwarning_at(int msgid, const pos_t *pos, va_list ap)
 {
 	const	char *fn;
 
-	if (ERR_ISSET(msgid, &msgset))
+	if (is_suppressed[msgid])
 		return;
 
 	debug_step("%s: lwarn=%d msgid=%d", __func__, lwarn, msgid);
@@ -537,7 +555,7 @@ vmessage_at(int msgid, const pos_t *pos, va_list ap)
 {
 	const char *fn;
 
-	if (ERR_ISSET(msgid, &msgset))
+	if (is_suppressed[msgid])
 		return;
 
 	fn = lbasename(pos->p_file);
@@ -687,4 +705,58 @@ bool
 		vwarning_at(msgid, &curr_pos, ap);
 	va_end(ap);
 	return severity > 0;
+}
+
+
+static const char *queries[] = {
+	"",			/* unused, to make queries 1-based */
+	"implicit conversion from floating point '%s' to integer '%s'", /* Q1 */
+	"cast from floating point '%s' to integer '%s'",	      /* Q2 */
+	"implicit conversion changes sign from '%s' to '%s'",	      /* Q3 */
+	"usual arithmetic conversion for '%s' from '%s' to '%s'",     /* Q4 */
+	"pointer addition has integer on the left-hand side",	      /* Q5 */
+	"no-op cast from '%s' to '%s'",				      /* Q6 */
+	"redundant cast from '%s' to '%s' before assignment",	      /* Q7 */
+};
+
+bool any_query_enabled;		/* for optimizing non-query scenarios */
+static bool is_query_enabled[sizeof(queries) / sizeof(queries[0])];
+
+void
+(query_message)(int query_id, ...)
+{
+	va_list ap;
+
+	if (!is_query_enabled[query_id])
+		return;
+
+	(void)printf("%s(%d): ", lbasename(curr_pos.p_file), curr_pos.p_line);
+	va_start(ap, query_id);
+	(void)vprintf(queries[query_id], ap);
+	va_end(ap);
+	(void)printf(" [Q%d]\n", query_id);
+	print_stack_trace();
+}
+
+void
+enable_queries(const char *arg)
+{
+
+	for (const char *s = arg;;) {
+		const char *e = s + strcspn(s, ",");
+
+		char *end;
+		unsigned long id = strtoul(s, &end, 10);
+		if (!(ch_isdigit(s[0]) && end == e &&
+		      id < sizeof(queries) / sizeof(queries[0]) &&
+		      queries[id][0] != '\0'))
+			errx(1, "invalid query ID '%s'", s);
+
+		any_query_enabled = true;
+		is_query_enabled[id] = true;
+
+		if (*e == '\0')
+			break;
+		s = e + 1;
+	}
 }

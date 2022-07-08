@@ -1,4 +1,4 @@
-/*	$NetBSD: if_bgevar.h,v 1.26 2020/02/01 06:17:23 thorpej Exp $	*/
+/*	$NetBSD: if_bgevar.h,v 1.28 2022/07/02 07:22:41 skrll Exp $	*/
 /*
  * Copyright (c) 2001 Wind River Systems
  * Copyright (c) 1997, 1998, 1999, 2001
@@ -73,9 +73,9 @@
 
 #define BGE_HOSTADDR(x, y)						\
 	do {								\
-		(x).bge_addr_lo = ((uint64_t) (y) & 0xffffffff);	\
+		(x).bge_addr_lo = BUS_ADDR_LO32(y);			\
 		if (sizeof (bus_addr_t) == 8)				\
-			(x).bge_addr_hi = ((uint64_t) (y) >> 32);	\
+			(x).bge_addr_hi = BUS_ADDR_HI32(y);		\
 		else							\
 			(x).bge_addr_hi = 0;				\
 	} while(0)
@@ -286,11 +286,11 @@ struct bge_softc {
 	uint16_t		bge_mps;
 	int			bge_expmrq;
 	uint32_t		bge_lasttag;
-	u_int32_t		bge_mfw_flags;  /* Management F/W flags */
-#define	BGE_MFW_ON_RXCPU	0x00000001
-#define	BGE_MFW_ON_APE		0x00000002
-#define	BGE_MFW_TYPE_NCSI	0x00000004
-#define	BGE_MFW_TYPE_DASH	0x00000008
+	uint32_t		bge_mfw_flags;  /* Management F/W flags */
+#define	BGE_MFW_ON_RXCPU	__BIT(0)
+#define	BGE_MFW_ON_APE		__BIT(1)
+#define	BGE_MFW_TYPE_NCSI	__BIT(2)
+#define	BGE_MFW_TYPE_DASH	__BIT(3)
 	int			bge_phy_ape_lock;
 	int			bge_phy_addr;
 	uint32_t		bge_chipid;

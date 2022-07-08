@@ -1,4 +1,4 @@
-/*	$NetBSD: if_wm.c,v 1.733 2022/05/19 02:23:59 msaitoh Exp $	*/
+/*	$NetBSD: if_wm.c,v 1.738 2022/07/06 06:33:49 msaitoh Exp $	*/
 
 /*
  * Copyright (c) 2001, 2002, 2003, 2004 Wasabi Systems, Inc.
@@ -82,7 +82,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_wm.c,v 1.733 2022/05/19 02:23:59 msaitoh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_wm.c,v 1.738 2022/07/06 06:33:49 msaitoh Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_net_mpsafe.h"
@@ -3020,7 +3020,8 @@ alloc_retry:
 	} else {
 		ifp->if_start = wm_start;
 		/*
-		 * wm_transmit() has the same disadvantage as wm_transmit().
+		 * wm_transmit() has the same disadvantages as wm_nq_transmit()
+		 * described above.
 		 */
 		if (wm_is_using_multiqueue(sc))
 			ifp->if_transmit = wm_transmit;
@@ -3490,6 +3491,9 @@ wm_tick(void *arg)
 		wm_tbi_tick(sc);
 
 	WM_CORE_UNLOCK(sc);
+#ifndef WM_MPSAFE
+	splx(s);
+#endif
 
 	wm_watchdog(ifp);
 
@@ -9942,34 +9946,6 @@ wm_intr_legacy(void *arg)
 	if (rndval == 0)
 		rndval = icr;
 
-	mutex_enter(rxq->rxq_lock);
-
-	if (rxq->rxq_stopping) {
-		mutex_exit(rxq->rxq_lock);
-		return 1;
-	}
-
-#if defined(WM_DEBUG) || defined(WM_EVENT_COUNTERS)
-	if (icr & (ICR_RXDMT0 | ICR_RXT0)) {
-		DPRINTF(sc, WM_DEBUG_RX,
-		    ("%s: RX: got Rx intr 0x%08x\n",
-			device_xname(sc->sc_dev),
-			icr & (uint32_t)(ICR_RXDMT0 | ICR_RXT0)));
-		WM_Q_EVCNT_INCR(rxq, intr);
-	}
-#endif
-	if (rxlimit > 0) {
-		/*
-		 * wm_rxeof() does *not* call upper layer functions directly,
-		 * as if_percpuq_enqueue() just call softint_schedule().
-		 * So, we can call wm_rxeof() in interrupt context.
-		 */
-		more = wm_rxeof(rxq, rxlimit);
-	} else
-		more = true;
-
-	mutex_exit(rxq->rxq_lock);
-
 	mutex_enter(txq->txq_lock);
 
 	if (txq->txq_stopping) {
@@ -9992,6 +9968,35 @@ wm_intr_legacy(void *arg)
 	} else
 		more = true;
 	mutex_exit(txq->txq_lock);
+
+	mutex_enter(rxq->rxq_lock);
+
+	if (rxq->rxq_stopping) {
+		mutex_exit(rxq->rxq_lock);
+		return 1;
+	}
+
+#if defined(WM_DEBUG) || defined(WM_EVENT_COUNTERS)
+	if (icr & (ICR_RXDMT0 | ICR_RXT0)) {
+		DPRINTF(sc, WM_DEBUG_RX,
+		    ("%s: RX: got Rx intr %#" __PRIxBIT "\n",
+			device_xname(sc->sc_dev),
+			icr & (ICR_RXDMT0 | ICR_RXT0)));
+		WM_Q_EVCNT_INCR(rxq, intr);
+	}
+#endif
+	if (rxlimit > 0) {
+		/*
+		 * wm_rxeof() does *not* call upper layer functions directly,
+		 * as if_percpuq_enqueue() just call softint_schedule().
+		 * So, we can call wm_rxeof() in interrupt context.
+		 */
+		more = wm_rxeof(rxq, rxlimit);
+	} else
+		more = true;
+
+	mutex_exit(rxq->rxq_lock);
+
 	WM_CORE_LOCK(sc);
 
 	if (sc->sc_core_stopping) {
@@ -12552,8 +12557,9 @@ wm_tbi_mediachange(struct ifnet *ifp)
 
 		status = CSR_READ(sc, WMREG_STATUS);
 		DPRINTF(sc, WM_DEBUG_LINK,
-		    ("%s: status after final read = 0x%x, STATUS_LU = 0x%x\n",
-			device_xname(sc->sc_dev), status, (uint32_t)STATUS_LU));
+		    ("%s: status after final read = 0x%x, STATUS_LU = %#"
+			__PRIxBIT "\n",
+			device_xname(sc->sc_dev), status, STATUS_LU));
 		if (status & STATUS_LU) {
 			/* Link is up. */
 			DPRINTF(sc, WM_DEBUG_LINK,

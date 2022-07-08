@@ -1,4 +1,4 @@
-/*	$NetBSD: externs1.h,v 1.162 2022/06/15 18:29:21 rillig Exp $	*/
+/*	$NetBSD: externs1.h,v 1.165 2022/07/05 22:50:41 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -122,6 +122,7 @@ const char *symt_name(symt_t);
 const char *tqual_name(tqual_t);
 void	debug_dinfo(const dinfo_t *);
 void	debug_node(const tnode_t *);
+void	debug_type(const type_t *);
 void	debug_sym(const char *, const sym_t *, const char *);
 void	debug_symtab(void);
 void	debug_printf(const char *fmt, ...) __printflike(1, 2);
@@ -139,6 +140,7 @@ void	debug_leave(const char *);
 #define	debug_sym(p, sym, s)	debug_noop()
 #define	debug_symtab()		debug_noop()
 #define	debug_node(tn)		debug_noop()
+#define	debug_type(tp)		debug_noop()
 #define	debug_printf(...)	debug_noop()
 #define	debug_print_indent()	debug_noop()
 #define	debug_indent_inc()	debug_noop()
@@ -153,6 +155,7 @@ void	debug_leave(const char *);
  */
 extern	int	nerr;
 extern	int	sytxerr;
+extern	bool	any_query_enabled;
 
 extern	void	msglist(void);
 extern	void	error_at(int, const pos_t *, ...);
@@ -168,6 +171,10 @@ extern	void	internal_error(const char *, int, const char *, ...)
 extern	void	assert_failed(const char *, int, const char *, const char *)
 		__attribute__((__noreturn__));
 extern	void	update_location(const char *, int, bool, bool);
+extern	void	suppress_messages(char *);
+
+extern	void	query_message(int, ...);
+extern	void	enable_queries(const char *);
 
 /*
  * decl.c

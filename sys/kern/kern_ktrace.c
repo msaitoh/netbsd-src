@@ -1,4 +1,4 @@
-/*	$NetBSD: kern_ktrace.c,v 1.180 2022/06/27 03:56:37 riastradh Exp $	*/
+/*	$NetBSD: kern_ktrace.c,v 1.182 2022/07/01 01:07:56 riastradh Exp $	*/
 
 /*-
  * Copyright (c) 2006, 2007, 2008, 2020 The NetBSD Foundation, Inc.
@@ -61,7 +61,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: kern_ktrace.c,v 1.180 2022/06/27 03:56:37 riastradh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: kern_ktrace.c,v 1.182 2022/07/01 01:07:56 riastradh Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -76,6 +76,7 @@ __KERNEL_RCSID(0, "$NetBSD: kern_ktrace.c,v 1.180 2022/06/27 03:56:37 riastradh 
 #include <sys/ioctl.h>
 #include <sys/callout.h>
 #include <sys/kauth.h>
+#include <sys/cpu.h>
 
 #include <sys/mount.h>
 #include <sys/syscallargs.h>
@@ -789,6 +790,7 @@ ktr_psig(int sig, sig_t action, const sigset_t *mask,
 	if (ktealloc(&kte, (void *)&kbuf, l, KTR_PSIG, sizeof(*kbuf)))
 		return;
 
+	memset(&kbuf->kp, 0, sizeof(kbuf->kp));
 	kbuf->kp.signo = (char)sig;
 	kbuf->kp.action = action;
 	kbuf->kp.mask = *mask;
@@ -807,7 +809,7 @@ ktr_psig(int sig, sig_t action, const sigset_t *mask,
 }
 
 void
-ktr_csw(int out, int user)
+ktr_csw(int out, int user, const struct syncobj *syncobj)
 {
 	lwp_t *l = curlwp;
 	struct proc *p = l->l_proc;
@@ -819,10 +821,14 @@ ktr_csw(int out, int user)
 
 	/*
 	 * Don't record context switches resulting from blocking on
-	 * locks; it's too easy to get duff results.
+	 * locks; the results are not useful, and the mutex may be in a
+	 * softint, which would lead us to ktealloc in softint context,
+	 * which is forbidden.
 	 */
-	if (l->l_syncobj == &mutex_syncobj || l->l_syncobj == &rw_syncobj)
+	if (syncobj == &mutex_syncobj || syncobj == &rw_syncobj)
 		return;
+	KASSERT(!cpu_intr_p());
+	KASSERT(!cpu_softintr_p());
 
 	/*
 	 * We can't sleep if we're already going to sleep (if original

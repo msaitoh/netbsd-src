@@ -1,4 +1,4 @@
-/* $NetBSD: lint1.h,v 1.154 2022/05/26 13:40:49 rillig Exp $ */
+/* $NetBSD: lint1.h,v 1.156 2022/07/05 22:50:41 rillig Exp $ */
 
 /*
  * Copyright (c) 1996 Christopher G. Demetriou.  All Rights Reserved.
@@ -442,21 +442,6 @@ typedef struct {
 
 #include "externs1.h"
 
-#define	ERR_SETSIZE	1024
-#define __NERRBITS (sizeof(unsigned int))
-
-typedef	struct err_set {
-	unsigned int	errs_bits[(ERR_SETSIZE + __NERRBITS-1) / __NERRBITS];
-} err_set;
-
-#define	ERR_SET(n, p)	\
-	((p)->errs_bits[(n)/__NERRBITS] |= (1 << ((n) % __NERRBITS)))
-#define	ERR_CLR(n, p)	\
-	((p)->errs_bits[(n)/__NERRBITS] &= ~(1 << ((n) % __NERRBITS)))
-#define	ERR_ISSET(n, p)	\
-	(((p)->errs_bits[(n)/__NERRBITS] & (1 << ((n) % __NERRBITS))) != 0)
-#define	ERR_ZERO(p)	(void)memset((p), 0, sizeof(*(p)))
-
 #define INTERNAL_ERROR(fmt, args...) \
 	internal_error(__FILE__, __LINE__, fmt, ##args)
 
@@ -465,9 +450,6 @@ typedef	struct err_set {
 		if (!(cond))						\
 			assert_failed(__FILE__, __LINE__, __func__, #cond); \
 	} while (false)
-
-extern err_set	msgset;
-
 
 #ifdef DEBUG
 #  include "err-msgs.h"
@@ -504,6 +486,21 @@ check_printf(const char *fmt, ...)
 #  define gnuism(msgid, args...) wrap_check_printf(gnuism, msgid, ##args)
 #  define c99ism(msgid, args...) wrap_check_printf(c99ism, msgid, ##args)
 #  define c11ism(msgid, args...) wrap_check_printf(c11ism, msgid, ##args)
+#endif
+
+#ifdef DEBUG
+#  define query_message(query_id, args...)				\
+	do {								\
+		debug_step("%s:%d: %s", __FILE__, __LINE__, __func__);	\
+		check_printf(__CONCAT(MSG_Q, query_id), ##args);	\
+		(query_message)(query_id, ##args);			\
+	} while (false)
+#else
+#  define query_message(...)						\
+	do {								\
+		if (any_query_enabled)					\
+			(query_message)(__VA_ARGS__);			\
+	} while (false)
 #endif
 
 static inline bool

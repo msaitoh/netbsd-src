@@ -1,4 +1,4 @@
-/*	$NetBSD: main1.c,v 1.63 2022/05/30 15:13:25 rillig Exp $	*/
+/*	$NetBSD: main1.c,v 1.65 2022/07/05 22:50:41 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -37,12 +37,10 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID)
-__RCSID("$NetBSD: main1.c,v 1.63 2022/05/30 15:13:25 rillig Exp $");
+__RCSID("$NetBSD: main1.c,v 1.65 2022/07/05 22:50:41 rillig Exp $");
 #endif
 
 #include <sys/types.h>
-#include <errno.h>
-#include <limits.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -120,8 +118,6 @@ bool	allow_c99;
 bool	allow_c11;
 bool	allow_gcc;
 
-err_set	msgset;
-
 sig_atomic_t fpe;
 
 static	void	usage(void);
@@ -174,24 +170,6 @@ sigfpe(int s)
 	fpe = 1;
 }
 
-static void
-suppress_messages(char *ids)
-{
-	char *ptr, *end;
-	long id;
-
-	for (ptr = strtok(ids, ","); ptr != NULL; ptr = strtok(NULL, ",")) {
-		errno = 0;
-		id = strtol(ptr, &end, 0);
-		if ((id == TARG_LONG_MIN || id == TARG_LONG_MAX) &&
-		    errno == ERANGE)
-			err(1, "invalid error message id '%s'", ptr);
-		if (*end != '\0' || ptr == end || id < 0 || id >= ERR_SETSIZE)
-			errx(1, "invalid error message id '%s'", ptr);
-		ERR_SET(id, &msgset);
-	}
-}
-
 int
 main(int argc, char *argv[])
 {
@@ -199,8 +177,7 @@ main(int argc, char *argv[])
 
 	setprogname(argv[0]);
 
-	ERR_ZERO(&msgset);
-	while ((c = getopt(argc, argv, "abceghmprstuvwyzA:FPR:STX:")) != -1) {
+	while ((c = getopt(argc, argv, "abceghmpq:rstuvwyzA:FPR:STX:")) != -1) {
 		switch (c) {
 		case 'a':	aflag++;	break;
 		case 'b':	bflag = true;	break;
@@ -211,6 +188,7 @@ main(int argc, char *argv[])
 		case 'h':	hflag = true;	break;
 		case 'p':	pflag = true;	break;
 		case 'P':	Pflag = true;	break;
+		case 'q':	enable_queries(optarg);	break;
 		case 'r':	rflag = true;	break;
 		case 's':
 			allow_trad = false;
@@ -270,7 +248,7 @@ main(int argc, char *argv[])
 
 
 	/* initialize output */
-	outopen(argv[1]);
+	outopen(any_query_enabled ? "/dev/null" : argv[1]);
 
 #ifdef DEBUG
 	setvbuf(stdout, NULL, _IONBF, 0);

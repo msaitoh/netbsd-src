@@ -1,4 +1,4 @@
-/*	$NetBSD: tree.c,v 1.463 2022/06/24 21:22:11 rillig Exp $	*/
+/*	$NetBSD: tree.c,v 1.472 2022/07/06 22:26:30 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -37,7 +37,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID)
-__RCSID("$NetBSD: tree.c,v 1.463 2022/06/24 21:22:11 rillig Exp $");
+__RCSID("$NetBSD: tree.c,v 1.472 2022/07/06 22:26:30 rillig Exp $");
 #endif
 
 #include <float.h>
@@ -78,11 +78,11 @@ static	void	warn_incompatible_pointers(const mod_t *,
 static	bool	has_constant_member(const type_t *);
 static	void	check_prototype_conversion(int, tspec_t, tspec_t, type_t *,
 					   tnode_t *);
-static	void	check_integer_conversion(op_t, int, tspec_t, tspec_t, type_t *,
-					 tnode_t *);
-static	void	check_pointer_integer_conversion(op_t, tspec_t, type_t *,
-						 tnode_t *);
-static	void	check_pointer_conversion(tnode_t *, type_t *);
+static	void	convert_integer_from_integer(op_t, int, tspec_t, tspec_t,
+					     type_t *, tnode_t *);
+static	void	convert_integer_from_pointer(op_t, tspec_t, type_t *,
+					     tnode_t *);
+static	void	convert_pointer_from_pointer(type_t *, tnode_t *);
 static	tnode_t	*build_struct_access(op_t, bool, tnode_t *, tnode_t *);
 static	tnode_t	*build_prepost_incdec(op_t, bool, tnode_t *);
 static	tnode_t	*build_real_imag(op_t, bool, tnode_t *);
@@ -103,6 +103,18 @@ static	void	check_integer_comparison(op_t, tnode_t *, tnode_t *);
 static	void	check_precedence_confusion(tnode_t *);
 
 extern sig_atomic_t fpe;
+
+static uint64_t
+u64_fill_right(uint64_t x)
+{
+	x |= x >> 1;
+	x |= x >> 2;
+	x |= x >> 4;
+	x |= x >> 8;
+	x |= x >> 16;
+	x |= x >> 32;
+	return x;
+}
 
 static bool
 ic_maybe_signed(const type_t *tp, const integer_constraints *ic)
@@ -200,6 +212,23 @@ ic_bitor(integer_constraints a, integer_constraints b)
 }
 
 static integer_constraints
+ic_mod(const type_t *tp, integer_constraints a, integer_constraints b)
+{
+	integer_constraints c;
+
+	if (ic_maybe_signed(tp, &a) || ic_maybe_signed(tp, &b))
+		return ic_any(tp);
+
+	c.smin = INT64_MIN;
+	c.smax = INT64_MAX;
+	c.umin = 0;
+	c.umax = b.umax - 1;
+	c.bset = 0;
+	c.bclr = ~u64_fill_right(c.umax);
+	return c;
+}
+
+static integer_constraints
 ic_shl(const type_t *tp, integer_constraints a, integer_constraints b)
 {
 	integer_constraints c;
@@ -264,6 +293,10 @@ ic_expr(const tnode_t *tn)
 			return ic_any(tn->tn_type);
 		lc = ic_expr(tn->tn_left);
 		return ic_cvt(tn->tn_type, tn->tn_left->tn_type, lc);
+	case MOD:
+		lc = ic_expr(before_conversion(tn->tn_left));
+		rc = ic_expr(before_conversion(tn->tn_right));
+		return ic_mod(tn->tn_type, lc, rc);
 	case SHL:
 		lc = ic_expr(tn->tn_left);
 		rc = ic_expr(tn->tn_right);
@@ -2260,19 +2293,45 @@ balance(op_t op, tnode_t **lnp, tnode_t **rnp)
 	if (t != lt) {
 		ntp = expr_dup_type((*lnp)->tn_type);
 		ntp->t_tspec = t;
+		/* usual arithmetic conversion for '%s' from '%s' to '%s' */
+		query_message(4, op_name(op),
+		    type_name((*lnp)->tn_type), type_name(ntp));
 		*lnp = convert(op, 0, ntp, *lnp);
 	}
 	if (t != rt) {
 		ntp = expr_dup_type((*rnp)->tn_type);
 		ntp->t_tspec = t;
+		/* usual arithmetic conversion for '%s' from '%s' to '%s' */
+		query_message(4, op_name(op),
+		    type_name((*rnp)->tn_type), type_name(ntp));
 		*rnp = convert(op, 0, ntp, *rnp);
 	}
+}
+
+static void
+convert_integer_from_floating(op_t op, const type_t *tp, const tnode_t *tn)
+{
+
+	if (op == CVT)
+		/* cast from floating point '%s' to integer '%s' */
+		query_message(2, type_name(tn->tn_type), type_name(tp));
+	else
+		/* implicit conversion from floating point '%s' to ... */
+		query_message(1, type_name(tn->tn_type), type_name(tp));
 }
 
 /*
  * Insert a conversion operator, which converts the type of the node
  * to another given type.
- * If op is FARG, arg is the number of the argument (used for warnings).
+ *
+ * Possible values for 'op':
+ *	CVT	a cast-expression
+ *	binary	integer promotion for one of the operands, or a usual
+ *		arithmetic conversion
+ *	binary	plain or compound assignments to bit-fields
+ *	FARG	'arg' is the number of the argument (used for warnings)
+ *	NOOP	several other implicit conversions
+ *	...
  */
 tnode_t *
 convert(op_t op, int arg, type_t *tp, tnode_t *tn)
@@ -2286,14 +2345,29 @@ convert(op_t op, int arg, type_t *tp, tnode_t *tn)
 	if (allow_trad && allow_c90 && op == FARG)
 		check_prototype_conversion(arg, nt, ot, tp, tn);
 
-	if (is_integer(nt) && is_integer(ot)) {
-		check_integer_conversion(op, arg, nt, ot, tp, tn);
-	} else if (nt == PTR && is_null_pointer(tn)) {
-		/* a null pointer may be assigned to any pointer. */
-	} else if (is_integer(nt) && nt != BOOL && ot == PTR) {
-		check_pointer_integer_conversion(op, nt, tp, tn);
-	} else if (nt == PTR && ot == PTR && op == CVT) {
-		check_pointer_conversion(tn, tp);
+	if (nt == BOOL) {
+		/* No further checks. */
+
+	} else if (is_integer(nt)) {
+		if (ot == BOOL) {
+			/* No further checks. */
+		} else if (is_integer(ot)) {
+			convert_integer_from_integer(op, arg, nt, ot, tp, tn);
+		} else if (is_floating(ot)) {
+			convert_integer_from_floating(op, tp, tn);
+		} else if (ot == PTR) {
+			convert_integer_from_pointer(op, nt, tp, tn);
+		}
+
+	} else if (is_floating(nt)) {
+		/* No further checks. */
+
+	} else if (nt == PTR) {
+		if (is_null_pointer(tn)) {
+			/* a null pointer may be assigned to any pointer. */
+		} else if (ot == PTR && op == CVT) {
+			convert_pointer_from_pointer(tp, tn);
+		}
 	}
 
 	ntn = expr_alloc_tnode();
@@ -2413,12 +2487,9 @@ can_represent(const type_t *tp, const tnode_t *tn)
 	return false;
 }
 
-/*
- * Print warnings for conversions of integer types which may cause problems.
- */
 static void
-check_integer_conversion(op_t op, int arg, tspec_t nt, tspec_t ot, type_t *tp,
-			 tnode_t *tn)
+convert_integer_from_integer(op_t op, int arg, tspec_t nt, tspec_t ot,
+			     type_t *tp, tnode_t *tn)
 {
 
 	if (tn->tn_op == CON)
@@ -2426,9 +2497,6 @@ check_integer_conversion(op_t op, int arg, tspec_t nt, tspec_t ot, type_t *tp,
 
 	if (op == CVT)
 		return;
-
-	if (allow_c99 && nt == BOOL)
-		return;		/* See C99 6.3.1.2 */
 
 	if (Pflag && pflag && aflag > 0 &&
 	    portable_size_in_bits(nt) > portable_size_in_bits(ot) &&
@@ -2465,13 +2533,14 @@ check_integer_conversion(op_t op, int arg, tspec_t nt, tspec_t ot, type_t *tp,
 			    type_name(tn->tn_type), type_name(tp));
 		}
 	}
+
+	if (is_uinteger(nt) != is_uinteger(ot))
+		/* implicit conversion changes sign from '%s' to '%s' */
+		query_message(3, type_name(tn->tn_type), type_name(tp));
 }
 
-/*
- * Print warnings for dubious conversions of pointer to integer.
- */
 static void
-check_pointer_integer_conversion(op_t op, tspec_t nt, type_t *tp, tnode_t *tn)
+convert_integer_from_pointer(op_t op, tspec_t nt, type_t *tp, tnode_t *tn)
 {
 
 	if (tn->tn_op == CON)
@@ -2532,6 +2601,8 @@ should_warn_about_pointer_cast(const type_t *nstp, tspec_t nst,
 
 	/* Allow cast between pointers to sockaddr variants. */
 	if (nst == STRUCT && ost == STRUCT) {
+		debug_type(nstp);
+		debug_type(ostp);
 		const sym_t *nmem = nstp->t_str->sou_first_member;
 		const sym_t *omem = ostp->t_str->sou_first_member;
 		while (nmem != NULL && omem != NULL &&
@@ -2551,11 +2622,8 @@ should_warn_about_pointer_cast(const type_t *nstp, tspec_t nst,
 	return portable_size_in_bits(nst) != portable_size_in_bits(ost);
 }
 
-/*
- * Warn about questionable pointer conversions.
- */
 static void
-check_pointer_conversion(tnode_t *tn, type_t *ntp)
+convert_pointer_from_pointer(type_t *ntp, tnode_t *tn)
 {
 	const type_t *nstp, *otp, *ostp;
 	tspec_t nst, ost;
@@ -2920,13 +2988,8 @@ warn_incompatible_types(op_t op,
 		/* void type illegal in expression */
 		error(109);
 	} else if (op == ASSIGN) {
-		if (is_struct_or_union(lt) && is_struct_or_union(rt)) {
-			/* assignment of different structures (%s != %s) */
-			error(240, tspec_name(lt), tspec_name(rt));
-		} else {
-			/* cannot assign to '%s' from '%s' */
-			error(171, type_name(ltp), type_name(rtp));
-		}
+		/* cannot assign to '%s' from '%s' */
+		error(171, type_name(ltp), type_name(rtp));
 	} else if (mp->m_binary) {
 		/* operands of '%s' have incompatible types '%s' and '%s' */
 		error(107, mp->m_name, tspec_name(lt), tspec_name(rt));
@@ -3170,6 +3233,8 @@ build_plus_minus(op_t op, bool sys, tnode_t *ln, tnode_t *rn)
 		tnode_t *tmp = ln;
 		ln = rn;
 		rn = tmp;
+		/* pointer addition has integer on the left-hand side */
+		query_message(5);
 	}
 
 	/* pointer +- integer */
@@ -3215,13 +3280,10 @@ build_plus_minus(op_t op, bool sys, tnode_t *ln, tnode_t *rn)
 static tnode_t *
 build_bit_shift(op_t op, bool sys, tnode_t *ln, tnode_t *rn)
 {
-	tspec_t	t;
-	tnode_t	*ntn;
 
-	if ((t = rn->tn_type->t_tspec) != INT && t != UINT)
-		rn = convert(CVT, 0, gettyp(INT), rn);
-	ntn = new_tnode(op, sys, ln->tn_type, ln, rn);
-	return ntn;
+	if (!allow_c90 && rn->tn_type->t_tspec != INT)
+		rn = convert(NOOP, 0, gettyp(INT), rn);
+	return new_tnode(op, sys, ln->tn_type, ln, rn);
 }
 
 /*
@@ -3253,7 +3315,7 @@ build_colon(bool sys, tnode_t *ln, tnode_t *rn)
 		lint_assert(is_struct_or_union(rt));
 		lint_assert(ln->tn_type->t_str == rn->tn_type->t_str);
 		if (is_incomplete(ln->tn_type)) {
-			/* unknown operand size, op %s */
+			/* unknown operand size, op '%s' */
 			error(138, op_name(COLON));
 			return NULL;
 		}
@@ -3323,7 +3385,7 @@ build_assignment(op_t op, bool sys, tnode_t *ln, tnode_t *rn)
 				/* cannot return incomplete type */
 				error(212);
 			} else {
-				/* unknown operand size, op %s */
+				/* unknown operand size, op '%s' */
 				error(138, op_name(op));
 			}
 			return NULL;
@@ -3344,6 +3406,13 @@ build_assignment(op_t op, bool sys, tnode_t *ln, tnode_t *rn)
 				rt = lt;
 			}
 		}
+	}
+
+	if (any_query_enabled && rn->tn_op == CVT && rn->tn_cast &&
+	    eqtype(ln->tn_type, rn->tn_type, false, false, NULL)) {
+		/* redundant cast from '%s' to '%s' before assignment */
+		query_message(7,
+		    type_name(rn->tn_left->tn_type), type_name(rn->tn_type));
 	}
 
 	ntn = new_tnode(op, sys, ln->tn_type, ln, rn);
@@ -3504,14 +3573,16 @@ fold(tnode_t *tn)
 			ovfl = true;
 		break;
 	case SHL:
-		q = utyp ? (int64_t)(ul << sr) : sl << sr;
+		/* TODO: warn about out-of-bounds 'sr'. */
+		q = utyp ? (int64_t)(ul << (sr & 63)) : sl << (sr & 63);
 		break;
 	case SHR:
 		/*
 		 * The sign must be explicitly extended because
 		 * shifts of signed values are implementation dependent.
 		 */
-		q = ul >> sr;
+		/* TODO: warn about out-of-bounds 'sr'. */
+		q = ul >> (sr & 63);
 		q = convert_integer(q, t, size_in_bits(t) - (int)sr);
 		break;
 	case LT:
@@ -3904,6 +3975,10 @@ cast(tnode_t *tn, type_t *tp)
 		}
 	} else
 		goto invalid_cast;
+
+	if (any_query_enabled && eqtype(tp, tn->tn_type, false, false, NULL))
+		/* no-op cast from '%s' to '%s' */
+		query_message(6, type_name(tn->tn_type), type_name(tp));
 
 	tn = convert(CVT, 0, tp, tn);
 	tn->tn_cast = true;
