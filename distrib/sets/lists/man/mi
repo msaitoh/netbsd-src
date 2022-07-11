@@ -1,4 +1,4 @@
-# $NetBSD: mi,v 1.1749 2022/06/12 03:51:13 tsutsui Exp $
+# $NetBSD: mi,v 1.1752 2022/07/10 19:49:24 nia Exp $
 #
 # Note: don't delete entries from here - mark them as "obsolete" instead.
 #
@@ -1758,6 +1758,7 @@
 ./usr/share/man/cat4/slhci.0			man-sys-catman		.cat
 ./usr/share/man/cat4/slide.0			man-sys-catman		.cat
 ./usr/share/man/cat4/slip.0			man-sys-catman		.cat
+./usr/share/man/cat4/slurm.0			man-sys-catman		.cat
 ./usr/share/man/cat4/sm.0			man-sys-catman		.cat
 ./usr/share/man/cat4/smsc.0			man-sys-catman		.cat
 ./usr/share/man/cat4/smscmon.0			man-sys-catman		.cat
@@ -1914,6 +1915,7 @@
 ./usr/share/man/cat4/ucom.0			man-sys-catman		.cat
 ./usr/share/man/cat4/ucycom.0			man-sys-catman		.cat
 ./usr/share/man/cat4/udav.0			man-sys-catman		.cat
+./usr/share/man/cat4/udl.0			man-sys-catman		.cat
 ./usr/share/man/cat4/udp.0			man-sys-catman		.cat
 ./usr/share/man/cat4/udsbr.0			man-sys-catman		.cat
 ./usr/share/man/cat4/uep.0			man-sys-catman		.cat
@@ -1928,6 +1930,7 @@
 ./usr/share/man/cat4/uhmodem.0			man-sys-catman		.cat
 ./usr/share/man/cat4/uhso.0			man-sys-catman		.cat
 ./usr/share/man/cat4/uhub.0			man-sys-catman		.cat
+./usr/share/man/cat4/uintuos.0			man-sys-catman		.cat
 ./usr/share/man/cat4/uipad.0			man-sys-catman		.cat
 ./usr/share/man/cat4/uipaq.0			man-sys-catman		.cat
 ./usr/share/man/cat4/uirda.0			man-sys-catman		.cat
@@ -4954,6 +4957,7 @@
 ./usr/share/man/html4/slhci.html		man-sys-htmlman		html
 ./usr/share/man/html4/slide.html		man-sys-htmlman		html
 ./usr/share/man/html4/slip.html			man-sys-htmlman		html
+./usr/share/man/html4/slurm.html		man-sys-htmlman		html
 ./usr/share/man/html4/sm.html			man-sys-htmlman		html
 ./usr/share/man/html4/smsc.html			man-sys-htmlman		html
 ./usr/share/man/html4/smscmon.html		man-sys-htmlman		html
@@ -5101,6 +5105,7 @@
 ./usr/share/man/html4/ucom.html			man-sys-htmlman		html
 ./usr/share/man/html4/ucycom.html		man-sys-htmlman		html
 ./usr/share/man/html4/udav.html			man-sys-htmlman		html
+./usr/share/man/html4/udl.html			man-sys-htmlman		html
 ./usr/share/man/html4/udp.html			man-sys-htmlman		html
 ./usr/share/man/html4/udsbr.html		man-sys-htmlman		html
 ./usr/share/man/html4/uep.html			man-sys-htmlman		html
@@ -5115,6 +5120,7 @@
 ./usr/share/man/html4/uhmodem.html		man-sys-htmlman		html
 ./usr/share/man/html4/uhso.html			man-sys-htmlman		html
 ./usr/share/man/html4/uhub.html			man-sys-htmlman		html
+./usr/share/man/html4/uintuos.html		man-sys-htmlman		html
 ./usr/share/man/html4/uipad.html		man-sys-htmlman		html
 ./usr/share/man/html4/uipaq.html		man-sys-htmlman		html
 ./usr/share/man/html4/uirda.html		man-sys-htmlman		html
@@ -8056,6 +8062,7 @@
 ./usr/share/man/man4/slhci.4			man-sys-man		.man
 ./usr/share/man/man4/slide.4			man-sys-man		.man
 ./usr/share/man/man4/slip.4			man-sys-man		.man
+./usr/share/man/man4/slurm.4			man-sys-man		.man
 ./usr/share/man/man4/sm.4			man-sys-man		.man
 ./usr/share/man/man4/smsc.4			man-sys-man		.man
 ./usr/share/man/man4/smscmon.4			man-sys-man		.man
@@ -8212,6 +8219,7 @@
 ./usr/share/man/man4/ucom.4			man-sys-man		.man
 ./usr/share/man/man4/ucycom.4			man-sys-man		.man
 ./usr/share/man/man4/udav.4			man-sys-man		.man
+./usr/share/man/man4/udl.4			man-sys-man		.man
 ./usr/share/man/man4/udp.4			man-sys-man		.man
 ./usr/share/man/man4/udsbr.4			man-sys-man		.man
 ./usr/share/man/man4/uep.4			man-sys-man		.man
@@ -8226,6 +8234,7 @@
 ./usr/share/man/man4/uhmodem.4			man-sys-man		.man
 ./usr/share/man/man4/uhso.4			man-sys-man		.man
 ./usr/share/man/man4/uhub.4			man-sys-man		.man
+./usr/share/man/man4/uintuos.4			man-sys-man		.man
 ./usr/share/man/man4/uipad.4			man-sys-man		.man
 ./usr/share/man/man4/uipaq.4			man-sys-man		.man
 ./usr/share/man/man4/uirda.4			man-sys-man		.man
