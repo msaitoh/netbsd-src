@@ -651,6 +651,7 @@ struct wm_softc {
 #ifdef WM_DEBUG
 	uint32_t sc_debug;
 #endif
+	struct timespec sc_linkdowntime;
 };
 
 #define WM_CORE_LOCK(_sc)						\
@@ -1718,8 +1719,6 @@ static const struct wm_product {
 	  NULL,
 	  0,			0 },
 };
-
-struct timespec wm_linkdowntime;
 
 /*
  * Register read/write functions.
@@ -3584,7 +3583,7 @@ wm_set_linkdown_discard(struct wm_softc *sc)
 
 		mutex_enter(txq->txq_lock);
 		txq->txq_flags |= WM_TXQ_LINKDOWN_DISCARD;
-		nanotime(&wm_linkdowntime);
+		nanotime(&sc->sc_linkdowntime);
 		mutex_exit(txq->txq_lock);
 	}
 }
@@ -3598,8 +3597,8 @@ wm_clear_linkdown_discard(struct wm_softc *sc)
 
 		mutex_enter(txq->txq_lock);
 		txq->txq_flags &= ~WM_TXQ_LINKDOWN_DISCARD;
-		wm_linkdowntime.tv_sec = 0;
-		wm_linkdowntime.tv_nsec = 0;
+		sc->sc_linkdowntime.tv_sec = 0;
+		sc->sc_linkdowntime.tv_nsec = 0;
 		mutex_exit(txq->txq_lock);
 	}
 }
@@ -8036,12 +8035,12 @@ wm_send_common_locked(struct ifnet *ifp, struct wm_txqueue *txq,
 
 		downdiff.tv_sec = 0;
 		downdiff.tv_nsec = 0;
-		if ((wm_linkdowntime.tv_sec != 0) ||
-		    (wm_linkdowntime.tv_nsec != 0)) {
+		if ((sc->sc_linkdowntime.tv_sec != 0) ||
+		    (sc->sc_linkdowntime.tv_nsec != 0)) {
 			nanotime(&now);
-			timespecsub(&now, &wm_linkdowntime, &downdiff);
-			wm_linkdowntime.tv_sec = 0;
-			wm_linkdowntime.tv_nsec = 0;
+			timespecsub(&now, &sc->sc_linkdowntime, &downdiff);
+			sc->sc_linkdowntime.tv_sec = 0;
+			sc->sc_linkdowntime.tv_nsec = 0;
 		}
 		do {
 			if (is_transmit)
