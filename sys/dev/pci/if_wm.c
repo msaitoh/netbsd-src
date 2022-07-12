@@ -149,6 +149,8 @@ __KERNEL_RCSID(0, "$NetBSD: if_wm.c,v 1.740 2022/07/11 06:16:23 msaitoh Exp $");
 #include <dev/pci/if_wmreg.h>
 #include <dev/pci/if_wmvar.h>
 
+#define WM_DEBUG 1
+
 #ifdef WM_DEBUG
 #define	WM_DEBUG_LINK		__BIT(0)
 #define	WM_DEBUG_TX		__BIT(1)
@@ -158,11 +160,14 @@ __KERNEL_RCSID(0, "$NetBSD: if_wm.c,v 1.740 2022/07/11 06:16:23 msaitoh Exp $");
 #define	WM_DEBUG_NVM		__BIT(5)
 #define	WM_DEBUG_INIT		__BIT(6)
 #define	WM_DEBUG_LOCK		__BIT(7)
+#define	WM_DEBUG_XXX		__BIT(8)
 
 #if 0
 #define WM_DEBUG_DEFAULT	WM_DEBUG_TX | WM_DEBUG_RX | WM_DEBUG_LINK | \
 	WM_DEBUG_GMII | WM_DEBUG_MANAGE | WM_DEBUG_NVM | WM_DEBUG_INIT |    \
 	WM_DEBUG_LOCK
+#else
+#define WM_DEBUG_DEFAULT	0
 #endif
 
 #define	DPRINTF(sc, x, y)			  \
@@ -430,6 +435,7 @@ struct wm_txqueue {
 	WM_Q_EVCNT_DEFINE(txq, defrag);	    /* m_defrag() */
 	WM_Q_EVCNT_DEFINE(txq, underrun);   /* Tx underrun */
 	WM_Q_EVCNT_DEFINE(txq, skipcontext); /* Tx skip wrong cksum context */
+	WM_Q_EVCNT_DEFINE(txq, linkdowndiscard); /* Tx discard linkdown count */
 
 	char txq_txseg_evcnt_names[WM_NTXSEGS][sizeof("txqXXtxsegXXX")];
 	struct evcnt txq_ev_txseg[WM_NTXSEGS]; /* Tx packets w/ N segments */
@@ -1712,6 +1718,8 @@ static const struct wm_product {
 	  NULL,
 	  0,			0 },
 };
+
+struct timespec wm_linkdowntime;
 
 /*
  * Register read/write functions.
@@ -3576,6 +3584,7 @@ wm_set_linkdown_discard(struct wm_softc *sc)
 
 		mutex_enter(txq->txq_lock);
 		txq->txq_flags |= WM_TXQ_LINKDOWN_DISCARD;
+		nanotime(&wm_linkdowntime);
 		mutex_exit(txq->txq_lock);
 	}
 }
@@ -3589,6 +3598,8 @@ wm_clear_linkdown_discard(struct wm_softc *sc)
 
 		mutex_enter(txq->txq_lock);
 		txq->txq_flags &= ~WM_TXQ_LINKDOWN_DISCARD;
+		wm_linkdowntime.tv_sec = 0;
+		wm_linkdowntime.tv_nsec = 0;
 		mutex_exit(txq->txq_lock);
 	}
 }
@@ -7256,6 +7267,7 @@ wm_alloc_txrx_queues(struct wm_softc *sc)
 		WM_Q_MISC_EVCNT_ATTACH(txq, defrag, txq, i, xname);
 		WM_Q_MISC_EVCNT_ATTACH(txq, underrun, txq, i, xname);
 		WM_Q_MISC_EVCNT_ATTACH(txq, skipcontext, txq, i, xname);
+		WM_Q_MISC_EVCNT_ATTACH(txq, linkdowndiscard, txq, i, xname);
 #endif /* WM_EVENT_COUNTERS */
 
 		tx_done++;
@@ -7377,6 +7389,7 @@ wm_free_txrx_queues(struct wm_softc *sc)
 		WM_Q_EVCNT_DETACH(txq, defrag, txq, i);
 		WM_Q_EVCNT_DETACH(txq, underrun, txq, i);
 		WM_Q_EVCNT_DETACH(txq, skipcontext, txq, i);
+		WM_Q_EVCNT_DETACH(txq, linkdowndiscard, txq, i);
 #endif /* WM_EVENT_COUNTERS */
 
 		/* Drain txq_interq */
@@ -8007,6 +8020,9 @@ wm_send_common_locked(struct ifnet *ifp, struct wm_txqueue *txq,
 	uint32_t cksumcmd;
 	uint8_t cksumfields;
 	bool remap = true;
+	struct timespec now;
+	struct timespec downdiff;
+	int npkt = 0;
 
 	KASSERT(mutex_owned(txq->txq_lock));
 
@@ -8016,6 +8032,17 @@ wm_send_common_locked(struct ifnet *ifp, struct wm_txqueue *txq,
 		return;
 
 	if (__predict_false(wm_linkdown_discard(txq))) {
+		int ndiscard = 0;
+
+		downdiff.tv_sec = 0;
+		downdiff.tv_nsec = 0;
+		if ((wm_linkdowntime.tv_sec != 0) ||
+		    (wm_linkdowntime.tv_nsec != 0)) {
+			nanotime(&now);
+			timespecsub(&now, &wm_linkdowntime, &downdiff);
+			wm_linkdowntime.tv_sec = 0;
+			wm_linkdowntime.tv_nsec = 0;
+		}
 		do {
 			if (is_transmit)
 				m0 = pcq_get(txq->txq_interq);
@@ -8027,9 +8054,17 @@ wm_send_common_locked(struct ifnet *ifp, struct wm_txqueue *txq,
 			 */
 			if (m0 != NULL) {
 				if_statinc(ifp, if_opackets);
+//				m_print(m0, "cd", printf);
 				m_freem(m0);
+				WM_Q_EVCNT_INCR(txq, linkdowndiscard);
+				ndiscard++;
 			}
 		} while (m0 != NULL);
+		if ((downdiff.tv_sec != 0) || (downdiff.tv_nsec != 0))
+			printf("XXX delay=%" PRId64 ".%09ld\n",
+			    downdiff.tv_sec, downdiff.tv_nsec);
+		if (ndiscard != 0)
+			printf("XXX drop %d\n", ndiscard);
 		return;
 	}
 
@@ -8306,8 +8341,12 @@ retry:
 
 		/* Pass the packet to any BPF listeners. */
 		bpf_mtap(ifp, m0, BPF_D_OUT);
+		npkt++;
 	}
 
+	if (__predict_false(wm_linkdown_discard(txq) && (npkt != 0)))
+		printf("XXX %d pkts might be sent to the linkdown IF.\n",
+		    npkt);
 	if (m0 != NULL) {
 		txq->txq_flags |= WM_TXQ_NO_SPACE;
 		WM_Q_EVCNT_INCR(txq, descdrop);
@@ -8645,6 +8684,7 @@ wm_nq_send_common_locked(struct ifnet *ifp, struct wm_txqueue *txq,
 			 */
 			if (m0 != NULL) {
 				if_statinc(ifp, if_opackets);
+				WM_Q_EVCNT_INCR(txq, linkdowndiscard);
 				m_freem(m0);
 			}
 		} while (m0 != NULL);
