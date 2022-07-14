@@ -1429,6 +1429,7 @@ mfii_aen_ld_update(struct mfii_softc *sc)
 	int i, target, old, nld;
 	int newlds[MFII_MAX_LD_EXT];
 
+	memset(&mbox, 0, sizeof(mbox));
 	if (sc->sc_max256vd)
 		mbox.b[0] = 1;
 	mutex_enter(&sc->sc_lock);
@@ -2948,6 +2949,7 @@ mfii_bio_getitall(struct mfii_softc *sc)
 	sc->sc_cfg = cfg;
 
 	/* get all ld info */
+	memset(&mbox, 0, sizeof(mbox));
 	if (sc->sc_max256vd)
 		mbox.b[0] = 1;
 	if (mfii_mgmt(sc, MR_DCMD_LD_GET_LIST, &mbox, &sc->sc_ld_list,
