@@ -1544,8 +1544,11 @@ mfii_get_info(struct mfii_softc *sc)
 	rv = mfii_mgmt(sc, MR_DCMD_CTRL_GET_INFO, NULL, &sc->sc_info,
 	    sizeof(sc->sc_info), MFII_DATA_IN, true);
 
-	if (rv != 0)
+	if (rv != 0) {
+		printf("%s: %s: mfii_mgmt() failed (rv = %d)\n",
+		    DEVNAME(sc), __func__, rv);
 		return (rv);
+	}
 
 	for (i = 0; i < sc->sc_info.mci_image_component_count; i++) {
 		DPRINTF("%s: active FW %s Version %s date %s time %s\n",
@@ -1851,6 +1854,7 @@ mfii_do_mgmt(struct mfii_softc *sc, struct mfii_ccb *ccb, uint32_t opc,
 	struct mfi_dcmd_frame *dcmd = ccb->ccb_mfi;
 	struct mfi_frame_header *hdr = &dcmd->mdf_header;
 	int rv = EIO;
+	int rv2;
 
 	if (cold)
 		poll = true;
@@ -1870,8 +1874,11 @@ mfii_do_mgmt(struct mfii_softc *sc, struct mfii_ccb *ccb, uint32_t opc,
 		break;
 	}
 
-	if (mfii_load_mfa(sc, ccb, &dcmd->mdf_sgl, poll) != 0) {
+	rv2 = mfii_load_mfa(sc, ccb, &dcmd->mdf_sgl, poll);
+	if (rv2 != 0) {
 		rv = ENOMEM;
+		printf("%s: %s: mfii_load_mfa() failed (rv2 = %d)\n",
+		    DEVNAME(sc), __func__, rv2);
 		goto done;
 	}
 
@@ -1905,7 +1912,10 @@ mfii_do_mgmt(struct mfii_softc *sc, struct mfii_ccb *ccb, uint32_t opc,
 
 	if (hdr->mfh_cmd_status == MFI_STAT_OK) {
 		rv = 0;
-	}
+	} else
+		printf("%s: %s: mfii_{poll,exec}() failed "
+		    "(mfh_cmd_status = %d)\n",
+		    DEVNAME(sc), __func__, hdr->mfh_cmd_status);
 
 done:
 	return (rv);
@@ -2198,6 +2208,7 @@ mfii_scsipi_request(struct scsipi_channel *chan, scsipi_adapter_req_t req,
 	struct mfii_ccb *ccb;
 	int timeout;
 	int target;
+	int rv;
 
 	switch (req) {
 		case ADAPTER_REQ_GROW_RESOURCES:
@@ -2263,13 +2274,21 @@ mfii_scsipi_request(struct scsipi_channel *chan, scsipi_adapter_req_t req,
 	case WRITE_10:
 	case WRITE_12:
 	case WRITE_16:
-		if (mfii_scsi_cmd_io(sc, ccb, xs) != 0)
+		rv = mfii_scsi_cmd_io(sc, ccb, xs);
+		if (rv != 0) {
+			printf("%s: %s: mfii_scsi_cmd_io() failed (rv = %d)\n",
+			    DEVNAME(sc), __func__, rv);
 			goto stuffup;
+		}
 		break;
 
 	default:
-		if (mfii_scsi_cmd_cdb(sc, ccb, xs) != 0)
+		rv = mfii_scsi_cmd_cdb(sc, ccb, xs);
+		if (rv != 0) {
+			printf("%s: %s: mfii_scsi_cmd_cdb() failed (rv = %d)\n",
+			    DEVNAME(sc), __func__, rv);
 			goto stuffup;
+		}
 		break;
 	}
 
@@ -2280,8 +2299,12 @@ mfii_scsipi_request(struct scsipi_channel *chan, scsipi_adapter_req_t req,
 	    xs->cmd->opcode);
 
 	if (xs->xs_control & XS_CTL_POLL) {
-		if (mfii_poll(sc, ccb) != 0)
+		rv = mfii_poll(sc, ccb);
+		if (rv != 0) {
+			printf("%s: %s: mfii_poll() failed (rv = %d)\n",
+			    DEVNAME(sc), __func__, rv);
 			goto stuffup;
+		}
 		return;
 	}
 
@@ -2927,6 +2950,8 @@ mfii_bio_getitall(struct mfii_softc *sc)
 	if (mfii_mgmt(sc, MR_DCMD_CONF_GET, NULL, cfg, sizeof(*cfg),
 	    MFII_DATA_IN, false)) {
 		free(cfg, M_DEVBUF);
+		printf("%s: %s: mfii_mgmt() failed\n",
+		    DEVNAME(sc), __func__);
 		goto done;
 	}
 
@@ -2940,6 +2965,8 @@ mfii_bio_getitall(struct mfii_softc *sc)
 	if (mfii_mgmt(sc, MR_DCMD_CONF_GET, NULL, cfg, size,
 	    MFII_DATA_IN, false)) {
 		free(cfg, M_DEVBUF);
+		printf("%s: %s: mfii_mgmt() failed(2)\n",
+		    DEVNAME(sc), __func__);
 		goto done;
 	}
 
@@ -2953,8 +2980,11 @@ mfii_bio_getitall(struct mfii_softc *sc)
 	if (sc->sc_max256vd)
 		mbox.b[0] = 1;
 	if (mfii_mgmt(sc, MR_DCMD_LD_GET_LIST, &mbox, &sc->sc_ld_list,
-	    sizeof(sc->sc_ld_list), MFII_DATA_IN, false))
+	    sizeof(sc->sc_ld_list), MFII_DATA_IN, false)) {
+		printf("%s: %s: mfii_mgmt() failed(3)\n",
+		    DEVNAME(sc), __func__);
 		goto done;
+	}
 
 	/* get memory for all ld structures */
 	size = cfg->mfc_no_ld * sizeof(struct mfi_ld_details);
@@ -2979,11 +3009,11 @@ mfii_bio_getitall(struct mfii_softc *sc)
 		rv2 = mfii_mgmt(sc, MR_DCMD_LD_GET_INFO, &mbox,
 		    &sc->sc_ld_details[i], size, MFII_DATA_IN, false);
 		if (rv2 != 0) {
-			goto done;
 			printf("%s: %s: mfii_mgmt() failed(4) (mfc_no_ld = %d, mll_no_ld = %d, i = %d, target = %d, rv2 = %d)\n",
 			    DEVNAME(sc), __func__,
 			    cfg->mfc_no_ld, sc->sc_ld_list.mll_no_ld, i,
 			    sc->sc_ld_list.mll_list[i].mll_ld.mld_target, rv2);
+			goto done;
 		}
 
 		d += sc->sc_ld_details[i].mld_cfg.mlc_parm.mpa_no_drv_per_span *
@@ -3007,12 +3037,17 @@ mfii_ioctl_inq(struct mfii_softc *sc, struct bioc_inq *bi)
 	if (mfii_bio_getitall(sc)) {
 		DNPRINTF(MFII_D_IOCTL, "%s: mfii_bio_getitall failed\n",
 		    DEVNAME(sc));
+		printf("%s: %s: mfii_bio_getitall() failed\n",
+		    DEVNAME(sc), __func__);
 		goto done;
 	}
 
 	/* count unused disks as volumes */
-	if (sc->sc_cfg == NULL)
+	if (sc->sc_cfg == NULL) {
+		printf("%s: %s: sc_cfg == NULL\n",
+		    DEVNAME(sc), __func__);
 		goto done;
+	}
 	cfg = sc->sc_cfg;
 
 	bi->bi_nodisk = sc->sc_info.mci_pd_disks_present;
@@ -3041,12 +3076,17 @@ mfii_ioctl_vol(struct mfii_softc *sc, struct bioc_vol *bv)
 	if (mfii_bio_getitall(sc)) {
 		DNPRINTF(MFII_D_IOCTL, "%s: mfii_bio_getitall failed\n",
 		    DEVNAME(sc));
+		printf("%s: %s: mfii_bio_getitall() failed\n",
+		    DEVNAME(sc), __func__);
 		goto done;
 	}
 
 	if (bv->bv_volid >= sc->sc_ld_list.mll_no_ld) {
 		/* go do hotspares & unused disks */
 		rv = mfii_bio_hs(sc, bv->bv_volid, MFI_MGMT_VD, bv);
+		if (rv != 0)
+			printf("%s: %s: mfii_bio_hs failed(rv = %d)\n",
+			    DEVNAME(sc), __func__, rv);
 		goto done;
 	}
 
@@ -3149,6 +3189,8 @@ mfii_ioctl_disk(struct mfii_softc *sc, struct bioc_disk *bd)
 	if (mfii_bio_getitall(sc)) {
 		DNPRINTF(MFII_D_IOCTL, "%s: mfii_bio_getitall failed\n",
 		    DEVNAME(sc));
+		printf("%s: %s: mfii_bio_getitall() failed\n",
+		    DEVNAME(sc), __func__);
 		return (rv);
 	}
 	cfg = sc->sc_cfg;
@@ -3161,6 +3203,9 @@ mfii_ioctl_disk(struct mfii_softc *sc, struct bioc_disk *bd)
 	if (vol >= cfg->mfc_no_ld) {
 		/* do hotspares */
 		rv = mfii_bio_hs(sc, bd->bd_volid, MFI_MGMT_SD, bd);
+		if (rv != 0)
+			printf("%s: %s: mfii_bio_hs() failed(rv = %d)\n",
+			    DEVNAME(sc), __func__, rv);
 		goto freeme;
 	}
 
@@ -3186,8 +3231,11 @@ mfii_ioctl_disk(struct mfii_softc *sc, struct bioc_disk *bd)
 
 		/* try to find an unused disk for the target to rebuild */
 		if (mfii_mgmt(sc, MR_DCMD_PD_GET_LIST, NULL, pl, sizeof(*pl),
-		    MFII_DATA_IN, false))
+		    MFII_DATA_IN, false)) {
+			printf("%s: %s: mfii_mgmt() failed\n",
+			    DEVNAME(sc), __func__);
 			goto freeme;
+		}
 
 		for (i = 0; i < pl->mpl_no_pd; i++) {
 			if (pl->mpl_address[i].mpa_scsi_type != 0)
@@ -3204,14 +3252,19 @@ mfii_ioctl_disk(struct mfii_softc *sc, struct bioc_disk *bd)
 				break;
 		}
 
-		if (i == pl->mpl_no_pd)
+		if (i == pl->mpl_no_pd) {
+			printf("%s: %s: no unused disk?\n",
+			    DEVNAME(sc), __func__);
 			goto freeme;
+		}
 	} else {
 		memset(&mbox, 0, sizeof(mbox));
 		mbox.s[0] = ar[arr].pd[disk].mar_pd.mfp_id;
 		if (mfii_mgmt(sc, MR_DCMD_PD_GET_INFO, &mbox, pd, sizeof(*pd),
 		    MFII_DATA_IN, false)) {
 			bd->bd_status = BIOC_SDINVALID;
+			printf("%s: %s: mfii_mgmt() failed(2)\n",
+			    DEVNAME(sc), __func__);
 			goto freeme;
 		}
 	}
@@ -3319,9 +3372,11 @@ mfii_ioctl_alarm(struct mfii_softc *sc, struct bioc_alarm *ba)
 		return (EINVAL);
 	}
 
-	if (mfii_mgmt(sc, opc, NULL, &ret, sizeof(ret), dir, false))
+	if (mfii_mgmt(sc, opc, NULL, &ret, sizeof(ret), dir, false)) {
+		printf("%s: %s: mfii_mgmt() failed\n",
+		    DEVNAME(sc), __func__);
 		rv = EINVAL;
-	else
+	} else
 		if (ba->ba_opcode == BIOC_GASTATUS)
 			ba->ba_status = ret;
 		else
@@ -3348,8 +3403,11 @@ mfii_ioctl_blink(struct mfii_softc *sc, struct bioc_blink *bb)
 	pd = malloc(sizeof(*pd), M_DEVBUF, M_WAITOK);
 
 	if (mfii_mgmt(sc, MR_DCMD_PD_GET_LIST, NULL, pd, sizeof(*pd),
-	    MFII_DATA_IN, false))
+	   MFII_DATA_IN, false)) {
+		printf("%s: %s: mfii_mgmt() failed\n",
+		    DEVNAME(sc), __func__);
 		goto done;
+	}
 
 	for (i = 0, found = 0; i < pd->mpl_no_pd; i++)
 		if (bb->bb_channel == pd->mpl_address[i].mpa_enc_index &&
@@ -3358,8 +3416,11 @@ mfii_ioctl_blink(struct mfii_softc *sc, struct bioc_blink *bb)
 			break;
 		}
 
-	if (!found)
+	if (!found) {
+		printf("%s: %s: mfii_mgmt() failed\n",
+		    DEVNAME(sc), __func__);
 		goto done;
+	}
 
 	memset(&mbox, 0, sizeof(mbox));
 	mbox.s[0] = pd->mpl_address[i].mpa_pd_id;
@@ -3378,12 +3439,17 @@ mfii_ioctl_blink(struct mfii_softc *sc, struct bioc_blink *bb)
 		DNPRINTF(MFII_D_IOCTL,
 		    "%s: mfii_ioctl_blink biocblink invalid opcode %x\n",
 		    DEVNAME(sc), bb->bb_status);
+		printf("%s: %s: invalid opcode(%x)\n",
+		    DEVNAME(sc), __func__, bb->bb_status);
 		goto done;
 	}
 
 
-	if (mfii_mgmt(sc, cmd, &mbox, NULL, 0, MFII_DATA_NONE, false))
+	if (mfii_mgmt(sc, cmd, &mbox, NULL, 0, MFII_DATA_NONE, false)) {
+		printf("%s: %s: mfii_mgmt() failed\n",
+		    DEVNAME(sc), __func__);
 		goto done;
+	}
 
 	rv = 0;
 done:
@@ -3406,8 +3472,11 @@ mfii_makegood(struct mfii_softc *sc, uint16_t pd_id)
 	mbox.s[0] = pd_id;
 	rv = mfii_mgmt(sc, MR_DCMD_PD_GET_INFO, &mbox, pd, sizeof(*pd),
 	    MFII_DATA_IN, false);
-	if (rv != 0)
+	if (rv != 0) {
+		printf("%s: %s: mfii_mgmt() failed (rv = %d)\n",
+		    DEVNAME(sc), __func__, rv);
 		goto done;
+	}
 
 	if (pd->mpd_fw_state == MFI_PD_UNCONFIG_BAD) {
 		mbox.s[0] = pd_id;
@@ -3415,28 +3484,10 @@ mfii_makegood(struct mfii_softc *sc, uint16_t pd_id)
 		mbox.b[4] = MFI_PD_UNCONFIG_GOOD;
 		rv = mfii_mgmt(sc, MR_DCMD_PD_SET_STATE, &mbox, NULL, 0,
 		    MFII_DATA_NONE, false);
-		if (rv != 0)
+		if (rv != 0) {
+			printf("%s: %s: mfii_mgmt() failed(2) (rv = %d)\n",
+			    DEVNAME(sc), __func__, rv);
 			goto done;
-	}
-
-	memset(&mbox, 0, sizeof mbox);
-	mbox.s[0] = pd_id;
-	rv = mfii_mgmt(sc, MR_DCMD_PD_GET_INFO, &mbox, pd, sizeof(*pd),
-	    MFII_DATA_IN, false);
-	if (rv != 0)
-		goto done;
-
-	if (pd->mpd_ddf_state & MFI_DDF_FOREIGN) {
-		rv = mfii_mgmt(sc, MR_DCMD_CFG_FOREIGN_SCAN, NULL,
-		    fsi, sizeof(*fsi), MFII_DATA_IN, false);
-		if (rv != 0)
-			goto done;
-
-		if (fsi->count > 0) {
-			rv = mfii_mgmt(sc, MR_DCMD_CFG_FOREIGN_CLEAR, NULL,
-			    NULL, 0, MFII_DATA_NONE, false);
-			if (rv != 0)
-				goto done;
 		}
 	}
 
@@ -3444,8 +3495,41 @@ mfii_makegood(struct mfii_softc *sc, uint16_t pd_id)
 	mbox.s[0] = pd_id;
 	rv = mfii_mgmt(sc, MR_DCMD_PD_GET_INFO, &mbox, pd, sizeof(*pd),
 	    MFII_DATA_IN, false);
-	if (rv != 0)
+	if (rv != 0) {
+		printf("%s: %s: mfii_mgmt() failed(3) (rv = %d)\n",
+		    DEVNAME(sc), __func__, rv);
 		goto done;
+	}
+
+	if (pd->mpd_ddf_state & MFI_DDF_FOREIGN) {
+		rv = mfii_mgmt(sc, MR_DCMD_CFG_FOREIGN_SCAN, NULL,
+		    fsi, sizeof(*fsi), MFII_DATA_IN, false);
+		if (rv != 0) {
+			printf("%s: %s: mfii_mgmt() failed(4) (rv = %d)\n",
+			    DEVNAME(sc), __func__, rv);
+			goto done;
+		}
+
+		if (fsi->count > 0) {
+			rv = mfii_mgmt(sc, MR_DCMD_CFG_FOREIGN_CLEAR, NULL,
+			    NULL, 0, MFII_DATA_NONE, false);
+			if (rv != 0) {
+				printf("%s: %s: mfii_mgmt() failed(5) (rv = %d)\n",
+				    DEVNAME(sc), __func__, rv);
+				goto done;
+			}
+		}
+	}
+
+	memset(&mbox, 0, sizeof mbox);
+	mbox.s[0] = pd_id;
+	rv = mfii_mgmt(sc, MR_DCMD_PD_GET_INFO, &mbox, pd, sizeof(*pd),
+	    MFII_DATA_IN, false);
+	if (rv != 0) {
+		printf("%s: %s: mfii_mgmt() failed(6) (rv = %d)\n",
+		    DEVNAME(sc), __func__, rv);
+		goto done;
+	}
 
 	if (pd->mpd_fw_state != MFI_PD_UNCONFIG_GOOD ||
 	    pd->mpd_ddf_state & MFI_DDF_FOREIGN)
@@ -3471,6 +3555,8 @@ mfii_makespare(struct mfii_softc *sc, uint16_t pd_id)
 	if (mfii_bio_getitall(sc)) {
 		DNPRINTF(MFII_D_IOCTL, "%s: mfii_bio_getitall failed\n",
 		    DEVNAME(sc));
+		printf("%s: %s: mfii_bio_getitall() failed\n",
+		    DEVNAME(sc), __func__);
 		return (rv);
 	}
 	size = sizeof *hs + sizeof(uint16_t) * sc->sc_cfg->mfc_no_array;
@@ -3482,8 +3568,11 @@ mfii_makespare(struct mfii_softc *sc, uint16_t pd_id)
 	mbox.s[0] = pd_id;
 	rv = mfii_mgmt(sc, MR_DCMD_PD_GET_INFO, &mbox, pd, sizeof(*pd),
 	    MFII_DATA_IN, false);
-	if (rv != 0)
+	if (rv != 0) {
+		printf("%s: %s: mfii_mgmt() failed\n",
+		    DEVNAME(sc), __func__);
 		goto done;
+	}
 
 	memset(hs, 0, size);
 	hs->mhs_pd.mfp_id = pd->mpd_pd.mfp_id;
@@ -3513,8 +3602,11 @@ mfii_ioctl_setstate(struct mfii_softc *sc, struct bioc_setstate *bs)
 	pl = malloc(sizeof *pl, M_DEVBUF, M_WAITOK);
 
 	if (mfii_mgmt(sc, MR_DCMD_PD_GET_LIST, NULL, pl, sizeof(*pl),
-	    MFII_DATA_IN, false))
+	    MFII_DATA_IN, false)) {
+		printf("%s: %s: mfii_mgmt() failed\n",
+		    DEVNAME(sc), __func__);
 		goto done;
+	}
 
 	for (i = 0, found = 0; i < pl->mpl_no_pd; i++)
 		if (bs->bs_channel == pl->mpl_address[i].mpa_enc_index &&
@@ -3523,15 +3615,21 @@ mfii_ioctl_setstate(struct mfii_softc *sc, struct bioc_setstate *bs)
 			break;
 		}
 
-	if (!found)
+	if (!found) {
+		printf("%s: %s: not found\n",
+		    DEVNAME(sc), __func__);
 		goto done;
+	}
 
 	memset(&mbox, 0, sizeof(mbox));
 	mbox.s[0] = pl->mpl_address[i].mpa_pd_id;
 
 	if (mfii_mgmt(sc, MR_DCMD_PD_GET_INFO, &mbox, pd, sizeof(*pd),
-	    MFII_DATA_IN, false))
+	    MFII_DATA_IN, false)) {
+		printf("%s: %s: mfii_mgmt() failed(2)\n",
+		    DEVNAME(sc), __func__);
 		goto done;
+	}
 
 	mbox.s[0] = pl->mpl_address[i].mpa_pd_id;
 	mbox.s[1] = pd->mpd_pd.mfp_seq;
@@ -3552,19 +3650,28 @@ mfii_ioctl_setstate(struct mfii_softc *sc, struct bioc_setstate *bs)
 	case BIOC_SSREBUILD:
 		if (pd->mpd_fw_state != MFI_PD_OFFLINE) {
 			if ((rv = mfii_makegood(sc,
-			    pl->mpl_address[i].mpa_pd_id)))
+			    pl->mpl_address[i].mpa_pd_id))) {
+				printf("%s: %s: mfii_mkgood() failed\n",
+				    DEVNAME(sc), __func__);
 				goto done;
+			}
 
 			if ((rv = mfii_makespare(sc,
-			    pl->mpl_address[i].mpa_pd_id)))
+			    pl->mpl_address[i].mpa_pd_id))) {
+				printf("%s: %s: mfii_makespare() failed\n",
+				    DEVNAME(sc), __func__);
 				goto done;
+			}
 
 			memset(&mbox, 0, sizeof(mbox));
 			mbox.s[0] = pl->mpl_address[i].mpa_pd_id;
 			rv = mfii_mgmt(sc, MR_DCMD_PD_GET_INFO, &mbox,
 			    pd, sizeof(*pd), MFII_DATA_IN, false);
-			if (rv != 0)
+			if (rv != 0) {
+				printf("%s: %s: mfii_mgmt() failed (rv = %d)\n",
+				    DEVNAME(sc), __func__, rv);
 				goto done;
+			}
 
 			/* rebuilding might be started by mfii_makespare() */
 			if (pd->mpd_fw_state == MFI_PD_REBUILD) {
@@ -3581,6 +3688,8 @@ mfii_ioctl_setstate(struct mfii_softc *sc, struct bioc_setstate *bs)
 	default:
 		DNPRINTF(MFII_D_IOCTL, "%s: mfii_ioctl_setstate invalid "
 		    "opcode %x\n", DEVNAME(sc), bs->bs_status);
+		printf("%s: %s: invalid opcode %d\n",
+		    DEVNAME(sc), __func__, bs->bs_status);
 		goto done;
 	}
 
@@ -3610,8 +3719,11 @@ mfii_ioctl_patrol(struct mfii_softc *sc, struct bioc_patrol *bp)
 			opc = MR_DCMD_PR_START;
 		else
 			opc = MR_DCMD_PR_STOP;
-		if (mfii_mgmt(sc, opc, NULL, NULL, 0, MFII_DATA_IN, false))
+		if (mfii_mgmt(sc, opc, NULL, NULL, 0, MFII_DATA_IN, false)) {
+			printf("%s: %s: mfii_mgmt() failed\n",
+			    DEVNAME(sc), __func__);
 			return (EINVAL);
+		}
 		break;
 
 	case BIOC_SPMANUAL:
@@ -3756,8 +3868,11 @@ mfii_bio_hs(struct mfii_softc *sc, int volid, int type, void *bio_hs)
 	/* send single element command to retrieve size for full structure */
 	cfg = malloc(sizeof *cfg, M_DEVBUF, M_WAITOK);
 	if (mfii_mgmt(sc, MR_DCMD_CONF_GET, NULL, cfg, sizeof(*cfg),
-	    MFII_DATA_IN, false))
+	    MFII_DATA_IN, false)) {
+		printf("%s: %s: mfii_mgmt() failed\n",
+		    DEVNAME(sc), __func__);
 		goto freeme;
+	}
 
 	size = cfg->mfc_size;
 	free(cfg, M_DEVBUF);
@@ -3765,8 +3880,11 @@ mfii_bio_hs(struct mfii_softc *sc, int volid, int type, void *bio_hs)
 	/* memory for read config */
 	cfg = malloc(size, M_DEVBUF, M_WAITOK|M_ZERO);
 	if (mfii_mgmt(sc, MR_DCMD_CONF_GET, NULL, cfg, size,
-	    MFII_DATA_IN, false))
+	    MFII_DATA_IN, false)) {
+		printf("%s: %s: mfii_mgmt() failed(2)\n",
+		    DEVNAME(sc), __func__);
 		goto freeme;
+	}
 
 	/* calculate offset to hs structure */
 	hs = (struct mfi_hotspare *)(
@@ -3774,11 +3892,17 @@ mfii_bio_hs(struct mfii_softc *sc, int volid, int type, void *bio_hs)
 	    cfg->mfc_array_size * cfg->mfc_no_array +
 	    cfg->mfc_ld_size * cfg->mfc_no_ld);
 
-	if (volid < cfg->mfc_no_ld)
+	if (volid < cfg->mfc_no_ld) {
+		printf("%s: %s: not a hotspare\n",
+		    DEVNAME(sc), __func__);
 		goto freeme; /* not a hotspare */
+	}
 
-	if (volid > (cfg->mfc_no_ld + cfg->mfc_no_hs))
+	if (volid > (cfg->mfc_no_ld + cfg->mfc_no_hs)) {
+		printf("%s: %s: not a hotspare(2)\n",
+		    DEVNAME(sc), __func__);
 		goto freeme; /* not a hotspare */
+	}
 
 	/* offset into hotspare structure */
 	i = volid - cfg->mfc_no_ld;
@@ -3795,6 +3919,8 @@ mfii_bio_hs(struct mfii_softc *sc, int volid, int type, void *bio_hs)
 	    MFII_DATA_IN, false)) {
 		DNPRINTF(MFII_D_IOCTL, "%s: mfii_vol_hs illegal PD\n",
 		    DEVNAME(sc));
+		printf("%s: %s: mfii_mgmt() failed\n",
+		    DEVNAME(sc), __func__);
 		goto freeme;
 	}
 
@@ -3821,6 +3947,8 @@ mfii_bio_hs(struct mfii_softc *sc, int volid, int type, void *bio_hs)
 		break;
 
 	default:
+		printf("%s: %s: unknown type?\n",
+		    DEVNAME(sc), __func__);
 		goto freeme;
 	}
 
@@ -3853,6 +3981,8 @@ mfii_bbu(struct mfii_softc *sc, envsys_data_t *edata)
 	if (rv != 0) {
 		edata->state = ENVSYS_SINVALID;
 		edata->value_cur = 0;
+		printf("%s: %s: mfii_mgmt() failed (rv = %d)\n",
+		    DEVNAME(sc), __func__, rv);
 		return;
 	}
 
