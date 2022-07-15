@@ -356,6 +356,7 @@ struct mfii_softc {
 	struct {
 		bool		ld_present;
 		char		ld_dev[16];	/* device name sd? */
+		int		ld_target_id;
 	}			sc_ld[MFII_MAX_LD_EXT];
 	int			sc_target_lds[MFII_MAX_LD_EXT];
 	bool			sc_max256vd;
@@ -939,6 +940,7 @@ mfii_attach(device_t parent, device_t self, void *aux)
 	for (i = 0; i < sc->sc_ld_list.mll_no_ld; i++) {
 		int target = sc->sc_ld_list.mll_list[i].mll_ld.mld_target;
 		sc->sc_target_lds[target] = i;
+		sc->sc_ld[i].ld_target_id = target;
 		aprint_normal_dev(self, "sc_target_lds[%d] = %d\n",
 		    target, i);
 	}
@@ -2370,9 +2372,14 @@ mfii_scsi_cmd_io(struct mfii_softc *sc, struct mfii_ccb *ccb,
 	struct scsipi_periph *periph = xs->xs_periph;
 	struct mpii_msg_scsi_io *io = ccb->ccb_request;
 	struct mfii_raid_context *ctx = (struct mfii_raid_context *)(io + 1);
-	int segs;
+	int segs, target;
 
-	io->dev_handle = htole16(periph->periph_target);
+	target = sc->sc_ld[periph->periph_target].ld_target_id;
+	if (target != periph->periph_target)
+		device_printf(sc->sc_dev,
+		    "ld_target_id (%d) != periph_target (%d)\n",
+		    target, periph->periph_target);
+	io->dev_handle = htole16(target);
 	io->function = MFII_FUNCTION_LDIO_REQUEST;
 	io->sense_buffer_low_address = htole32(ccb->ccb_sense_dva);
 	io->sgl_flags = htole16(0x02); /* XXX */
@@ -2399,7 +2406,7 @@ mfii_scsi_cmd_io(struct mfii_softc *sc, struct mfii_ccb *ccb,
 	ctx->type_nseg = sc->sc_iop->ldio_ctx_type_nseg;
 	ctx->timeout_value = htole16(0x14); /* XXX */
 	ctx->reg_lock_flags = htole16(sc->sc_iop->ldio_ctx_reg_lock_flags);
-	ctx->virtual_disk_target_id = htole16(periph->periph_target);
+	ctx->virtual_disk_target_id = htole16(target);
 
 	if (mfii_load_ccb(sc, ccb, ctx + 1,
 	    ISSET(xs->xs_control, XS_CTL_NOSLEEP)) != 0) {
@@ -2433,8 +2440,10 @@ mfii_scsi_cmd_cdb(struct mfii_softc *sc, struct mfii_ccb *ccb,
 	struct scsipi_periph *periph = xs->xs_periph;
 	struct mpii_msg_scsi_io *io = ccb->ccb_request;
 	struct mfii_raid_context *ctx = (struct mfii_raid_context *)(io + 1);
+	int target;
 
-	io->dev_handle = htole16(periph->periph_target);
+	target = sc->sc_ld[periph->periph_target].ld_target_id;
+	io->dev_handle = htole16(target);
 	io->function = MFII_FUNCTION_LDIO_REQUEST;
 	io->sense_buffer_low_address = htole32(ccb->ccb_sense_dva);
 	io->sgl_flags = htole16(0x02); /* XXX */
@@ -2459,7 +2468,7 @@ mfii_scsi_cmd_cdb(struct mfii_softc *sc, struct mfii_ccb *ccb,
 	}
 	memcpy(io->cdb, xs->cmd, xs->cmdlen);
 
-	ctx->virtual_disk_target_id = htole16(periph->periph_target);
+	ctx->virtual_disk_target_id = htole16(target);
 
 	if (mfii_load_ccb(sc, ccb, ctx + 1,
 	    ISSET(xs->xs_control, XS_CTL_NOSLEEP)) != 0)
