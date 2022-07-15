@@ -939,6 +939,8 @@ mfii_attach(device_t parent, device_t self, void *aux)
 	for (i = 0; i < sc->sc_ld_list.mll_no_ld; i++) {
 		int target = sc->sc_ld_list.mll_list[i].mll_ld.mld_target;
 		sc->sc_target_lds[target] = i;
+		aprint_normal_dev(self, "sc_target_lds[%d] = %d\n",
+		    target, i);
 	}
 
 	/* enable interrupts */
@@ -2235,6 +2237,9 @@ mfii_scsipi_request(struct scsipi_channel *chan, scsipi_adapter_req_t req,
 	    periph->periph_lun != 0) {
 		xs->error = XS_SELTIMEOUT;
 		scsipi_done(xs);
+		printf("%s: %s: target = %d, !ld_present = %d, periph_lun = %d"
+		    "\n", DEVNAME(sc), __func__, target,
+		    !sc->sc_ld[target].ld_present, periph->periph_lun);
 		return;
 	}
 
@@ -2336,15 +2341,21 @@ mfii_scsi_cmd_done(struct mfii_softc *sc, struct mfii_ccb *ccb)
 		xs->error = XS_SENSE;
 		memset(&xs->sense, 0, sizeof(xs->sense));
 		memcpy(&xs->sense, ccb->ccb_sense, sizeof(xs->sense));
+		printf("%s: %s: ctx->status = %d\n",
+		    DEVNAME(sc), __func__, ctx->status);
 		break;
 
 	case MFI_STAT_LD_OFFLINE:
 	case MFI_STAT_DEVICE_NOT_FOUND:
 		xs->error = XS_SELTIMEOUT;
+		printf("%s: %s: ctx->status = %d\n",
+		    DEVNAME(sc), __func__, ctx->status);
 		break;
 
 	default:
 		xs->error = XS_DRIVER_STUFFUP;
+		printf("%s: %s: ctx->status = %d\n",
+		    DEVNAME(sc), __func__, ctx->status);
 		break;
 	}
 
@@ -2391,8 +2402,11 @@ mfii_scsi_cmd_io(struct mfii_softc *sc, struct mfii_ccb *ccb,
 	ctx->virtual_disk_target_id = htole16(periph->periph_target);
 
 	if (mfii_load_ccb(sc, ccb, ctx + 1,
-	    ISSET(xs->xs_control, XS_CTL_NOSLEEP)) != 0)
+	    ISSET(xs->xs_control, XS_CTL_NOSLEEP)) != 0) {
+		printf("%s: %s: mfii_load_ccb() failed\n",
+		    DEVNAME(sc), __func__);
 		return (1);
+	}
 
 	KASSERT(ccb->ccb_len == 0 || ccb->ccb_dma64);
 	segs = (ccb->ccb_len == 0) ? 0 : ccb->ccb_dmamap64->dm_nsegs;
