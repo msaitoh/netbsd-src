@@ -1453,6 +1453,7 @@ mfii_aen_ld_update(struct mfii_softc *sc)
 		DNPRINTF(MFII_D_MISC, "%s: target %d: state %d\n",
 		    DEVNAME(sc), target, sc->sc_ld_list.mll_list[i].mll_state);
 		newlds[target] = i;
+		sc->sc_ld[i].ld_target_id = target;
 	}
 
 	for (i = 0; i < MFII_MAX_LD_EXT; i++) {
