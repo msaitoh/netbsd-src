@@ -1,4 +1,4 @@
-/* $NetBSD: mfii.c,v 1.23 2022/07/09 11:44:57 msaitoh Exp $ */
+/* $NetBSD: mfii.c,v 1.26 2022/07/16 07:23:51 msaitoh Exp $ */
 /* $OpenBSD: mfii.c,v 1.58 2018/08/14 05:22:21 jmatthew Exp $ */
 
 /*
@@ -19,7 +19,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: mfii.c,v 1.23 2022/07/09 11:44:57 msaitoh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: mfii.c,v 1.26 2022/07/16 07:23:51 msaitoh Exp $");
 
 #include "bio.h"
 
@@ -206,6 +206,21 @@ struct mfii_foreign_scan_info {
 	struct mfii_foreign_scan_cfg cfgs[8];
 } __packed;
 
+#define MFII_MAX_LD_EXT		256
+
+struct mfii_ld_list_ext {
+	uint32_t		mll_no_ld;
+	uint32_t		mll_res;
+	struct {
+		struct mfi_ld	mll_ld;
+		uint8_t		mll_state; /* states are the same as MFI_ */
+		uint8_t		mll_res2;
+		uint8_t		mll_res3;
+		uint8_t		mll_res4;
+		uint64_t	mll_size;
+	} mll_list[MFII_MAX_LD_EXT];
+} __packed;
+
 struct mfii_dmamem {
 	bus_dmamap_t		mdm_map;
 	bus_dma_segment_t	mdm_seg;
@@ -340,13 +355,15 @@ struct mfii_softc {
 	struct {
 		bool		ld_present;
 		char		ld_dev[16];	/* device name sd? */
-	}			sc_ld[MFI_MAX_LD];
-	int			sc_target_lds[MFI_MAX_LD];
+		int		ld_target_id;
+	}			sc_ld[MFII_MAX_LD_EXT];
+	int			sc_target_lds[MFII_MAX_LD_EXT];
+	bool			sc_max256vd;
 
 	/* bio */
 	struct mfi_conf		*sc_cfg;
 	struct mfi_ctrl_info	sc_info;
-	struct mfi_ld_list	sc_ld_list;
+	struct mfii_ld_list_ext	sc_ld_list;
 	struct mfi_ld_details	*sc_ld_details; /* array to all logical disks */
 	int			sc_no_pd; /* used physical disks */
 	int			sc_ld_sz; /* sizeof sc_ld_details */
@@ -591,7 +608,6 @@ static const struct mfii_iop mfii_iop_35 = {
 	0
 };
 
-#if 0
 static const struct mfii_iop mfii_iop_aero = {
 	MFII_BAR_35,
 	MFII_IOP_NUM_SGE_LOC_35,
@@ -602,7 +618,6 @@ static const struct mfii_iop mfii_iop_aero = {
 	MFII_SGE_END_OF_LIST,
 	MFII_IOP_QUIRK_REGREAD | MFII_IOP_HAS_32BITDESC_BIT
 };
-#endif
 
 struct mfii_device {
 	pcireg_t		mpd_vendor;
@@ -646,7 +661,6 @@ static const struct mfii_device mfii_devices[] = {
 	/* Harpoon */
 	{ PCI_VENDOR_SYMBIOS,	PCI_PRODUCT_SYMBIOS_MEGARAID_3508,
 	    &mfii_iop_35 },
-#if 0
 	/* Aero */
 	{ PCI_VENDOR_SYMBIOS,	PCI_PRODUCT_SYMBIOS_MEGARAID_39XX_2,
 	    &mfii_iop_aero },
@@ -656,7 +670,6 @@ static const struct mfii_device mfii_devices[] = {
 	    &mfii_iop_aero },
 	{ PCI_VENDOR_SYMBIOS,	PCI_PRODUCT_SYMBIOS_MEGARAID_38XX_3,
 	    &mfii_iop_aero }
-#endif
 };
 
 static const struct mfii_iop *mfii_find_iop(struct pci_attach_args *);
@@ -697,6 +710,7 @@ mfii_attach(device_t parent, device_t self, void *aux)
 	int chain_frame_sz, nsge_in_io, nsge_in_chain, i;
 	struct scsipi_adapter *adapt = &sc->sc_adapt;
 	struct scsipi_channel *chan = &sc->sc_chan;
+	union mfi_mbox mbox;
 
 	/* init sc */
 	sc->sc_dev = self;
@@ -873,6 +887,13 @@ mfii_attach(device_t parent, device_t self, void *aux)
 	for (i = 0; i < sc->sc_info.mci_lds_present; i++)
 		sc->sc_ld[i].ld_present = 1;
 
+	sc->sc_max256vd =
+	    (sc->sc_info.mci_adapter_ops3 & MFI_INFO_AOPS3_SUPP_MAX_EXT_LDS) ?
+	    true : false;
+
+	if (sc->sc_max256vd)
+		aprint_verbose_dev(self, "Max 256 VD support\n");
+
 	memset(adapt, 0, sizeof(*adapt));
 	adapt->adapt_dev = sc->sc_dev;
 	adapt->adapt_nchannels = 1;
@@ -902,8 +923,11 @@ mfii_attach(device_t parent, device_t self, void *aux)
 		goto intr_disestablish;
 	}
 
+	memset(&mbox, 0, sizeof(mbox));
+	if (sc->sc_max256vd)
+		mbox.b[0] = 1;
 	mutex_enter(&sc->sc_lock);
-	if (mfii_mgmt(sc, MR_DCMD_LD_GET_LIST, NULL, &sc->sc_ld_list,
+	if (mfii_mgmt(sc, MR_DCMD_LD_GET_LIST, &mbox, &sc->sc_ld_list,
 	    sizeof(sc->sc_ld_list), MFII_DATA_IN, true) != 0) {
 		mutex_exit(&sc->sc_lock);
 		aprint_error_dev(self,
@@ -915,6 +939,7 @@ mfii_attach(device_t parent, device_t self, void *aux)
 	for (i = 0; i < sc->sc_ld_list.mll_no_ld; i++) {
 		int target = sc->sc_ld_list.mll_list[i].mll_ld.mld_target;
 		sc->sc_target_lds[target] = i;
+		sc->sc_ld[i].ld_target_id = target;
 	}
 
 	/* enable interrupts */
@@ -1401,11 +1426,15 @@ mfii_aen_pd_state_change(struct mfii_softc *sc,
 static void
 mfii_aen_ld_update(struct mfii_softc *sc)
 {
+	union mfi_mbox mbox;
 	int i, target, old, nld;
-	int newlds[MFI_MAX_LD];
+	int newlds[MFII_MAX_LD_EXT];
 
+	memset(&mbox, 0, sizeof(mbox));
+	if (sc->sc_max256vd)
+		mbox.b[0] = 1;
 	mutex_enter(&sc->sc_lock);
-	if (mfii_mgmt(sc, MR_DCMD_LD_GET_LIST, NULL, &sc->sc_ld_list,
+	if (mfii_mgmt(sc, MR_DCMD_LD_GET_LIST, &mbox, &sc->sc_ld_list,
 	    sizeof(sc->sc_ld_list), MFII_DATA_IN, false) != 0) {
 		mutex_exit(&sc->sc_lock);
 		DNPRINTF(MFII_D_MISC,
@@ -1421,9 +1450,10 @@ mfii_aen_ld_update(struct mfii_softc *sc)
 		DNPRINTF(MFII_D_MISC, "%s: target %d: state %d\n",
 		    DEVNAME(sc), target, sc->sc_ld_list.mll_list[i].mll_state);
 		newlds[target] = i;
+		sc->sc_ld[i].ld_target_id = target;
 	}
 
-	for (i = 0; i < MFI_MAX_LD; i++) {
+	for (i = 0; i < MFII_MAX_LD_EXT; i++) {
 		old = sc->sc_target_lds[i];
 		nld = newlds[i];
 
@@ -2192,7 +2222,7 @@ mfii_scsipi_request(struct scsipi_channel *chan, scsipi_adapter_req_t req,
 	periph = xs->xs_periph;
 	target = periph->periph_target;
 
-	if (target >= MFI_MAX_LD || !sc->sc_ld[target].ld_present ||
+	if (target >= MFII_MAX_LD_EXT || !sc->sc_ld[target].ld_present ||
 	    periph->periph_lun != 0) {
 		xs->error = XS_SELTIMEOUT;
 		scsipi_done(xs);
@@ -2308,9 +2338,10 @@ mfii_scsi_cmd_io(struct mfii_softc *sc, struct mfii_ccb *ccb,
 	struct scsipi_periph *periph = xs->xs_periph;
 	struct mpii_msg_scsi_io *io = ccb->ccb_request;
 	struct mfii_raid_context *ctx = (struct mfii_raid_context *)(io + 1);
-	int segs;
+	int segs, target;
 
-	io->dev_handle = htole16(periph->periph_target);
+	target = sc->sc_ld[periph->periph_target].ld_target_id;
+	io->dev_handle = htole16(target);
 	io->function = MFII_FUNCTION_LDIO_REQUEST;
 	io->sense_buffer_low_address = htole32(ccb->ccb_sense_dva);
 	io->sgl_flags = htole16(0x02); /* XXX */
@@ -2337,7 +2368,7 @@ mfii_scsi_cmd_io(struct mfii_softc *sc, struct mfii_ccb *ccb,
 	ctx->type_nseg = sc->sc_iop->ldio_ctx_type_nseg;
 	ctx->timeout_value = htole16(0x14); /* XXX */
 	ctx->reg_lock_flags = htole16(sc->sc_iop->ldio_ctx_reg_lock_flags);
-	ctx->virtual_disk_target_id = htole16(periph->periph_target);
+	ctx->virtual_disk_target_id = htole16(target);
 
 	if (mfii_load_ccb(sc, ccb, ctx + 1,
 	    ISSET(xs->xs_control, XS_CTL_NOSLEEP)) != 0)
@@ -2368,8 +2399,10 @@ mfii_scsi_cmd_cdb(struct mfii_softc *sc, struct mfii_ccb *ccb,
 	struct scsipi_periph *periph = xs->xs_periph;
 	struct mpii_msg_scsi_io *io = ccb->ccb_request;
 	struct mfii_raid_context *ctx = (struct mfii_raid_context *)(io + 1);
+	int target;
 
-	io->dev_handle = htole16(periph->periph_target);
+	target = sc->sc_ld[periph->periph_target].ld_target_id;
+	io->dev_handle = htole16(target);
 	io->function = MFII_FUNCTION_LDIO_REQUEST;
 	io->sense_buffer_low_address = htole32(ccb->ccb_sense_dva);
 	io->sgl_flags = htole16(0x02); /* XXX */
@@ -2394,7 +2427,7 @@ mfii_scsi_cmd_cdb(struct mfii_softc *sc, struct mfii_ccb *ccb,
 	}
 	memcpy(io->cdb, xs->cmd, xs->cmdlen);
 
-	ctx->virtual_disk_target_id = htole16(periph->periph_target);
+	ctx->virtual_disk_target_id = htole16(target);
 
 	if (mfii_load_ccb(sc, ccb, ctx + 1,
 	    ISSET(xs->xs_control, XS_CTL_NOSLEEP)) != 0)
@@ -2921,7 +2954,10 @@ mfii_bio_getitall(struct mfii_softc *sc)
 	sc->sc_cfg = cfg;
 
 	/* get all ld info */
-	if (mfii_mgmt(sc, MR_DCMD_LD_GET_LIST, NULL, &sc->sc_ld_list,
+	memset(&mbox, 0, sizeof(mbox));
+	if (sc->sc_max256vd)
+		mbox.b[0] = 1;
+	if (mfii_mgmt(sc, MR_DCMD_LD_GET_LIST, &mbox, &sc->sc_ld_list,
 	    sizeof(sc->sc_ld_list), MFII_DATA_IN, false))
 		goto done;
 
@@ -3898,7 +3934,7 @@ static int
 mfii_create_sensors(struct mfii_softc *sc)
 {
 	int i, rv;
-	const int nsensors = MFI_BBU_SENSORS + MFI_MAX_LD;
+	const int nsensors = MFI_BBU_SENSORS + MFII_MAX_LD_EXT;
 
 	sc->sc_sme = sysmon_envsys_create();
 	sc->sc_sensors = malloc(sizeof(envsys_data_t) * nsensors,
@@ -3967,7 +4003,7 @@ mfii_refresh_sensor(struct sysmon_envsys *sme, envsys_data_t *edata)
 {
 	struct mfii_softc	*sc = sme->sme_cookie;
 
-	if (edata->sensor >= MFI_BBU_SENSORS + MFI_MAX_LD)
+	if (edata->sensor >= MFI_BBU_SENSORS + MFII_MAX_LD_EXT)
 		return;
 
 	if (edata->sensor < MFI_BBU_SENSORS) {

@@ -1,4 +1,4 @@
-/* $NetBSD: vmstat.c,v 1.253 2022/05/19 13:57:03 simonb Exp $ */
+/* $NetBSD: vmstat.c,v 1.255 2022/07/16 10:36:19 simonb Exp $ */
 
 /*-
  * Copyright (c) 1998, 2000, 2001, 2007, 2019, 2020
@@ -71,7 +71,7 @@ __COPYRIGHT("@(#) Copyright (c) 1980, 1986, 1991, 1993\
 #if 0
 static char sccsid[] = "@(#)vmstat.c	8.2 (Berkeley) 3/1/95";
 #else
-__RCSID("$NetBSD: vmstat.c,v 1.253 2022/05/19 13:57:03 simonb Exp $");
+__RCSID("$NetBSD: vmstat.c,v 1.255 2022/07/16 10:36:19 simonb Exp $");
 #endif
 #endif /* not lint */
 
@@ -422,11 +422,13 @@ main(int argc, char *argv[])
 		kd = kvm_openfiles(NULL, NULL, NULL, KVM_NO_FILES, errbuf);
 	} else {
 		kd = kvm_openfiles(nlistf, memf, NULL, O_RDONLY, errbuf);
-		getnlist(todo);
 	}
 
 	if (kd == NULL)
 		errx(EXIT_FAILURE, "%s", errbuf);
+
+	if (memf != NULL)
+		getnlist(todo);	/* Only need this if a core is specified. */
 
 	if (todo & VMSTAT) {
 		struct winsize winsize;
@@ -1576,7 +1578,7 @@ dopool(int verbose, int wide)
 {
 	int first, ovflw;
 	void *addr;
-	long total, inuse, this_total, this_inuse;
+	uint64_t total, inuse, this_total, this_inuse;
 	struct {
 		uint64_t pt_nget;
 		uint64_t pt_nfail;
@@ -1672,8 +1674,8 @@ dopool(int verbose, int wide)
 			PRWORD(ovflw, " 0x%0*x", 6, 1,
 			    pp->pr_flags | pp->pr_roflags);
 
-		this_inuse = pp->pr_nout * pp->pr_size;
-		this_total = pp->pr_npages * pa.pa_pagesz;
+		this_inuse = (uint64_t)pp->pr_nout * pp->pr_size;
+		this_total = (uint64_t)pp->pr_npages * pa.pa_pagesz;
 		if (pp->pr_roflags & PR_RECURSIVE) {
 			/*
 			 * Don't count in-use memory, since it's part
@@ -1712,7 +1714,8 @@ dopool(int verbose, int wide)
 	inuse /= KILO;
 	total /= KILO;
 	(void)printf(
-	    "\nIn use %ldK, total allocated %ldK; utilization %.1f%%\n",
+	    "\nIn use %" PRIu64 "K, "
+	    "total allocated %" PRIu64 "K; utilization %.1f%%\n",
 	    inuse, total, (100.0 * inuse) / total);
 }
 
