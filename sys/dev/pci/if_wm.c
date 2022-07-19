@@ -648,6 +648,9 @@ struct wm_softc {
 	struct evcnt sc_ev_tncrs;	/* Tx-No CRS */
 	struct evcnt sc_ev_tsctc;	/* TCP Segmentation Context Tx */
 	struct evcnt sc_ev_tsctfc;	/* TCP Segmentation Context Tx Fail */
+	struct evcnt sc_ev_mgtprc;	/* Management Packets RX */
+	struct evcnt sc_ev_mgtpdc;	/* Management Packets Dropped */
+	struct evcnt sc_ev_mgtptc;	/* Management Packets TX */
 
 #endif /* WM_EVENT_COUNTERS */
 
@@ -3291,6 +3294,14 @@ alloc_retry:
 		evcnt_attach_dynamic(&sc->sc_ev_tsctfc, EVCNT_TYPE_MISC,
 		    NULL, xname, "TCP Segmentation Context Tx Fail");
 	}
+	if (sc->sc_type >= WM_T_82540) {
+		evcnt_attach_dynamic(&sc->sc_ev_mgtprc, EVCNT_TYPE_MISC,
+		    NULL, xname, "Management Packets RX");
+		evcnt_attach_dynamic(&sc->sc_ev_mgtpdc, EVCNT_TYPE_MISC,
+		    NULL, xname, "Management Packets Dropped");
+		evcnt_attach_dynamic(&sc->sc_ev_mgtptc, EVCNT_TYPE_MISC,
+		    NULL, xname, "Management Packets TX");
+	}
 #endif /* WM_EVENT_COUNTERS */
 
 	sc->sc_txrx_use_workqueue = false;
@@ -3388,6 +3399,11 @@ wm_detach(device_t self, int flags __unused)
 		evcnt_detach(&sc->sc_ev_tncrs);
 		evcnt_detach(&sc->sc_ev_tsctc);
 		evcnt_detach(&sc->sc_ev_tsctfc);
+	}
+	if (sc->sc_type >= WM_T_82540) {
+		evcnt_detach(&sc->sc_ev_mgtprc);
+		evcnt_detach(&sc->sc_ev_mgtpdc);
+		evcnt_detach(&sc->sc_ev_mgtptc);
 	}
 #endif /* WM_EVENT_COUNTERS */
 
@@ -3706,6 +3722,11 @@ wm_tick(void *arg)
 		WM_EVCNT_ADD(&sc->sc_ev_tsctfc, CSR_READ(sc, WMREG_TSCTFC));
 	}
 
+	if (sc->sc_type >= WM_T_82540) {
+		WM_EVCNT_ADD(&sc->sc_ev_mgtprc, CSR_READ(sc, WMREG_MGTPRC));
+		WM_EVCNT_ADD(&sc->sc_ev_mgtpdc, CSR_READ(sc, WMREG_MGTPDC));
+		WM_EVCNT_ADD(&sc->sc_ev_mgtptc, CSR_READ(sc, WMREG_MGTPTC));
+	}
 	net_stat_ref_t nsr = IF_STAT_GETREF(ifp);
 	if_statadd_ref(nsr, if_collisions, CSR_READ(sc, WMREG_COLC));
 	if_statadd_ref(nsr, if_ierrors, 0ULL /* ensure quad_t */

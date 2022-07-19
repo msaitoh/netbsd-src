@@ -1181,6 +1181,11 @@ struct livengood_tcpip_ctxdesc {
 #define	WMREG_RFC	0x40a8	/* Rx Fragment Count - R/clr */
 #define	WMREG_ROC	0x40ac	/* Rx Oversize Count - R/clr */
 #define	WMREG_RJC	0x40b0	/* Rx Jabber Count - R/clr */
+
+#define	WMREG_MGTPRC	0x40b4	/* Management Packets RX Count - R/clr */
+#define	WMREG_MGTPDC	0x40b8	/* Management Packets Dropped Count - R/clr */
+#define	WMREG_MGTPTC	0x40bc	/* Management Packets TX Count - R/clr */
+
 #define	WMREG_TORL	0x40c0	/* Total Octets Rx Low - R/clr */
 #define	WMREG_TORH	0x40c4	/* Total Octets Rx High - R/clr */
 #define	WMREG_TOTL	0x40c8	/* Total Octets Tx Low - R/clr */
