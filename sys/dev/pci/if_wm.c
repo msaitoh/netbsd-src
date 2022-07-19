@@ -651,7 +651,11 @@ struct wm_softc {
 	struct evcnt sc_ev_mgtprc;	/* Management Packets RX */
 	struct evcnt sc_ev_mgtpdc;	/* Management Packets Dropped */
 	struct evcnt sc_ev_mgtptc;	/* Management Packets TX */
-
+	struct evcnt sc_ev_b2ogprc;	/* BMC2OS pkts received by host */
+	struct evcnt sc_ev_o2bspc;	/* OS2BMC pkts transmitted by host */
+	struct evcnt sc_ev_b2ospc;	/* BMC2OS pkts sent by BMC */
+	struct evcnt sc_ev_o2bgptc;	/* OS2BMC pkts received by BMC */
+	
 #endif /* WM_EVENT_COUNTERS */
 
 	struct sysctllog *sc_sysctllog;
@@ -3302,6 +3306,16 @@ alloc_retry:
 		evcnt_attach_dynamic(&sc->sc_ev_mgtptc, EVCNT_TYPE_MISC,
 		    NULL, xname, "Management Packets TX");
 	}
+	if ((sc->sc_type >= WM_T_82575) && (sc->sc_type < WM_T_80003)) {
+		evcnt_attach_dynamic(&sc->sc_ev_b2ogprc, EVCNT_TYPE_MISC,
+		    NULL, xname, "BMC2OS pkts received by host");
+		evcnt_attach_dynamic(&sc->sc_ev_o2bspc, EVCNT_TYPE_MISC,
+		    NULL, xname, "OS2BMC pkts transmitted by host");
+		evcnt_attach_dynamic(&sc->sc_ev_b2ospc, EVCNT_TYPE_MISC,
+		    NULL, xname, "BMC2OS pkts sent by BMC");
+		evcnt_attach_dynamic(&sc->sc_ev_o2bgptc, EVCNT_TYPE_MISC,
+		    NULL, xname, "OS2BMC pkts received by BMC");
+	}
 #endif /* WM_EVENT_COUNTERS */
 
 	sc->sc_txrx_use_workqueue = false;
@@ -3404,6 +3418,12 @@ wm_detach(device_t self, int flags __unused)
 		evcnt_detach(&sc->sc_ev_mgtprc);
 		evcnt_detach(&sc->sc_ev_mgtpdc);
 		evcnt_detach(&sc->sc_ev_mgtptc);
+	}
+	if ((sc->sc_type >= WM_T_82575) && (sc->sc_type < WM_T_80003)) {
+		evcnt_detach(&sc->sc_ev_b2ogprc);
+		evcnt_detach(&sc->sc_ev_o2bspc);
+		evcnt_detach(&sc->sc_ev_b2ospc);
+		evcnt_detach(&sc->sc_ev_o2bgptc);
 	}
 #endif /* WM_EVENT_COUNTERS */
 
@@ -3726,6 +3746,12 @@ wm_tick(void *arg)
 		WM_EVCNT_ADD(&sc->sc_ev_mgtprc, CSR_READ(sc, WMREG_MGTPRC));
 		WM_EVCNT_ADD(&sc->sc_ev_mgtpdc, CSR_READ(sc, WMREG_MGTPDC));
 		WM_EVCNT_ADD(&sc->sc_ev_mgtptc, CSR_READ(sc, WMREG_MGTPTC));
+	}
+	if ((sc->sc_type >= WM_T_82575) && (sc->sc_type < WM_T_80003)) {
+		WM_EVCNT_ADD(&sc->sc_ev_b2ogprc, CSR_READ(sc, WMREG_B2OGPRC));
+		WM_EVCNT_ADD(&sc->sc_ev_o2bspc, CSR_READ(sc, WMREG_O2BSPC));
+		WM_EVCNT_ADD(&sc->sc_ev_b2ospc, CSR_READ(sc, WMREG_B2OSPC));
+		WM_EVCNT_ADD(&sc->sc_ev_o2bgptc, CSR_READ(sc, WMREG_O2BGPTC));
 	}
 	net_stat_ref_t nsr = IF_STAT_GETREF(ifp);
 	if_statadd_ref(nsr, if_collisions, CSR_READ(sc, WMREG_COLC));

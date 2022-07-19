@@ -1213,6 +1213,8 @@ struct livengood_tcpip_ctxdesc {
 #define	WMREG_ICRXOC	0x4124	/* Interrupt Cause Receiver Overrun Count */
 #define	WMREG_TLPIC	0x4148	/* EEE Tx LPI Count */
 #define	WMREG_RLPIC	0x414c	/* EEE Rx LPI Count */
+#define	WMREG_B2OGPRC	0x4158	/* BMC2OS packets received by host */
+#define	WMREG_O2BSPC	0x415c	/* OS2BMC packets transmitted by host */
 
 #define	WMREG_PCS_CFG	0x4200	/* PCS Configuration */
 #define	PCS_CFG_PCS_EN	__BIT(3)
@@ -1365,6 +1367,7 @@ struct livengood_tcpip_ctxdesc {
 #define	MANC_RECV_ALL		0x00080000
 #define	MANC_EN_MAC_ADDR_FILTER	0x00100000
 #define	MANC_EN_MNG2HOST	0x00200000
+#define	MANC_EN_BMC2OS		__BIT(28)
 
 #define	WMREG_MANC2H	0x5860	/* Management Control To Host - RW */
 #define	MANC2H_PORT_623		(1 << 5)
@@ -1440,6 +1443,9 @@ struct livengood_tcpip_ctxdesc {
 
 #define	WMREG_CRC_OFFSET 0x5f50
 #define	WMREG_PCH_RAICC(x)	(WMREG_CRC_OFFSET + (x) * 4)
+
+#define	WMREG_B2OSPC	0x8fe0	/* BMC2OS packets sent by BMC */
+#define	WMREG_O2BGPTC	0x8fe4	/* OS2BMC packets received by BMC */
 
 #define	WMREG_EEC	0x12010
 #define	EEC_FLASH_DETECTED __BIT(19)	/* FLASH */
