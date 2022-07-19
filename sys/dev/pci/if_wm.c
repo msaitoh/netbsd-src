@@ -3283,12 +3283,14 @@ alloc_retry:
 	    NULL, xname, "Intr. Cause Rx Desc Min Thresh");
 	evcnt_attach_dynamic(&sc->sc_ev_icrxoc, EVCNT_TYPE_MISC,
 	    NULL, xname, "Interrupt Cause Receiver Overrun");
-	evcnt_attach_dynamic(&sc->sc_ev_tncrs, EVCNT_TYPE_MISC,
-	    NULL, xname, "Tx-No CRS");
-	evcnt_attach_dynamic(&sc->sc_ev_tsctc, EVCNT_TYPE_MISC,
-	    NULL, xname, "TCP Segmentation Context Tx");
-	evcnt_attach_dynamic(&sc->sc_ev_tsctfc, EVCNT_TYPE_MISC,
-	    NULL, xname, "TCP Segmentation Context Tx Fail");
+	if (sc->sc_type >= WM_T_82543) {
+		evcnt_attach_dynamic(&sc->sc_ev_tncrs, EVCNT_TYPE_MISC,
+		    NULL, xname, "Tx-No CRS");
+		evcnt_attach_dynamic(&sc->sc_ev_tsctc, EVCNT_TYPE_MISC,
+		    NULL, xname, "TCP Segmentation Context Tx");
+		evcnt_attach_dynamic(&sc->sc_ev_tsctfc, EVCNT_TYPE_MISC,
+		    NULL, xname, "TCP Segmentation Context Tx Fail");
+	}
 #endif /* WM_EVENT_COUNTERS */
 
 	sc->sc_txrx_use_workqueue = false;
@@ -3382,9 +3384,11 @@ wm_detach(device_t self, int flags __unused)
 	evcnt_detach(&sc->sc_ev_ictxqmtc);
 	evcnt_detach(&sc->sc_ev_icrxdmtc);
 	evcnt_detach(&sc->sc_ev_icrxoc);
-	evcnt_detach(&sc->sc_ev_tncrs);
-	evcnt_detach(&sc->sc_ev_tsctc);
-	evcnt_detach(&sc->sc_ev_tsctfc);
+	if (sc->sc_type >= WM_T_82543) {
+		evcnt_detach(&sc->sc_ev_tncrs);
+		evcnt_detach(&sc->sc_ev_tsctc);
+		evcnt_detach(&sc->sc_ev_tsctfc);
+	}
 #endif /* WM_EVENT_COUNTERS */
 
 	rnd_detach_source(&sc->rnd_source);
@@ -3695,9 +3699,12 @@ wm_tick(void *arg)
 	WM_EVCNT_ADD(&sc->sc_ev_ictxqmtc, CSR_READ(sc, WMREG_ICTXQMTC));
 	WM_EVCNT_ADD(&sc->sc_ev_icrxdmtc, CSR_READ(sc, WMREG_ICRXDMTC));
 	WM_EVCNT_ADD(&sc->sc_ev_icrxoc, CSR_READ(sc, WMREG_ICRXOC));
-	WM_EVCNT_ADD(&sc->sc_ev_tncrs, CSR_READ(sc, WMREG_TNCRS));
-	WM_EVCNT_ADD(&sc->sc_ev_tsctc, CSR_READ(sc, WMREG_TSCTC));
-	WM_EVCNT_ADD(&sc->sc_ev_tsctfc, CSR_READ(sc, WMREG_TSCTFC));
+
+	if (sc->sc_type >= WM_T_82543) {
+		WM_EVCNT_ADD(&sc->sc_ev_tncrs, CSR_READ(sc, WMREG_TNCRS));
+		WM_EVCNT_ADD(&sc->sc_ev_tsctc, CSR_READ(sc, WMREG_TSCTC));
+		WM_EVCNT_ADD(&sc->sc_ev_tsctfc, CSR_READ(sc, WMREG_TSCTFC));
+	}
 
 	net_stat_ref_t nsr = IF_STAT_GETREF(ifp);
 	if_statadd_ref(nsr, if_collisions, CSR_READ(sc, WMREG_COLC));
