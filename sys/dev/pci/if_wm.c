@@ -1,4 +1,4 @@
-/*	$NetBSD: if_wm.c,v 1.740 2022/07/11 06:16:23 msaitoh Exp $	*/
+/*	$NetBSD: if_wm.c,v 1.745 2022/07/19 08:22:34 riastradh Exp $	*/
 
 /*
  * Copyright (c) 2001, 2002, 2003, 2004 Wasabi Systems, Inc.
@@ -82,7 +82,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_wm.c,v 1.740 2022/07/11 06:16:23 msaitoh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_wm.c,v 1.745 2022/07/19 08:22:34 riastradh Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_net_mpsafe.h"
@@ -90,26 +90,25 @@ __KERNEL_RCSID(0, "$NetBSD: if_wm.c,v 1.740 2022/07/11 06:16:23 msaitoh Exp $");
 #endif
 
 #include <sys/param.h>
-#include <sys/systm.h>
+
+#include <sys/atomic.h>
 #include <sys/callout.h>
-#include <sys/mbuf.h>
-#include <sys/malloc.h>
+#include <sys/cpu.h>
+#include <sys/device.h>
+#include <sys/errno.h>
+#include <sys/interrupt.h>
+#include <sys/ioctl.h>
 #include <sys/kmem.h>
 #include <sys/kernel.h>
-#include <sys/socket.h>
-#include <sys/ioctl.h>
-#include <sys/errno.h>
-#include <sys/device.h>
-#include <sys/queue.h>
-#include <sys/syslog.h>
-#include <sys/interrupt.h>
-#include <sys/cpu.h>
+#include <sys/mbuf.h>
 #include <sys/pcq.h>
-#include <sys/sysctl.h>
-#include <sys/workqueue.h>
-#include <sys/atomic.h>
-
+#include <sys/queue.h>
 #include <sys/rndsource.h>
+#include <sys/socket.h>
+#include <sys/sysctl.h>
+#include <sys/syslog.h>
+#include <sys/systm.h>
+#include <sys/workqueue.h>
 
 #include <net/if.h>
 #include <net/if_dl.h>
@@ -4919,13 +4918,12 @@ wm_flush_desc_rings(struct wm_softc *sc)
 	txd->wtx_fields.wtxu_options = 0;
 	txd->wtx_fields.wtxu_vlan = 0;
 
-	bus_space_barrier(sc->sc_st, sc->sc_sh, 0, 0,
-	    BUS_SPACE_BARRIER_WRITE);
+	wm_cdtxsync(txq, 0, WM_NTXDESC(txq),
+	    BUS_DMASYNC_PREREAD | BUS_DMASYNC_PREWRITE);
 
 	txq->txq_next = WM_NEXTTX(txq, txq->txq_next);
 	CSR_WRITE(sc, WMREG_TDT(0), txq->txq_next);
-	bus_space_barrier(sc->sc_st, sc->sc_sh, 0, 0,
-	    BUS_SPACE_BARRIER_READ | BUS_SPACE_BARRIER_WRITE);
+	CSR_WRITE_FLUSH(sc);
 	delay(250);
 
 	preg = pci_conf_read(sc->sc_pc, sc->sc_pcitag, WM_PCI_DESCRING_STATUS);
@@ -8927,11 +8925,7 @@ wm_deferred_start_locked(struct wm_txqueue *txq)
 	int qid = wmq->wmq_id;
 
 	KASSERT(mutex_owned(txq->txq_lock));
-
-	if (txq->txq_stopping) {
-		mutex_exit(txq->txq_lock);
-		return;
-	}
+	KASSERT(!txq->txq_stopping);
 
 	if ((sc->sc_flags & WM_F_NEWQUEUE) != 0) {
 		/* XXX need for ALTQ or one CPU system */
