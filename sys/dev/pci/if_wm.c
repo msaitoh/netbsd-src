@@ -3306,15 +3306,15 @@ alloc_retry:
 		evcnt_attach_dynamic(&sc->sc_ev_mgtptc, EVCNT_TYPE_MISC,
 		    NULL, xname, "Management Packets TX");
 	}
-	if ((sc->sc_type >= WM_T_82575) && (sc->sc_type < WM_T_80003)) {
+	if ((sc->sc_type >= WM_T_I350) && (sc->sc_type < WM_T_80003)) {
 		evcnt_attach_dynamic(&sc->sc_ev_b2ogprc, EVCNT_TYPE_MISC,
-		    NULL, xname, "BMC2OS pkts received by host");
+		    NULL, xname, "BMC2OS Packets received by host");
 		evcnt_attach_dynamic(&sc->sc_ev_o2bspc, EVCNT_TYPE_MISC,
-		    NULL, xname, "OS2BMC pkts transmitted by host");
+		    NULL, xname, "OS2BMC Packets transmitted by host");
 		evcnt_attach_dynamic(&sc->sc_ev_b2ospc, EVCNT_TYPE_MISC,
-		    NULL, xname, "BMC2OS pkts sent by BMC");
+		    NULL, xname, "BMC2OS Packets sent by BMC");
 		evcnt_attach_dynamic(&sc->sc_ev_o2bgptc, EVCNT_TYPE_MISC,
-		    NULL, xname, "OS2BMC pkts received by BMC");
+		    NULL, xname, "OS2BMC Packets received by BMC");
 	}
 #endif /* WM_EVENT_COUNTERS */
 
