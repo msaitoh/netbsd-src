@@ -1356,15 +1356,15 @@ struct livengood_tcpip_ctxdesc {
 #define	RSSRK_NUM_REGS		10
 
 #define	WMREG_MANC	0x5820	/* Management Control */
-#define	MANC_SMBUS_EN		0x00000001
-#define	MANC_ASF_EN		0x00000002
-#define	MANC_ARP_EN		0x00002000
-#define	MANC_RECV_TCO_RESET	0x00010000
-#define	MANC_RECV_TCO_EN	0x00020000
-#define	MANC_BLK_PHY_RST_ON_IDE	0x00040000
-#define	MANC_RECV_ALL		0x00080000
-#define	MANC_EN_MAC_ADDR_FILTER	0x00100000
-#define	MANC_EN_MNG2HOST	0x00200000
+#define	MANC_SMBUS_EN		__BIT(0)
+#define	MANC_ASF_EN		__BIT(1)
+#define	MANC_ARP_EN		__BIT(13)
+#define	MANC_RECV_TCO_RESET	__BIT(16)
+#define	MANC_RECV_TCO_EN	__BIT(17)
+#define	MANC_BLK_PHY_RST_ON_IDE	__BIT(18)
+#define	MANC_RECV_ALL		__BIT(19)
+#define	MANC_EN_MAC_ADDR_FILTER	__BIT(20)
+#define	MANC_EN_MNG2HOST	__BIT(21)
 #define	MANC_EN_BMC2OS		__BIT(28)
 
 #define	WMREG_MANC2H	0x5860	/* Management Control To Host - RW */
