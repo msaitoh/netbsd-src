@@ -1145,15 +1145,15 @@ struct livengood_tcpip_ctxdesc {
 #define	WMREG_CRCERRS	0x4000	/* CRC Error Count */
 #define	WMREG_ALGNERRC	0x4004	/* Alignment Error Count */
 #define	WMREG_SYMERRC	0x4008	/* Symbol Error Count */
-#define	WMREG_RXERRC	0x400c	/* receive error Count - R/clr */
+#define	WMREG_RXERRC	0x400c	/* Receive error Count - R/clr */
 #define	WMREG_MPC	0x4010	/* Missed Packets Count - R/clr */
 #define	WMREG_SCC	0x4014	/* Single Collision Count - R/clr */
-#define	WMREG_ECOL	0x4018	/* Excessive Collision Count - R/clr */
+#define	WMREG_ECOL	0x4018	/* Excessive Collisions Count - R/clr */
 #define	WMREG_MCC	0x401c	/* Multiple Collision Count - R/clr */
-#define	WMREG_LATECOL	0x4020	/* Late Collision Count - R/clr */
-#define	WMREG_COLC	0x4028	/* collision Count - R/clr */
+#define	WMREG_LATECOL	0x4020	/* Late Collisions Count - R/clr */
+#define	WMREG_COLC	0x4028	/* Collision Count - R/clr */
 #define	WMREG_DC	0x4030	/* Defer Count - R/clr */
-#define	WMREG_TNCRS	0x4034	/* Tx-No CRS - R/clr */
+#define	WMREG_TNCRS	0x4034	/* Tx with No CRS - R/clr */
 #define	WMREG_SEC	0x4038	/* Sequence Error Count */
 #define	WMREG_CEXTERR	0x403c	/* Carrier Extension Error Count */
 #define	WMREG_RLEC	0x4040	/* Receive Length Error Count */
@@ -1181,11 +1181,9 @@ struct livengood_tcpip_ctxdesc {
 #define	WMREG_RFC	0x40a8	/* Rx Fragment Count - R/clr */
 #define	WMREG_ROC	0x40ac	/* Rx Oversize Count - R/clr */
 #define	WMREG_RJC	0x40b0	/* Rx Jabber Count - R/clr */
-
 #define	WMREG_MGTPRC	0x40b4	/* Management Packets RX Count - R/clr */
 #define	WMREG_MGTPDC	0x40b8	/* Management Packets Dropped Count - R/clr */
 #define	WMREG_MGTPTC	0x40bc	/* Management Packets TX Count - R/clr */
-
 #define	WMREG_TORL	0x40c0	/* Total Octets Rx Low - R/clr */
 #define	WMREG_TORH	0x40c4	/* Total Octets Rx High - R/clr */
 #define	WMREG_TOTL	0x40c8	/* Total Octets Tx Low - R/clr */

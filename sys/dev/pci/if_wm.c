@@ -3207,11 +3207,11 @@ alloc_retry:
 	evcnt_attach_dynamic(&sc->sc_ev_scc, EVCNT_TYPE_MISC,
 	    NULL, xname, "Single Collision");
 	evcnt_attach_dynamic(&sc->sc_ev_ecol, EVCNT_TYPE_MISC,
-	    NULL, xname, "Excessive Collision");
+	    NULL, xname, "Excessive Collisions");
 	evcnt_attach_dynamic(&sc->sc_ev_mcc, EVCNT_TYPE_MISC,
 	    NULL, xname, "Multiple Collision");
 	evcnt_attach_dynamic(&sc->sc_ev_latecol, EVCNT_TYPE_MISC,
-	    NULL, xname, "Late Collision");
+	    NULL, xname, "Late Collisions");
 	evcnt_attach_dynamic(&sc->sc_ev_dc, EVCNT_TYPE_MISC,
 	    NULL, xname, "Defer");
 	evcnt_attach_dynamic(&sc->sc_ev_gprc, EVCNT_TYPE_MISC,
@@ -3292,7 +3292,7 @@ alloc_retry:
 	    NULL, xname, "Interrupt Cause Receiver Overrun");
 	if (sc->sc_type >= WM_T_82543) {
 		evcnt_attach_dynamic(&sc->sc_ev_tncrs, EVCNT_TYPE_MISC,
-		    NULL, xname, "Tx-No CRS");
+		    NULL, xname, "Tx with No CRS");
 		evcnt_attach_dynamic(&sc->sc_ev_tsctc, EVCNT_TYPE_MISC,
 		    NULL, xname, "TCP Segmentation Context Tx");
 		evcnt_attach_dynamic(&sc->sc_ev_tsctfc, EVCNT_TYPE_MISC,
