@@ -3818,7 +3818,8 @@ wm_tick(void *arg)
 		WM_EVCNT_ADD(&sc->sc_ev_mgtpdc, CSR_READ(sc, WMREG_MGTPDC));
 		WM_EVCNT_ADD(&sc->sc_ev_mgtptc, CSR_READ(sc, WMREG_MGTPTC));
 	}
-	if ((sc->sc_type >= WM_T_I350) && (sc->sc_type < WM_T_80003)) {
+	if (((sc->sc_type >= WM_T_I350) && (sc->sc_type < WM_T_80003))
+	    && ((CSR_READ(sc, WMREG_MANC) & MANC_EN_BMC2OS) != 0)) {
 		WM_EVCNT_ADD(&sc->sc_ev_b2ogprc, CSR_READ(sc, WMREG_B2OGPRC));
 		WM_EVCNT_ADD(&sc->sc_ev_o2bspc, CSR_READ(sc, WMREG_O2BSPC));
 		WM_EVCNT_ADD(&sc->sc_ev_b2ospc, CSR_READ(sc, WMREG_B2OSPC));
