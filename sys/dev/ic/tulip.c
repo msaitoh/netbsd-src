@@ -1,4 +1,4 @@
-/*	$NetBSD: tulip.c,v 1.205 2022/06/25 02:46:15 tsutsui Exp $	*/
+/*	$NetBSD: tulip.c,v 1.208 2022/08/01 10:30:28 kre Exp $	*/
 
 /*-
  * Copyright (c) 1998, 1999, 2000, 2002 The NetBSD Foundation, Inc.
@@ -36,7 +36,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: tulip.c,v 1.205 2022/06/25 02:46:15 tsutsui Exp $");
+__KERNEL_RCSID(0, "$NetBSD: tulip.c,v 1.208 2022/08/01 10:30:28 kre Exp $");
 
 
 #include <sys/param.h>

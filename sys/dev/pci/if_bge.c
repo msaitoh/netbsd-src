@@ -1,4 +1,4 @@
-/*	$NetBSD: if_bge.c,v 1.365 2022/07/03 13:29:28 skrll Exp $	*/
+/*	$NetBSD: if_bge.c,v 1.367 2022/07/26 14:53:12 skrll Exp $	*/
 
 /*
  * Copyright (c) 2001 Wind River Systems
@@ -79,14 +79,14 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_bge.c,v 1.365 2022/07/03 13:29:28 skrll Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_bge.c,v 1.367 2022/07/26 14:53:12 skrll Exp $");
 
 #include <sys/param.h>
 
 #include <sys/callout.h>
 #include <sys/device.h>
 #include <sys/kernel.h>
-#include <sys/malloc.h>
+#include <sys/kmem.h>
 #include <sys/mbuf.h>
 #include <sys/rndsource.h>
 #include <sys/socket.h>
@@ -1286,7 +1286,7 @@ bge_update_all_threshes(int lvl)
 	int s = pserialize_read_enter();
 	IFNET_READER_FOREACH(ifp) {
 		if (strncmp(ifp->if_xname, namebuf, namelen) != 0)
-		      continue;
+			continue;
 		/* We got a match: update if doing auto-threshold-tuning */
 		if (bge_auto_thresh)
 			bge_set_thresh(ifp, lvl);
@@ -1320,7 +1320,7 @@ bge_alloc_jumbo_mem(struct bge_softc *sc)
 
 	/* Grab a big chunk o' storage. */
 	if (bus_dmamem_alloc(sc->bge_dmatag, BGE_JMEM, PAGE_SIZE, 0,
-	     &seg, 1, &rseg, BUS_DMA_NOWAIT)) {
+	    &seg, 1, &rseg, BUS_DMA_NOWAIT)) {
 		aprint_error_dev(sc->bge_dev, "can't alloc rx buffers\n");
 		return ENOBUFS;
 	}
@@ -1365,7 +1365,7 @@ bge_alloc_jumbo_mem(struct bge_softc *sc)
 	for (i = 0; i < BGE_JSLOTS; i++) {
 		sc->bge_cdata.bge_jslots[i] = ptr;
 		ptr += BGE_JLEN;
-		entry = malloc(sizeof(*entry), M_DEVBUF, M_WAITOK);
+		entry = kmem_alloc(sizeof(*entry), KM_SLEEP);
 		entry->slot = i;
 		SLIST_INSERT_HEAD(&sc->bge_jfree_listhead,
 				 entry, jpool_entries);
@@ -1702,7 +1702,7 @@ bge_free_tx_ring(struct bge_softc *sc, bool disable)
 				bus_dmamap_destroy(sc->bge_dmatag32,
 				    dma->dmamap32);
 			}
-			free(dma, M_DEVBUF);
+			kmem_free(dma, sizeof(*dma));
 		}
 		SLIST_INIT(&sc->txdma_list);
 	}
@@ -1769,7 +1769,7 @@ bge_init_tx_ring(struct bge_softc *sc)
 				panic("dmamap32 NULL in bge_init_tx_ring");
 		} else
 			dmamap32 = dmamap;
-		dma = malloc(sizeof(*dma), M_DEVBUF, M_NOWAIT);
+		dma = kmem_alloc(sizeof(*dma), KM_NOSLEEP);
 		if (dma == NULL) {
 			aprint_error_dev(sc->bge_dev,
 			    "can't alloc txdmamap_pool_entry\n");
@@ -3542,7 +3542,7 @@ bge_attach(device_t parent, device_t self, void *aux)
 	 * First check if firmware knows we do not have SEEPROM.
 	 */
 	if (prop_dictionary_get_bool(device_properties(self),
-	     "without-seeprom", &no_seeprom) && no_seeprom)
+	    "without-seeprom", &no_seeprom) && no_seeprom)
 		sc->bge_flags |= BGEF_NO_EEPROM;
 
 	else if (BGE_ASICREV(sc->bge_chipid) == BGE_ASICREV_BCM5906)
@@ -4450,7 +4450,7 @@ bge_rxeof(struct bge_softc *sc)
 				continue;
 			}
 			if (bge_newbuf_jumbo(sc, sc->bge_jumbo,
-					     NULL)== ENOBUFS) {
+					     NULL) == ENOBUFS) {
 				if_statinc(ifp, if_ierrors);
 				bge_newbuf_jumbo(sc, sc->bge_jumbo, m);
 				continue;
@@ -4926,7 +4926,7 @@ bge_cksum_pad(struct mbuf *pkt)
 		 * (thus perhaps avoiding the bcm5700 dma-min bug).
 		 */
 		for (last = pkt; last->m_next != NULL; last = last->m_next) {
-		       continue; /* do nothing */
+			continue; /* do nothing */
 		}
 
 		/* `last' now points to last in chain. */
@@ -4990,8 +4990,8 @@ bge_compact_dma_runt(struct mbuf *pkt)
 			m = prev;
 			continue;
 		} else if (m->m_next != NULL &&
-			     M_TRAILINGSPACE(m) >= shortfall &&
-			     m->m_next->m_len >= (8 + shortfall)) {
+			    M_TRAILINGSPACE(m) >= shortfall &&
+			    m->m_next->m_len >= (8 + shortfall)) {
 		    /* m is writable and have enough data in next, pull up. */
 
 			memcpy(m->m_data + m->m_len, m->m_next->m_data,
@@ -5183,7 +5183,7 @@ doit:
 			aprint_error_dev(sc->bge_dev,
 			    "TSO: hard case m0->m_len == %d < ip/tcp hlen %zd,"
 			    "not handled yet\n",
-			     m0->m_len, hlen+ sizeof(struct tcphdr));
+			    m0->m_len, hlen+ sizeof(struct tcphdr));
 #ifdef NOTYET
 			/*
 			 * XXX jonathan@NetBSD.org: untested.

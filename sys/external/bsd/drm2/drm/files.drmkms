@@ -1,4 +1,4 @@
-#	$NetBSD: files.drmkms,v 1.79 2022/07/20 10:01:01 riastradh Exp $
+#	$NetBSD: files.drmkms,v 1.83 2022/07/28 21:52:36 riastradh Exp $
 
 version	20180827
 
@@ -86,7 +86,17 @@ makeoptions 	drmkms 	"CWARNFLAGS.drm_ioctl.c"+="-Wno-shadow"
 makeoptions	drmkms	"CWARNFLAGS.drm_mm.c"+="${${ACTIVE_CC} == clang :? -Wno-unused-function :}"
 makeoptions 	drmkms 	"CWARNFLAGS.drm_modes.c"+="-Wno-shadow"
 
-# Legacy user-mode setting
+# Legacy user-mode setting -- for the following legacy drivers:
+#
+#       mach64*
+#       mga*
+#       savage*
+#       sis*
+#       tdfx*
+#       via
+#
+# * not yet adapted to current drm code base
+#
 define	drmums: drmkms
 makeoptions	drmums	"CPPFLAGS.drmkms"+="-DCONFIG_DRM_LEGACY"
 makeoptions	drmums	"CPPFLAGS.drmums"+="${CPPFLAGS.drmkms}"
@@ -97,10 +107,17 @@ file	external/bsd/drm2/dist/drm/drm_legacy_misc.c	drmums
 file	external/bsd/drm2/drm/drm_lock.c		drmums
 file	external/bsd/drm2/drm/drm_scatter.c		drmums
 
+# Set `options DRM_LEGACY' to allow loading modules requiring drmums
+# even if none are statically linked into the kernel.
+defflag		DRM_LEGACY: drmums
+
 # GPU scheduler
-file	external/bsd/drm2/dist/drm/scheduler/sched_entity.c	drmkms
-file	external/bsd/drm2/dist/drm/scheduler/sched_fence.c	drmkms
-file	external/bsd/drm2/dist/drm/scheduler/sched_main.c	drmkms
+define	drmkms_sched: drmkms
+makeoptions	drmkms_sched	"CPPFLAGS.drmkms_sched"+="${CPPFLAGS.drmkms}"
+
+file	external/bsd/drm2/dist/drm/scheduler/sched_entity.c	drmkms_sched
+file	external/bsd/drm2/dist/drm/scheduler/sched_fence.c	drmkms_sched
+file	external/bsd/drm2/dist/drm/scheduler/sched_main.c	drmkms_sched
 
 # Generated from drm2netbsd.
 #file	external/bsd/drm2/dist/drm/drm_agpsupport.c	drmkms	# drmkms_pci
