@@ -17141,6 +17141,7 @@ wm_set_mdio_slow_mode_hv_locked(struct wm_softc *sc)
 	return wm_gmii_hv_writereg_locked(sc->sc_dev, 1, HV_KMRN_MODE_CTRL,
 	    reg | HV_KMRN_MDIO_SLOW);
 }
+
 /*
  *  wm_configure_k1_ich8lan - Configure K1 power state
  *  @sc: pointer to the HW structure
