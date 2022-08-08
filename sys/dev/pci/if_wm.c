@@ -1119,6 +1119,7 @@ static int	wm_k1_gig_workaround_hv(struct wm_softc *, int);
 static int	wm_k1_workaround_lv(struct wm_softc *);
 static int	wm_link_stall_workaround_hv(struct wm_softc *);
 static int	wm_set_mdio_slow_mode_hv(struct wm_softc *);
+static int	wm_set_mdio_slow_mode_hv_locked(struct wm_softc *);
 static void	wm_configure_k1_ich8lan(struct wm_softc *, int);
 static void	wm_reset_init_script_82575(struct wm_softc *);
 static void	wm_reset_mdicnfg_82580(struct wm_softc *);
@@ -17112,16 +17113,33 @@ static int
 wm_set_mdio_slow_mode_hv(struct wm_softc *sc)
 {
 	int rv;
+
+	if (sc->phy.acquire(sc) != 0) {
+		device_printf(sc->sc_dev, "%s: failed to get semaphore\n",
+		    __func__);
+		return -1;
+	}
+
+	rv = wm_set_mdio_slow_mode_hv_locked(sc);
+
+	sc->phy.release(sc);
+
+	return rv;
+}
+
+static int
+wm_set_mdio_slow_mode_hv_locked(struct wm_softc *sc)
+{
+	int rv;
 	uint16_t reg;
 
-	rv = wm_gmii_hv_readreg(sc->sc_dev, 1, HV_KMRN_MODE_CTRL, &reg);
+	rv = wm_gmii_hv_readreg_locked(sc->sc_dev, 1, HV_KMRN_MODE_CTRL, &reg);
 	if (rv != 0)
 		return rv;
 
-	return wm_gmii_hv_writereg(sc->sc_dev, 1, HV_KMRN_MODE_CTRL,
+	return wm_gmii_hv_writereg_locked(sc->sc_dev, 1, HV_KMRN_MODE_CTRL,
 	    reg | HV_KMRN_MDIO_SLOW);
 }
-
 /*
  *  wm_configure_k1_ich8lan - Configure K1 power state
  *  @sc: pointer to the HW structure
@@ -17266,11 +17284,11 @@ wm_phy_is_accessible_pchlan(struct wm_softc *sc)
 	 */
 	rv = 0;
 	if (sc->sc_type < WM_T_PCH_LPT) {
-		sc->phy.release(sc);
-		wm_set_mdio_slow_mode_hv(sc);
-		rv = wm_gmii_hv_readreg(sc->sc_dev, 2, MII_PHYIDR1, &id1);
-		rv |= wm_gmii_hv_readreg(sc->sc_dev, 2, MII_PHYIDR2, &id2);
-		sc->phy.acquire(sc);
+		wm_set_mdio_slow_mode_hv_locked(sc);
+		rv = wm_gmii_hv_readreg_locked(sc->sc_dev, 2, MII_PHYIDR1,
+		    &id1);
+		rv |= wm_gmii_hv_readreg_locked(sc->sc_dev, 2, MII_PHYIDR2,
+		    &id2);
 	}
 	if ((rv != 0) || MII_INVALIDID(id1) || MII_INVALIDID(id2)) {
 		device_printf(sc->sc_dev, "XXX return with false\n");
