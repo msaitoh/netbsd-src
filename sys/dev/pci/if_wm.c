@@ -17114,10 +17114,11 @@ wm_set_mdio_slow_mode_hv(struct wm_softc *sc)
 {
 	int rv;
 
-	if (sc->phy.acquire(sc) != 0) {
+	rv = sc->phy.acquire(sc);
+	if (rv != 0) {
 		device_printf(sc->sc_dev, "%s: failed to get semaphore\n",
 		    __func__);
-		return -1;
+		return rv;
 	}
 
 	rv = wm_set_mdio_slow_mode_hv_locked(sc);
