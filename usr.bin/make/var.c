@@ -1,4 +1,4 @@
-/*	$NetBSD: var.c,v 1.1025 2022/06/14 19:57:56 rillig Exp $	*/
+/*	$NetBSD: var.c,v 1.1027 2022/08/05 20:59:54 rillig Exp $	*/
 
 /*
  * Copyright (c) 1988, 1989, 1990, 1993
@@ -139,7 +139,7 @@
 #include "metachar.h"
 
 /*	"@(#)var.c	8.3 (Berkeley) 3/19/94" */
-MAKE_RCSID("$NetBSD: var.c,v 1.1025 2022/06/14 19:57:56 rillig Exp $");
+MAKE_RCSID("$NetBSD: var.c,v 1.1027 2022/08/05 20:59:54 rillig Exp $");
 
 /*
  * Variables are defined using one of the VAR=value assignments.  Their
@@ -2439,21 +2439,14 @@ done:
 	return AMR_OK;
 }
 
-/* :Ddefined or :Uundefined */
-static ApplyModifierResult
-ApplyModifier_Defined(const char **pp, ModChain *ch)
+static void
+ParseModifier_Defined(const char **pp, ModChain *ch, bool shouldEval,
+		      LazyBuf *buf)
 {
-	Expr *expr = ch->expr;
-	LazyBuf buf;
 	const char *p;
 
-	VarEvalMode emode = VARE_PARSE_ONLY;
-	if (Expr_ShouldEval(expr))
-		if ((**pp == 'D') == (expr->defined == DEF_REGULAR))
-			emode = expr->emode;
-
 	p = *pp + 1;
-	LazyBuf_Init(&buf, p);
+	LazyBuf_Init(buf, p);
 	while (!IsDelimiter(*p, ch) && *p != '\0') {
 
 		/*
@@ -2467,7 +2460,8 @@ ApplyModifier_Defined(const char **pp, ModChain *ch)
 		if (*p == '\\') {
 			char c = p[1];
 			if (IsDelimiter(c, ch) || c == '$' || c == '\\') {
-				LazyBuf_Add(&buf, c);
+				if (shouldEval)
+					LazyBuf_Add(buf, c);
 				p += 2;
 				continue;
 			}
@@ -2475,28 +2469,41 @@ ApplyModifier_Defined(const char **pp, ModChain *ch)
 
 		/* Nested variable expression */
 		if (*p == '$') {
-			FStr nested_val;
+			FStr val;
 
-			(void)Var_Parse(&p, expr->scope, emode, &nested_val);
+			(void)Var_Parse(&p, ch->expr->scope,
+			    shouldEval ? ch->expr->emode : VARE_PARSE_ONLY,
+			    &val);
 			/* TODO: handle errors */
-			if (Expr_ShouldEval(expr))
-				LazyBuf_AddStr(&buf, nested_val.str);
-			FStr_Done(&nested_val);
+			if (shouldEval)
+				LazyBuf_AddStr(buf, val.str);
+			FStr_Done(&val);
 			continue;
 		}
 
 		/* Ordinary text */
-		LazyBuf_Add(&buf, *p);
+		if (shouldEval)
+			LazyBuf_Add(buf, *p);
 		p++;
 	}
 	*pp = p;
+}
+
+/* :Ddefined or :Uundefined */
+static ApplyModifierResult
+ApplyModifier_Defined(const char **pp, ModChain *ch)
+{
+	Expr *expr = ch->expr;
+	LazyBuf buf;
+	bool shouldEval =
+	    Expr_ShouldEval(expr) &&
+	    (**pp == 'D') == (expr->defined == DEF_REGULAR);
+
+	ParseModifier_Defined(pp, ch, shouldEval, &buf);
 
 	Expr_Define(expr);
-
-	if (VarEvalMode_ShouldEval(emode))
+	if (shouldEval)
 		Expr_SetValue(expr, Substring_Str(LazyBuf_Get(&buf)));
-	else
-		LazyBuf_Done(&buf);
 
 	return AMR_OK;
 }
