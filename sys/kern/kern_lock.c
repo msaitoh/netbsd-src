@@ -1,4 +1,4 @@
-/*	$NetBSD: kern_lock.c,v 1.173 2021/10/31 16:26:26 skrll Exp $	*/
+/*	$NetBSD: kern_lock.c,v 1.178 2022/08/20 23:37:12 riastradh Exp $	*/
 
 /*-
  * Copyright (c) 2002, 2006, 2007, 2008, 2009, 2020 The NetBSD Foundation, Inc.
@@ -31,7 +31,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: kern_lock.c,v 1.173 2021/10/31 16:26:26 skrll Exp $");
+__KERNEL_RCSID(0, "$NetBSD: kern_lock.c,v 1.178 2022/08/20 23:37:12 riastradh Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_lockdebug.h"
@@ -134,6 +134,22 @@ lockops_t _kernel_lock_ops = {
 	.lo_dump = _kernel_lock_dump,
 };
 
+#ifdef LOCKDEBUG
+
+#include <ddb/ddb.h>
+
+static void
+kernel_lock_trace_ipi(void *cookie)
+{
+
+	printf("%s[%d %s]: hogging kernel lock\n", cpu_name(curcpu()),
+	    curlwp->l_lid,
+	    curlwp->l_name ? curlwp->l_name : curproc->p_comm);
+	db_stacktrace();
+}
+
+#endif
+
 /*
  * Initialize the kernel lock.
  */
@@ -177,6 +193,7 @@ _kernel_lock(int nlocks)
 	LOCKSTAT_FLAG(lsflag);
 	struct lwp *owant;
 #ifdef LOCKDEBUG
+	static struct cpu_info *kernel_lock_holder;
 	u_int spins = 0;
 #endif
 	int s;
@@ -199,6 +216,9 @@ _kernel_lock(int nlocks)
 	    0);
 
 	if (__predict_true(__cpu_simple_lock_try(kernel_lock))) {
+#ifdef LOCKDEBUG
+		kernel_lock_holder = curcpu();
+#endif
 		ci->ci_biglock_count = nlocks;
 		l->l_blcnt = nlocks;
 		LOCKDEBUG_LOCKED(kernel_lock_dodebug, kernel_lock, NULL,
@@ -233,10 +253,16 @@ _kernel_lock(int nlocks)
 		splx(s);
 		while (__SIMPLELOCK_LOCKED_P(kernel_lock)) {
 #ifdef LOCKDEBUG
-			if (SPINLOCK_SPINOUT(spins)) {
-				extern int start_init_exec;
-				if (start_init_exec)
-					_KERNEL_LOCK_ABORT("spinout");
+			extern int start_init_exec;
+			if (SPINLOCK_SPINOUT(spins) && start_init_exec) {
+				ipi_msg_t msg = {
+					.func = kernel_lock_trace_ipi,
+				};
+				kpreempt_disable();
+				ipi_unicast(&msg, kernel_lock_holder);
+				ipi_wait(&msg);
+				kpreempt_enable();
+				_KERNEL_LOCK_ABORT("spinout");
 			}
 			SPINLOCK_BACKOFF_HOOK;
 			SPINLOCK_SPIN_HOOK;
@@ -277,6 +303,10 @@ _kernel_lock(int nlocks)
 	 */
 #ifndef __HAVE_ATOMIC_AS_MEMBAR
 	membar_enter();
+#endif
+
+#ifdef LOCKDEBUG
+	kernel_lock_holder = curcpu();
 #endif
 }
 

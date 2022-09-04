@@ -1,4 +1,4 @@
-#	$NetBSD: 3RDPARTY,v 1.1867 2022/08/06 09:39:50 wiz Exp $
+#	$NetBSD: 3RDPARTY,v 1.1873 2022/08/30 07:29:44 leot Exp $
 #
 # This file contains a list of the software that has been integrated into
 # NetBSD where we are not the primary maintainer.
@@ -41,12 +41,12 @@
 #
 
 Package:	acpica
-Version:	20211217
-Current Vers:	20211217
+Version:	20220331
+Current Vers:	20220331
 Maintainer:	Intel
 Archive Site:	http://www.acpica.org/downloads/
 Home Page:	http://www.acpica.org/
-Date:		2021-10-28
+Date:		2021-08-27
 Mailing List:	devel@acpica.org
 License:	BSD-like
 Responsible:	jruoho
@@ -451,7 +451,7 @@ There is a flex2netbsd script to help newer imports.
 
 Package:	gcc
 Version:	10.4.0
-Current Vers:	10.4.0/11.3.0/12.1.0
+Current Vers:	10.4.0/11.3.0/12.2.0
 Maintainer:	FSF
 Archive Site:	ftp://ftp.gnu.org/gnu/gcc/
 Home Page:	https://www.gnu.org/software/gcc/
@@ -1409,15 +1409,27 @@ Location:	usr.sbin/traceroute
 Notes:
 Added changes from a5 -> a12 manually.
 
+Package:	tradcpp
+Version:	0.5.3
+Current Vers:	0.5.3
+Maintainer:	David A. Holland <dholland@NetBSD.org>
+Archive Site:	https://ftp.NetBSD.org/pub/NetBSD/misc/dholland/
+Home Page:	https://www.NetBSD.org/~dholland/tradcpp/
+Mailing List:	tech-toolchain
+Responsible:	dholland
+License:	BSD (2-clause)
+Location:	external/bsd/tradcpp
+Notes:
+
 Package:	tz
-Version:	tzcode2022a / tzdata2022agtz
-Current Vers:	tzcode2022a / tzdata2022a
+Version:	tzcode2022c / tzdata2022bgtz (tzdata2022c)
+Current Vers:	tzcode2022c / tzdata2022c
 Maintainer:	Paul Eggert <eggert@cs.ucla.edu>
 Archive Site:	ftp://ftp.iana.org/tz/releases/
 Archive Site:	ftp://munnari.oz.au/pub/oldtz/
 Old Archive Site:	ftp://elsie.nci.nih.gov/pub/
 Home Page:	http://www.iana.org/time-zones
-Date:		2021-10-22
+Date:		2022-08-16
 Mailing List:	tz@iana.org
 Responsible:	kleink, christos, kre
 License:	Public domain

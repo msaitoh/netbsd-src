@@ -1,4 +1,4 @@
-/*	$NetBSD: tree.c,v 1.475 2022/07/16 22:36:06 rillig Exp $	*/
+/*	$NetBSD: tree.c,v 1.480 2022/08/28 19:09:12 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -37,7 +37,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID)
-__RCSID("$NetBSD: tree.c,v 1.475 2022/07/16 22:36:06 rillig Exp $");
+__RCSID("$NetBSD: tree.c,v 1.480 2022/08/28 19:09:12 rillig Exp $");
 #endif
 
 #include <float.h>
@@ -488,7 +488,7 @@ build_name(sym_t *sym, bool is_funcname)
 {
 	tnode_t	*n;
 
-	if (sym->s_scl == NOSCL) {
+	if (sym->s_scl == NOSCL && !in_gcc_attribute) {
 		sym->s_scl = EXTERN;
 		sym->s_def = DECL;
 		if (is_funcname)
@@ -642,7 +642,7 @@ struct_or_union_member(tnode_t *tn, op_t op, sym_t *msym)
 				break;
 			}
 			w = false;
-			eq = eqtype(csym->s_type, sym->s_type,
+			eq = types_compatible(csym->s_type, sym->s_type,
 			    false, false, &w) && !w;
 			if (!eq)
 				break;
@@ -727,7 +727,8 @@ build_generic_selection(const tnode_t *expr,
 
 	for (; sel != NULL; sel = sel->ga_prev) {
 		if (expr != NULL &&
-		    eqtype(sel->ga_arg, expr->tn_type, false, false, NULL))
+		    types_compatible(sel->ga_arg, expr->tn_type,
+			false, false, NULL))
 			return sel->ga_result;
 		else if (sel->ga_arg == NULL)
 			default_result = sel->ga_result;
@@ -1145,7 +1146,8 @@ typeok_minus(op_t op,
 		return false;
 	}
 	if (lt == PTR && rt == PTR) {
-		if (!eqtype(ltp->t_subt, rtp->t_subt, true, false, NULL)) {
+		if (!types_compatible(ltp->t_subt, rtp->t_subt,
+		    true, false, NULL)) {
 			/* illegal pointer subtraction */
 			error(116);
 		}
@@ -1224,7 +1226,7 @@ typeok_shl(const mod_t *mp, tspec_t lt, tspec_t rt)
 }
 
 static void
-typeok_shift(tspec_t lt, const tnode_t *rn, tspec_t rt)
+typeok_shift(const type_t *ltp, tspec_t lt, const tnode_t *rn, tspec_t rt)
 {
 	if (rn->tn_op != CON)
 		return;
@@ -1234,8 +1236,8 @@ typeok_shift(tspec_t lt, const tnode_t *rn, tspec_t rt)
 		warning(121);
 	} else if ((uint64_t)rn->tn_val->v_quad ==
 		   (uint64_t)size_in_bits(lt)) {
-		/* shift equal to size of object */
-		warning(267);
+		/* shift amount %u equals bit-size of '%s' */
+		warning(267, (unsigned)rn->tn_val->v_quad, type_name(ltp));
 	} else if ((uint64_t)rn->tn_val->v_quad > (uint64_t)size_in_bits(lt)) {
 		/* shift amount %llu is greater than bit-size %llu of '%s' */
 		warning(122, (unsigned long long)rn->tn_val->v_quad,
@@ -1311,9 +1313,9 @@ typeok_colon_pointer(const mod_t *mp, const type_t *ltp, const type_t *rtp)
 		return;
 	}
 
-	if (eqptrtype(lstp, rstp, true))
+	if (pointer_types_are_compatible(lstp, rstp, true))
 		return;
-	if (!eqtype(lstp, rstp, true, false, NULL))
+	if (!types_compatible(lstp, rstp, true, false, NULL))
 		warn_incompatible_pointers(mp, ltp, rtp);
 }
 
@@ -1457,7 +1459,7 @@ typeok_op(op_t op, const mod_t *mp, int arg,
 	case SHR:
 		typeok_shr(mp, ln, lt, rn, rt);
 	shift:
-		typeok_shift(lt, rn, rt);
+		typeok_shift(ltp, lt, rn, rt);
 		break;
 	case LT:
 	case LE:
@@ -1589,7 +1591,7 @@ check_pointer_comparison(op_t op, const tnode_t *ln, const tnode_t *rn)
 		return;
 	}
 
-	if (!eqtype(ltp->t_subt, rtp->t_subt, true, false, NULL)) {
+	if (!types_compatible(ltp->t_subt, rtp->t_subt, true, false, NULL)) {
 		warn_incompatible_pointers(&modtab[op], ltp, rtp);
 		return;
 	}
@@ -1757,7 +1759,8 @@ check_assign_void_pointer_compat(op_t op, int arg,
 				 const type_t *const rstp, tspec_t const rst)
 {
 	if (!(lt == PTR && rt == PTR && (lst == VOID || rst == VOID ||
-					 eqtype(lstp, rstp, true, false, NULL))))
+					 types_compatible(lstp, rstp,
+					     true, false, NULL))))
 		return false;
 
 	/* compatible pointer types (qualifiers ignored) */
@@ -2066,7 +2069,7 @@ check_enum_array_index(const tnode_t *ln, const tnode_t *rn)
 
 	/* maximum value %d of '%s' does not match maximum array index %d */
 	warning(348, (int)max_enum_value, type_name(rt), max_array_index);
-	print_previous_declaration(-1, max_ec);
+	print_previous_declaration(max_ec);
 }
 
 /*
@@ -2564,8 +2567,8 @@ struct_starts_with(const type_t *struct_tp, const type_t *member_tp)
 {
 
 	return struct_tp->t_str->sou_first_member != NULL &&
-	       eqtype(struct_tp->t_str->sou_first_member->s_type, member_tp,
-		   true, false, NULL);
+	       types_compatible(struct_tp->t_str->sou_first_member->s_type,
+		   member_tp, true, false, NULL);
 }
 
 static bool
@@ -2606,7 +2609,8 @@ should_warn_about_pointer_cast(const type_t *nstp, tspec_t nst,
 		const sym_t *nmem = nstp->t_str->sou_first_member;
 		const sym_t *omem = ostp->t_str->sou_first_member;
 		while (nmem != NULL && omem != NULL &&
-		       eqtype(nmem->s_type, omem->s_type, true, false, NULL))
+		       types_compatible(nmem->s_type, omem->s_type,
+			   true, false, NULL))
 			nmem = nmem->s_next, omem = omem->s_next;
 		if (nmem != NULL && is_byte_array(nmem->s_type))
 			return false;
@@ -3384,7 +3388,8 @@ is_cast_redundant(const tnode_t *tn)
 
 		if (ntp->t_subt->t_tspec == VOID ||
 		    otp->t_subt->t_tspec == VOID ||
-		    eqtype(ntp->t_subt, otp->t_subt, false, false, NULL))
+		    types_compatible(ntp->t_subt, otp->t_subt,
+			false, false, NULL))
 			return true;
 	}
 
@@ -3449,7 +3454,7 @@ build_assignment(op_t op, bool sys, tnode_t *ln, tnode_t *rn)
 	}
 
 	if (any_query_enabled && rn->tn_op == CVT && rn->tn_cast &&
-	    eqtype(ln->tn_type, rn->tn_type, false, false, NULL) &&
+	    types_compatible(ln->tn_type, rn->tn_type, false, false, NULL) &&
 	    is_cast_redundant(rn)) {
 		/* redundant cast from '%s' to '%s' before assignment */
 		query_message(7,
@@ -3979,7 +3984,7 @@ cast(tnode_t *tn, type_t *tp)
 			return NULL;
 		}
 		for (m = str->sou_first_member; m != NULL; m = m->s_next) {
-			if (eqtype(m->s_type, tn->tn_type,
+			if (types_compatible(m->s_type, tn->tn_type,
 			    false, false, NULL)) {
 				tn = expr_alloc_tnode();
 				tn->tn_op = CVT;
@@ -4017,9 +4022,11 @@ cast(tnode_t *tn, type_t *tp)
 	} else
 		goto invalid_cast;
 
-	if (any_query_enabled && eqtype(tp, tn->tn_type, false, false, NULL))
+	if (any_query_enabled && types_compatible(tp, tn->tn_type,
+	    false, false, NULL)) {
 		/* no-op cast from '%s' to '%s' */
 		query_message(6, type_name(tn->tn_type), type_name(tp));
+	}
 
 	tn = convert(CVT, 0, tp, tn);
 	tn->tn_cast = true;
@@ -4189,7 +4196,7 @@ check_prototype_argument(
 	ln->tn_type = expr_unqualified_type(tp);
 	ln->tn_lvalue = true;
 	if (typeok(FARG, n, ln, tn)) {
-		if (!eqtype(tp, tn->tn_type,
+		if (!types_compatible(tp, tn->tn_type,
 		    true, false, (dowarn = false, &dowarn)) || dowarn)
 			tn = convert(FARG, n, tp, tn);
 	}

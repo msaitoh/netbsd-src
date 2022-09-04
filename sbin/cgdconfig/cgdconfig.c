@@ -1,4 +1,4 @@
-/* $NetBSD: cgdconfig.c,v 1.53 2021/11/22 14:34:35 nia Exp $ */
+/* $NetBSD: cgdconfig.c,v 1.59 2022/08/30 08:48:41 riastradh Exp $ */
 
 /*-
  * Copyright (c) 2002, 2003 The NetBSD Foundation, Inc.
@@ -33,12 +33,13 @@
 #ifndef lint
 __COPYRIGHT("@(#) Copyright (c) 2002, 2003\
  The NetBSD Foundation, Inc.  All rights reserved.");
-__RCSID("$NetBSD: cgdconfig.c,v 1.53 2021/11/22 14:34:35 nia Exp $");
+__RCSID("$NetBSD: cgdconfig.c,v 1.59 2022/08/30 08:48:41 riastradh Exp $");
 #endif
 
 #ifdef HAVE_ARGON2
 #include <argon2.h>
 #endif
+#include <assert.h>
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -51,6 +52,11 @@ __RCSID("$NetBSD: cgdconfig.c,v 1.53 2021/11/22 14:34:35 nia Exp $");
 #include <paths.h>
 #include <dirent.h>
 
+/* base64 gunk */
+#include <netinet/in.h>
+#include <arpa/nameser.h>
+#include <resolv.h>
+
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <sys/bootblock.h>
@@ -61,6 +67,7 @@ __RCSID("$NetBSD: cgdconfig.c,v 1.53 2021/11/22 14:34:35 nia Exp $");
 #include <sys/resource.h>
 #include <sys/statvfs.h>
 #include <sys/bitops.h>
+#include <sys/queue.h>
 
 #include <dev/cgdvar.h>
 
@@ -71,6 +78,7 @@ __RCSID("$NetBSD: cgdconfig.c,v 1.53 2021/11/22 14:34:35 nia Exp $");
 #include "utils.h"
 #include "cgdconfig.h"
 #include "prog_ops.h"
+#include "hkdf_hmac_sha256.h"
 
 #define CGDCONFIG_CFILE		CGDCONFIG_DIR "/cgd.conf"
 
@@ -83,12 +91,18 @@ enum action {
 	 ACTION_CONFIGALL,		/* configure all from config file */
 	 ACTION_UNCONFIGALL,		/* unconfigure all from config file */
 	 ACTION_CONFIGSTDIN,		/* configure, key from stdin */
-	 ACTION_LIST			/* list configured devices */
+	 ACTION_LIST,			/* list configured devices */
+	 ACTION_PRINTKEY,		/* print key to stdout */
+	 ACTION_PRINTALLKEYS,		/* print all keys to stdout */
 };
 
 /* if nflag is set, do not configure/unconfigure the cgd's */
 
 int	nflag = 0;
+
+/* if Sflag is set, generate shared keys */
+
+int	Sflag = 0;
 
 /* if pflag is set to PFLAG_STDIN read from stdin rather than getpass(3) */
 
@@ -98,14 +112,38 @@ int	nflag = 0;
 #define	PFLAG_STDIN		0x04
 int	pflag = PFLAG_GETPASS;
 
+/*
+ * When configuring all cgds, save a cache of shared keys for key
+ * derivation.  If the _first_ verification with a shared key fails, we
+ * chuck it and start over; if _subsequent_ verifications fail, we
+ * assume the disk is wrong and give up on it immediately.
+ */
+
+struct sharedkey {
+	int			 alg;
+	string_t		*id;
+	bits_t			*key;
+	LIST_ENTRY(sharedkey)	 list;
+	SLIST_ENTRY(sharedkey)	 used;
+	int			 verified;
+};
+LIST_HEAD(, sharedkey) sharedkeys;
+SLIST_HEAD(sharedkeyhits, sharedkey);
+
 static int	configure(int, char **, struct params *, int);
 static int	configure_stdin(struct params *, int argc, char **);
-static int	generate(struct params *, int, char **, const char *);
-static int	generate_convert(struct params *, int, char **, const char *);
+static int	generate(struct params *, int, char **, const char *,
+		    const char *);
+static int	generate_convert(struct params *, int, char **, const char *,
+		    const char *);
 static int	unconfigure(int, char **, struct params *, int);
 static int	do_all(const char *, int, char **,
 		       int (*)(int, char **, struct params *, int));
 static int	do_list(int, char **);
+static int	printkey(const char *, const char *, const char *, ...)
+		    __printflike(3,4);
+static int	printkey1(int, char **, struct params *, int);
+static int	do_printkey(int, char **);
 
 #define CONFIG_FLAGS_FROMALL	1	/* called from configure_all() */
 #define CONFIG_FLAGS_FROMMAIN	2	/* called from main() */
@@ -113,7 +151,8 @@ static int	do_list(int, char **);
 static int	 configure_params(int, const char *, const char *,
 				  struct params *);
 static void	 eliminate_cores(void);
-static bits_t	*getkey(const char *, struct keygen *, size_t);
+static bits_t	*getkey(const char *, struct keygen *, size_t,
+		     struct sharedkeyhits *);
 static bits_t	*getkey_storedkey(const char *, struct keygen *, size_t);
 static bits_t	*getkey_randomkey(const char *, struct keygen *, size_t, int);
 #ifdef HAVE_ARGON2
@@ -148,13 +187,15 @@ usage(void)
 	    "[paramsfile]\n", getprogname());
 	(void)fprintf(stderr, "       %s -C [-enpv] [-f configfile]\n",
 	    getprogname());
-	(void)fprintf(stderr, "       %s -G [-enpv] [-i ivmeth] [-k kgmeth] "
-	    "[-o outfile] paramsfile\n", getprogname());
-	(void)fprintf(stderr, "       %s -g [-v] [-i ivmeth] [-k kgmeth] "
-	    "[-o outfile] alg [keylen]\n", getprogname());
+	(void)fprintf(stderr, "       %s -G [-enpSv] [-i ivmeth] [-k kgmeth] "
+	    "[-P paramsfile] [-o outfile] paramsfile\n", getprogname());
+	(void)fprintf(stderr, "       %s -g [-Sv] [-i ivmeth] [-k kgmeth] "
+	    "[-P paramsfile] [-o outfile] alg [keylen]\n", getprogname());
 	(void)fprintf(stderr, "       %s -l [-v[v]] [cgd]\n", getprogname());
 	(void)fprintf(stderr, "       %s -s [-nv] [-i ivmeth] cgd dev alg "
 	    "[keylen]\n", getprogname());
+	(void)fprintf(stderr, "       %s -t paramsfile\n", getprogname());
+	(void)fprintf(stderr, "       %s -T [-f configfile]\n", getprogname());
 	(void)fprintf(stderr, "       %s -U [-nv] [-f configfile]\n",
 	    getprogname());
 	(void)fprintf(stderr, "       %s -u [-nv] cgd\n", getprogname());
@@ -201,21 +242,35 @@ main(int argc, char **argv)
 	int	ch;
 	const char	*cfile = NULL;
 	const char	*outfile = NULL;
+	const char	*Pfile = NULL;
 
 	setprogname(*argv);
+	if (hkdf_hmac_sha256_selftest())
+		err(EXIT_FAILURE, "Crypto self-test failed");
 	eliminate_cores();
 	if (mlockall(MCL_FUTURE))
 		err(EXIT_FAILURE, "Can't lock memory");
 	p = params_new();
 	kg = NULL;
 
-	while ((ch = getopt(argc, argv, "CGUV:b:ef:gi:k:lno:spuv")) != -1)
+	while ((ch = getopt(argc, argv, "CGP:STUV:b:ef:gi:k:lno:sptuv")) != -1)
 		switch (ch) {
 		case 'C':
 			set_action(&action, ACTION_CONFIGALL);
 			break;
 		case 'G':
 			set_action(&action, ACTION_GENERATE_CONVERT);
+			break;
+		case 'P':
+			if (Pfile)
+				usage();
+			Pfile = estrdup(optarg);
+			break;
+		case 'S':
+			Sflag = 1;
+			break;
+		case 'T':
+			set_action(&action, ACTION_PRINTALLKEYS);
 			break;
 		case 'U':
 			set_action(&action, ACTION_UNCONFIGALL);
@@ -276,7 +331,9 @@ main(int argc, char **argv)
 		case 's':
 			set_action(&action, ACTION_CONFIGSTDIN);
 			break;
-
+		case 't':
+			set_action(&action, ACTION_PRINTKEY);
+			break;
 		case 'u':
 			set_action(&action, ACTION_UNCONFIGURE);
 			break;
@@ -300,6 +357,21 @@ main(int argc, char **argv)
 		err(1, "init failed");
 
 	/* validate the consistency of the arguments */
+	if (Pfile != NULL &&
+	    action != ACTION_GENERATE &&
+	    action != ACTION_GENERATE_CONVERT) {
+		warnx("-P is only for use with -g/-G action");
+		usage();
+	}
+	if (Pfile != NULL && !Sflag) {
+		warnx("-P only makes sense with -S flag");
+	}
+	if (Sflag &&
+	    action != ACTION_GENERATE &&
+	    action != ACTION_GENERATE_CONVERT) {
+		warnx("-S is only for use with -g/-G action");
+		usage();
+	}
 
 	switch (action) {
 	case ACTION_DEFAULT:	/* ACTION_CONFIGURE is the default */
@@ -308,9 +380,9 @@ main(int argc, char **argv)
 	case ACTION_UNCONFIGURE:
 		return unconfigure(argc, argv, NULL, CONFIG_FLAGS_FROMMAIN);
 	case ACTION_GENERATE:
-		return generate(p, argc, argv, outfile);
+		return generate(p, argc, argv, outfile, Pfile);
 	case ACTION_GENERATE_CONVERT:
-		return generate_convert(p, argc, argv, outfile);
+		return generate_convert(p, argc, argv, outfile, Pfile);
 	case ACTION_CONFIGALL:
 		return do_all(cfile, argc, argv, configure);
 	case ACTION_UNCONFIGALL:
@@ -319,6 +391,10 @@ main(int argc, char **argv)
 		return configure_stdin(p, argc, argv);
 	case ACTION_LIST:
 		return do_list(argc, argv);
+	case ACTION_PRINTKEY:
+		return do_printkey(argc, argv);
+	case ACTION_PRINTALLKEYS:
+		return do_all(cfile, argc, argv, printkey1);
 	default:
 		errx(EXIT_FAILURE, "undefined action");
 		/* NOTREACHED */
@@ -326,13 +402,70 @@ main(int argc, char **argv)
 }
 
 static bits_t *
-getkey(const char *dev, struct keygen *kg, size_t len)
+getsubkey_hkdf_hmac_sha256(bits_t *key, bits_t *info, size_t subkeylen)
+{
+	bits_t		*ret = NULL;
+	uint8_t		*tmp;
+
+	tmp = emalloc(BITS2BYTES(subkeylen));
+	if (hkdf_hmac_sha256(tmp, BITS2BYTES(subkeylen),
+		bits_getbuf(key), BITS2BYTES(bits_len(key)),
+		bits_getbuf(info), BITS2BYTES(bits_len(info)))) {
+		warnx("failed to derive HKDF-HMAC-SHA256 subkey");
+		goto out;
+	}
+
+	ret = bits_new(tmp, subkeylen);
+
+out:	free(tmp);
+	return ret;
+}
+
+static bits_t *
+getsubkey(int alg, bits_t *key, bits_t *info, size_t subkeylen)
+{
+
+	switch (alg) {
+	case SHARED_ALG_HKDF_HMAC_SHA256:
+		return getsubkey_hkdf_hmac_sha256(key, info, subkeylen);
+	default:
+		warnx("unrecognised shared key derivation method %d", alg);
+		return NULL;
+	}
+}
+
+static bits_t *
+getkey(const char *dev, struct keygen *kg, size_t len0,
+    struct sharedkeyhits *skh)
 {
 	bits_t	*ret = NULL;
 	bits_t	*tmp;
 
-	VPRINTF(3, ("getkey(\"%s\", %p, %zu) called\n", dev, kg, len));
+	VPRINTF(3, ("getkey(\"%s\", %p, %zu) called\n", dev, kg, len0));
 	for (; kg; kg=kg->next) {
+		struct sharedkey *sk = NULL;
+		size_t len = len0;
+
+		/*
+		 * If shared, determine the shared key's length and
+		 * probe the cache of shared keys.
+		 */
+		if (kg->kg_sharedid) {
+			const char *id = string_tocharstar(kg->kg_sharedid);
+
+			len = kg->kg_sharedlen;
+			LIST_FOREACH(sk, &sharedkeys, list) {
+				if (kg->kg_sharedalg == sk->alg &&
+				    kg->kg_sharedlen == bits_len(sk->key) &&
+				    strcmp(id, string_tocharstar(sk->id)) == 0)
+					break;
+			}
+			if (sk) {
+				tmp = sk->key;
+				goto derive;
+			}
+		}
+
 		switch (kg->kg_method) {
 		case KEYGEN_STOREDKEY:
 			tmp = getkey_storedkey(dev, kg, len);
@@ -366,6 +499,36 @@ getkey(const char *dev, struct keygen *kg, size_t len)
 			return NULL;
 		}
 
+		/*
+		 * If shared, cache the key.
+		 */
+		if (kg->kg_sharedid) {
+			assert(sk == NULL);
+			sk = ecalloc(1, sizeof(*sk));
+			sk->alg = kg->kg_sharedalg;
+			sk->id = string_dup(kg->kg_sharedid);
+			sk->key = tmp;
+			LIST_INSERT_HEAD(&sharedkeys, sk, list);
+			sk->verified = 0;
+		}
+
+derive:		if (kg->kg_sharedid) {
+			assert(sk != NULL);
+			/*
+			 * tmp holds the master key, owned by the
+			 * struct sharedkey record; replace it by the
+			 * derived subkey.
+			 */
+			tmp = getsubkey(kg->kg_sharedalg, tmp,
+			    kg->kg_sharedinfo, len0);
+			if (tmp == NULL) {
+				if (ret)
+					bits_free(ret);
+				return NULL;
+			}
+			if (skh)
+				SLIST_INSERT_HEAD(skh, sk, used);
+		}
 		if (ret)
 			ret = bits_xor_d(tmp, ret);
 		else
@@ -659,6 +822,12 @@ configure(int argc, char **argv, struct params *inparams, int flags)
 		}
 
 	for (;;) {
+		struct sharedkeyhits skh;
+		struct sharedkey *sk, *sk1;
+		int all_verified;
+
+		SLIST_INIT(&skh);
+
 		fd = opendisk_werror(argv[0], cgdname, sizeof(cgdname));
 		if (fd == -1)
 			return -1;
@@ -666,7 +835,7 @@ configure(int argc, char **argv, struct params *inparams, int flags)
 		if (p->key)
 			bits_free(p->key);
 
-		p->key = getkey(argv[1], p->keygen, p->keylen);
+		p->key = getkey(argv[1], p->keygen, p->keylen, &skh);
 		if (!p->key)
 			goto bail_err;
 
@@ -679,11 +848,32 @@ configure(int argc, char **argv, struct params *inparams, int flags)
 			(void)unconfigure_fd(fd);
 			goto bail_err;
 		}
-		if (ret == 0)		/* success */
+		if (ret == 0) {		/* success */
+			SLIST_FOREACH(sk, &skh, used)
+				sk->verified = 1;
 			break;
+		}
 
 		(void)unconfigure_fd(fd);
 		(void)prog_close(fd);
+
+		/*
+		 * If the shared keys were all verified already, assume
+		 * something is wrong with the disk and give up.  If
+		 * not, flush the cache of the ones that have not been
+		 * verified in case we can try again with passphrase
+		 * re-entry.
+		 */
+		all_verified = 1;
+		SLIST_FOREACH_SAFE(sk, &skh, used, sk1) {
+			all_verified &= sk->verified;
+			if (!sk->verified) {
+				LIST_REMOVE(sk, list);
+				free(sk);
+			}
+		}
+		if (all_verified)
+			loop = 0;
 
 		if (!loop) {
 			warnx("verification failed permanently");
@@ -1075,7 +1265,8 @@ verify_reenter(struct params *p)
 }
 
 static int
-generate(struct params *p, int argc, char **argv, const char *outfile)
+generate(struct params *p, int argc, char **argv, const char *outfile,
+    const char *Pfile)
 {
 	int	 ret;
 
@@ -1097,15 +1288,43 @@ generate(struct params *p, int argc, char **argv, const char *outfile)
 	if (ret)
 		return ret;
 
-	if (!p->keygen) {
-		p->keygen = keygen_generate(KEYGEN_PKCS5_PBKDF2_SHA1);
-		if (!p->keygen)
+	if (Pfile) {
+		struct params *pp;
+
+		pp = params_cget(Pfile);
+		if (pp == NULL)
 			return -1;
+		if (!params_verify(pp)) {
+			params_free(pp);
+			warnx("invalid parameters file \"%s\"", Pfile);
+			return -1;
+		}
+		p = params_combine(pp, p);
+		keygen_stripstored(&p->keygen);
+		if (!p->keygen) {
+			warnx("no keygen in parameters file \"%s\"", Pfile);
+			return -1;
+		}
+	} else {
+		if (!p->keygen) {
+			p->keygen = keygen_generate(KEYGEN_PKCS5_PBKDF2_SHA1);
+			if (!p->keygen)
+				return -1;
+		}
+
+		if (keygen_filldefaults(p->keygen, p->keylen)) {
+			warnx("Failed to generate defaults for keygen");
+			return -1;
+		}
 	}
 
-	if (keygen_filldefaults(p->keygen, p->keylen)) {
-		warnx("Failed to generate defaults for keygen");
-		return -1;
+	if (Sflag) {
+		if (Pfile)
+			ret = keygen_tweakshared(p->keygen);
+		else
+			ret = keygen_makeshared(p->keygen);
+		if (ret)
+			return ret;
 	}
 
 	if (!params_verify(p)) {
@@ -1117,10 +1336,12 @@ generate(struct params *p, int argc, char **argv, const char *outfile)
 }
 
 static int
-generate_convert(struct params *p, int argc, char **argv, const char *outfile)
+generate_convert(struct params *p, int argc, char **argv, const char *outfile,
+    const char *Pfile)
 {
 	struct params	*oldp;
 	struct keygen	*kg;
+	int		 ret;
 
 	if (argc != 1)
 		usage();
@@ -1148,7 +1369,7 @@ generate_convert(struct params *p, int argc, char **argv, const char *outfile)
 		return -1;
 	}
 
-	oldp->key = getkey("old file", oldp->keygen, oldp->keylen);
+	oldp->key = getkey("old file", oldp->keygen, oldp->keylen, NULL);
 
 	/* we copy across the non-keygen info, here. */
 
@@ -1164,14 +1385,43 @@ generate_convert(struct params *p, int argc, char **argv, const char *outfile)
 
 	params_free(oldp);
 
-	if (!p->keygen) {
-		p->keygen = keygen_generate(KEYGEN_PKCS5_PBKDF2_SHA1);
-		if (!p->keygen)
+	if (Pfile) {
+		struct params *pp;
+
+		pp = params_cget(Pfile);
+		if (pp == NULL)
 			return -1;
+		if (!params_verify(pp)) {
+			params_free(pp);
+			warnx("invalid parameters file \"%s\"", Pfile);
+			return -1;
+		}
+		p = params_combine(pp, p);
+		keygen_stripstored(&p->keygen);
+		if (!p->keygen) {
+			warnx("no keygen in parameters file \"%s\"", Pfile);
+			return -1;
+		}
+	} else {
+		if (!p->keygen) {
+			p->keygen = keygen_generate(KEYGEN_PKCS5_PBKDF2_SHA1);
+			if (!p->keygen)
+				return -1;
+		}
+		(void)params_filldefaults(p);
+		(void)keygen_filldefaults(p->keygen, p->keylen);
 	}
-	(void)params_filldefaults(p);
-	(void)keygen_filldefaults(p->keygen, p->keylen);
-	p->key = getkey("new file", p->keygen, p->keylen);
+
+	if (Sflag) {
+		if (Pfile)
+			ret = keygen_tweakshared(p->keygen);
+		else
+			ret = keygen_makeshared(p->keygen);
+		if (ret)
+			return ret;
+	}
+
+	p->key = getkey("new file", p->keygen, p->keylen, NULL);
 
 	kg = keygen_generate(KEYGEN_STOREDKEY);
 	kg->kg_key = bits_xor(p->key, oldp->key);
@@ -1337,6 +1587,83 @@ do_list(int argc, char **argv)
 
 	closedir(dirp);
 	return 0;
+}
+
+static int
+printkey(const char *dev, const char *paramsfile, const char *fmt, ...)
+{
+	va_list va;
+	struct params *p;
+	const uint8_t *raw;
+	size_t nbits, nbytes;
+	size_t nb64;
+	char *b64;
+	int ret;
+
+	p = params_cget(paramsfile);
+	if (p == NULL)
+		return -1;
+	if (!params_verify(p)) {
+		warnx("invalid parameters file \"%s\"", paramsfile);
+		return -1;
+	}
+	p->key = getkey(dev, p->keygen, p->keylen, NULL);
+	raw = bits_getbuf(p->key);
+	nbits = bits_len(p->key);
+	assert(nbits <= INT_MAX - 7);
+	nbytes = BITS2BYTES(nbits);
+	assert(nbytes <= 3*(INT_MAX/4) - 2);
+
+	nb64 = 4*((nbytes + 2)/3);
+	b64 = emalloc(nb64 + 2);
+	ret = __b64_ntop(raw, nbytes, b64, nb64 + 1);
+	assert(ret == (int)nb64);
+	b64[nb64] = '\n';
+	b64[nb64 + 1] = '\0';
+
+	va_start(va, fmt);
+	vprintf(fmt, va);
+	va_end(va);
+	if (fwrite(b64, nb64 + 1, 1, stdout) != 1)
+		err(1, "fwrite");
+	fflush(stdout);
+	return ferror(stdout);
+}
+
+static int
+printkey1(int argc, char **argv, struct params *inparams, int flags)
+{
+	char devicename[PATH_MAX], paramsfilebuf[PATH_MAX];
+	const char *dev, *paramsfile;
+
+	assert(flags == CONFIG_FLAGS_FROMALL);
+
+	if (argc < 2 || argc > 3)
+		return -1;
+
+	dev = getfsspecname(devicename, sizeof(devicename), argv[1]);
+	if (dev == NULL) {
+		warnx("getfsspecname failed: %s", devicename);
+		return -1;
+	}
+
+	if (argc == 2) {
+		strlcpy(paramsfilebuf, dev, sizeof(paramsfilebuf));
+		paramsfile = basename(paramsfilebuf);
+	} else {
+		paramsfile = argv[2];
+	}
+
+	return printkey(dev, paramsfile, "%s: ", dev);
+}
+
+static int
+do_printkey(int argc, char **argv)
+{
+
+	if (argc != 1)
+		usage();
+	return printkey("key", argv[0], "");
 }
 
 static void

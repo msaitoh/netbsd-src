@@ -34,7 +34,7 @@
 
 #if defined(__NetBSD__)
 __COPYRIGHT("@(#) Copyright (c) 2009 The NetBSD Foundation, Inc. All rights reserved.");
-__RCSID("$NetBSD: netpgp.c,v 1.103 2020/03/21 01:07:21 jhigh Exp $");
+__RCSID("$NetBSD: netpgp.c,v 1.106 2022/08/27 08:58:32 rillig Exp $");
 #endif
 
 #include <sys/types.h>
@@ -297,9 +297,9 @@ readkeyring(netpgp_t *netpgp, const char *name)
 
 	filename = keyringfile(netpgp, name);
 	if (!pgp_keyring_fileread(keyring, noarmor, filename)) {
+		(void) fprintf(stderr, "Can't read %s %s\n", name, filename);
 		free(filename);
 		free(keyring);
-		(void) fprintf(stderr, "Can't read %s %s\n", name, filename);
 		return NULL;
 	}
 	netpgp_setvar(netpgp, name, filename);
@@ -317,8 +317,8 @@ writekeyring(netpgp_t *netpgp, const char *name, pgp_keyring_t *keyring, uint8_t
 
 	filename = keyringfile(netpgp, name);
 	if (!pgp_keyring_filewrite(keyring, noarmor, filename, passphrase)) {
-		free(filename);
 		(void) fprintf(stderr, "Can't write %s %s\n", name, filename);
+		free(filename);
 		return 0;
 	}
 	netpgp_setvar(netpgp, name, filename);
@@ -471,7 +471,7 @@ get_duration(char *s)
 {
 	uint64_t	 now;
 	int64_t	 	 t;
-	char		*mult;
+	const char	*mult;
 
 	if (s == NULL) {
 		return 0;
@@ -584,8 +584,6 @@ p(FILE *fp, const char *s, ...)
 static void
 pobj(FILE *fp, mj_t *obj, int depth)
 {
-	unsigned	 i;
-	char		*s;
 
 	if (obj == NULL) {
 		(void) fprintf(stderr, "No object found\n");

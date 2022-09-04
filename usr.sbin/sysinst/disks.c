@@ -1,4 +1,4 @@
-/*	$NetBSD: disks.c,v 1.86 2022/06/24 22:05:24 tsutsui Exp $ */
+/*	$NetBSD: disks.c,v 1.90 2022/08/30 15:27:37 martin Exp $ */
 
 /*
  * Copyright 1997 Piermont Information Systems Inc.
@@ -140,6 +140,19 @@ tmpfs_on_var_shm(void)
 		return false;
 
 	return ram > 16 * MEG;
+}
+
+/*
+ * Find length of string but ignore trailing whitespace
+ */
+static int
+trimmed_len(const char *s)
+{
+	size_t len = strlen(s);
+
+	while (len > 0 && isspace((unsigned char)s[len - 1]))
+		len--;
+	return len;
 }
 
 /* from src/sbin/atactl/atactl.c
@@ -382,8 +395,8 @@ get_descr_drvctl(struct disk_desc *dd)
 	    (uint64_t)dd->dd_secsize * (uint64_t)dd->dd_totsec,
 	    "", HN_AUTOSCALE, HN_B | HN_NOSPACE | HN_DECIMAL);
 
-	snprintf(dd->dd_descr, sizeof(dd->dd_descr), "%s (%s, %s)",
-	    dd->dd_name, size, model);
+	snprintf(dd->dd_descr, sizeof(dd->dd_descr), "%s (%s, %.*s)",
+	    dd->dd_name, size, trimmed_len(model), model);
 
 	prop_object_release(results_dict);
 

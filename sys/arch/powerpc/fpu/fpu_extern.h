@@ -1,4 +1,4 @@
-/*	$NetBSD: fpu_extern.h,v 1.5 2012/07/23 04:13:06 matt Exp $	*/
+/*	$NetBSD: fpu_extern.h,v 1.9 2022/09/02 12:40:49 rin Exp $	*/
 
 /*-
  * Copyright (c) 1995 The NetBSD Foundation, Inc.
@@ -57,17 +57,13 @@ struct fpn *fpu_div(struct fpemu *);
 
 /* fpu_explode.c */
 int fpu_itof(struct fpn *, u_int);
-int fpu_xtof(struct fpn *, u_int64_t);
+int fpu_xtof(struct fpn *, uint64_t);
 int fpu_stof(struct fpn *, u_int);
 int fpu_dtof(struct fpn *, u_int, u_int);
-void fpu_explode(struct fpemu *, struct fpn *, int, int);
+void fpu_explode(struct fpemu *, struct fpn *, int, uint64_t);
 
 /* fpu_implode.c */
-u_int fpu_ftoi(struct fpemu *, struct fpn *);
-u_int fpu_ftox(struct fpemu *, struct fpn *, u_int *);
-u_int fpu_ftos(struct fpemu *, struct fpn *);
-u_int fpu_ftod(struct fpemu *, struct fpn *, u_int *);
-void fpu_implode(struct fpemu *, struct fpn *, int, u_int *);
+void fpu_implode(struct fpemu *, struct fpn *, int, uint64_t *);
 
 /* fpu_mul.c */
 struct fpn *fpu_mul(struct fpemu *);

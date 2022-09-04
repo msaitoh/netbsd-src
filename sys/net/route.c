@@ -1,4 +1,4 @@
-/*	$NetBSD: route.c,v 1.230 2021/12/05 04:57:38 msaitoh Exp $	*/
+/*	$NetBSD: route.c,v 1.233 2022/08/29 23:48:18 knakahara Exp $	*/
 
 /*-
  * Copyright (c) 1998, 2008 The NetBSD Foundation, Inc.
@@ -97,7 +97,7 @@
 #endif
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: route.c,v 1.230 2021/12/05 04:57:38 msaitoh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: route.c,v 1.233 2022/08/29 23:48:18 knakahara Exp $");
 
 #include <sys/param.h>
 #ifdef RTFLUSH_DEBUG
@@ -884,6 +884,8 @@ rtredirect(const struct sockaddr *dst, const struct sockaddr *gateway,
 			error = rtrequest1(RTM_ADD, &info, &rt);
 			if (rt != NULL)
 				flags = rt->rt_flags;
+			if (error == 0)
+				rt_newmsg_dynamic(RTM_ADD, rt);
 			stat = &rtstat.rts_dynamic;
 		} else {
 			/*
@@ -1053,35 +1055,6 @@ rtrequest(int req, const struct sockaddr *dst, const struct sockaddr *gateway,
 	info.rti_info[RTAX_GATEWAY] = gateway;
 	info.rti_info[RTAX_NETMASK] = netmask;
 	return rtrequest1(req, &info, ret_nrt);
-}
-
-/*
- * It's a utility function to add/remove a route to/from the routing table
- * and tell user processes the addition/removal on success.
- */
-int
-rtrequest_newmsg(const int req, const struct sockaddr *dst,
-	const struct sockaddr *gateway, const struct sockaddr *netmask,
-	const int flags)
-{
-	int error;
-	struct rtentry *ret_nrt = NULL;
-
-	KASSERT(req == RTM_ADD || req == RTM_DELETE);
-
-	error = rtrequest(req, dst, gateway, netmask, flags, &ret_nrt);
-	if (error != 0)
-		return error;
-
-	KASSERT(ret_nrt != NULL);
-
-	rt_newmsg(req, ret_nrt); /* tell user process */
-	if (req == RTM_DELETE)
-		rt_free(ret_nrt);
-	else
-		rt_unref(ret_nrt);
-
-	return 0;
 }
 
 static struct ifnet *
@@ -1565,6 +1538,51 @@ rt_newmsg(const int cmd, const struct rtentry *rt)
 	memset((void *)&info, 0, sizeof(info));
 	info.rti_info[RTAX_DST] = rt_getkey(rt);
 	info.rti_info[RTAX_GATEWAY] = rt->rt_gateway;
+	info.rti_info[RTAX_NETMASK] = rt_mask(rt);
+	if (rt->rt_ifp) {
+		info.rti_info[RTAX_IFP] = rt->rt_ifp->if_dl->ifa_addr;
+		info.rti_info[RTAX_IFA] = rt->rt_ifa->ifa_addr;
+	}
+
+	rt_missmsg(cmd, &info, rt->rt_flags, 0);
+}
+
+/*
+ * Inform the routing socket of a route change for RTF_DYNAMIC.
+ */
+void
+rt_newmsg_dynamic(const int cmd, const struct rtentry *rt)
+{
+	struct rt_addrinfo info;
+	struct sockaddr *gateway = rt->rt_gateway;
+
+	if (gateway == NULL)
+		return;
+
+	switch(gateway->sa_family) {
+#ifdef INET
+	case AF_INET: {
+		extern bool icmp_dynamic_rt_msg;
+		if (!icmp_dynamic_rt_msg)
+			return;
+		break;
+	}
+#endif
+#ifdef INET6
+	case AF_INET6: {
+		extern bool icmp6_dynamic_rt_msg;
+		if (!icmp6_dynamic_rt_msg)
+			return;
+		break;
+	}
+#endif
+	default:
+		return;
+	}
+
+	memset((void *)&info, 0, sizeof(info));
+	info.rti_info[RTAX_DST] = rt_getkey(rt);
+	info.rti_info[RTAX_GATEWAY] = gateway;
 	info.rti_info[RTAX_NETMASK] = rt_mask(rt);
 	if (rt->rt_ifp) {
 		info.rti_info[RTAX_IFP] = rt->rt_ifp->if_dl->ifa_addr;

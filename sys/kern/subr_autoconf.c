@@ -1,4 +1,4 @@
-/* $NetBSD: subr_autoconf.c,v 1.301 2022/03/28 12:38:59 riastradh Exp $ */
+/* $NetBSD: subr_autoconf.c,v 1.304 2022/08/24 11:19:25 riastradh Exp $ */
 
 /*
  * Copyright (c) 1996, 2000 Christopher G. Demetriou
@@ -77,7 +77,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: subr_autoconf.c,v 1.301 2022/03/28 12:38:59 riastradh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: subr_autoconf.c,v 1.304 2022/08/24 11:19:25 riastradh Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_ddb.h"
@@ -1919,6 +1919,7 @@ config_dump_garbage(struct devicelist *garbage)
 static int
 config_detach_enter(device_t dev)
 {
+	struct lwp *l __diagused;
 	int error = 0;
 
 	mutex_enter(&config_misc_lock);
@@ -1947,8 +1948,12 @@ config_detach_enter(device_t dev)
 	 * running.  Claim the device for detaching.  This will cause
 	 * all new attempts to acquire references to block.
 	 */
-	KASSERT(dev->dv_attaching == NULL);
-	KASSERT(dev->dv_detaching == NULL);
+	KASSERTMSG((l = dev->dv_attaching) == NULL,
+	    "lwp %ld [%s] @ %p attaching",
+	    (long)l->l_lid, (l->l_name ? l->l_name : l->l_proc->p_comm), l);
+	KASSERTMSG((l = dev->dv_detaching) == NULL,
+	    "lwp %ld [%s] @ %p detaching",
+	    (long)l->l_lid, (l->l_name ? l->l_name : l->l_proc->p_comm), l);
 	dev->dv_detaching = curlwp;
 
 out:	mutex_exit(&config_misc_lock);
@@ -1958,9 +1963,12 @@ out:	mutex_exit(&config_misc_lock);
 static void
 config_detach_exit(device_t dev)
 {
+	struct lwp *l __diagused;
 
 	mutex_enter(&config_misc_lock);
-	KASSERT(dev->dv_detaching == curlwp);
+	KASSERTMSG((l = dev->dv_detaching) == curlwp,
+	    "lwp %ld [%s] @ %p detaching",
+	    (long)l->l_lid, (l->l_name ? l->l_name : l->l_proc->p_comm), l);
 	dev->dv_detaching = NULL;
 	cv_broadcast(&config_misc_cv);
 	mutex_exit(&config_misc_lock);
@@ -2171,9 +2179,12 @@ out:
 void
 config_detach_commit(device_t dev)
 {
+	struct lwp *l __diagused;
 
 	mutex_enter(&config_misc_lock);
-	KASSERT(dev->dv_detaching == curlwp);
+	KASSERTMSG((l = dev->dv_detaching) == curlwp,
+	    "lwp %ld [%s] @ %p detaching",
+	    (long)l->l_lid, (l->l_name ? l->l_name : l->l_proc->p_comm), l);
 	dev->dv_detached = true;
 	cv_broadcast(&config_misc_cv);
 	mutex_exit(&config_misc_lock);
@@ -3126,17 +3137,17 @@ device_pmf_driver_shutdown(device_t dev, int how)
 	return true;
 }
 
-bool
+void
 device_pmf_driver_register(device_t dev,
     bool (*suspend)(device_t, const pmf_qual_t *),
     bool (*resume)(device_t, const pmf_qual_t *),
     bool (*shutdown)(device_t, int))
 {
+
 	dev->dv_driver_suspend = suspend;
 	dev->dv_driver_resume = resume;
 	dev->dv_driver_shutdown = shutdown;
 	dev->dv_flags |= DVF_POWER_HANDLERS;
-	return true;
 }
 
 void
@@ -3163,19 +3174,19 @@ device_pmf_driver_deregister(device_t dev)
 	mutex_exit(&dvl->dvl_mtx);
 }
 
-bool
+void
 device_pmf_driver_child_register(device_t dev)
 {
 	device_t parent = device_parent(dev);
 
 	if (parent == NULL || parent->dv_driver_child_register == NULL)
-		return true;
-	return (*parent->dv_driver_child_register)(dev);
+		return;
+	(*parent->dv_driver_child_register)(dev);
 }
 
 void
 device_pmf_driver_set_child_register(device_t dev,
-    bool (*child_register)(device_t))
+    void (*child_register)(device_t))
 {
 	dev->dv_driver_child_register = child_register;
 }

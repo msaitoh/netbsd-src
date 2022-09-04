@@ -1,4 +1,4 @@
-.\"	$NetBSD: installboot.8,v 1.103 2022/07/10 19:28:00 brook Exp $
+.\"	$NetBSD: installboot.8,v 1.105 2022/08/19 00:50:08 riastradh Exp $
 .\"
 .\" Copyright (c) 2002-2019 The NetBSD Foundation, Inc.
 .\" All rights reserved.
@@ -42,7 +42,7 @@
 .Op Fl m Ar machine
 .Op Fl o Ar options
 .Op Fl t Ar fstype
-.Op Fl u Ar U-boot-paths
+.Op Fl u Ar U-Boot-paths
 .Ar filesystem
 .Ar primary
 .Op Ar secondary
@@ -73,12 +73,7 @@ into
 .Ar filesystem ,
 or disable an existing bootstrap in
 .Ar filesystem .
-.Pp
-On some architectures the options of an existing installed bootstrap,
-or those of a bootstrap file can be changed.
-Installing a new primary bootstrap will reset those options to default
-values.
-.Pp
+.Ss Traditional Nx boot
 Generally,
 .Nx
 disk bootstrap software consists of two parts: a
@@ -133,6 +128,11 @@ other platforms:
 .Sy next68k .
 .El
 .Pp
+On some architectures the options of an existing installed bootstrap,
+or those of a bootstrap file can be changed.
+Installing a new primary bootstrap will reset those options to default
+values.
+.Ss Embedded board types
 Some platforms, typically embedded system platforms, are umbrella platforms
 that support many different individual board types, each with their own
 boot loader binary and installation procedure requirements.
@@ -143,7 +143,7 @@ Information about known boards and their requirements is loaded from a
 database at run-time.
 Sometimes these platforms also require the use of 3rd-party boot loader
 software, such as
-.Sy U-boot .
+.Sy U-Boot .
 To support these platforms,
 .Nm
 scans known locations for these 3rd-party boot loader packages for
@@ -154,7 +154,27 @@ installation information in a file called
 The following platforms have this requirement and utilize this database
 overlay feature:
 .Sy evbarm .
+.Ss UEFI boot
+On platforms that boot with UEFI, there is a single boot loader in the
+EFI system partition at
+.Pa EFI/boot/boot Ns Va ARCH Ns Pa .efi
+where
+.Va ARCH
+is the UEFI name for the architecture, such as
+.Li ia32 Pq Nx Ns /i386 ,
+.Li x64 Pq Nx Ns /amd64 ,
+or
+.Li aa64 Pq Nx Ns /aarch64 .
 .Pp
+.Nm
+is not needed for UEFI boot.
+However, it may be used on a platform that supports UEFI boot to make a
+hybrid image that can be booted
+.Em either
+with UEFI boot or with, e.g., BIOS or U-Boot.
+Hybrid images may also require a special GPT for BIOS boot; see
+.Xr gpt 8 .
+.Ss Options
 The options and arguments recognized by
 .Nm
 are as follows:
@@ -408,10 +428,10 @@ be provided with
 .Fl B Ar s2bno .
 .El
 .
-.It Fl u Ar U-boot-paths
-.Ar U-boot-paths
+.It Fl u Ar U-Boot-paths
+.Ar U-Boot-paths
 is a colon-separated list of search paths to scan for
-.Sy U-boot
+.Sy U-Boot
 packages with
 .Nm installboot
 installation overlays.
@@ -423,7 +443,7 @@ is used if defined; otherwise, the default path is
 .Pa /usr/pkg/share/u-boot .
 This option is only used on platforms that support
 using
-.Sy U-boot .
+.Sy U-Boot .
 .
 .It Fl v
 Verbose operation.
@@ -493,7 +513,7 @@ uses the following environment variables:
 .
 .It Ev INSTALLBOOT_UBOOT_PATHS
 A colon-separated list of search paths to scan for
-.Sy U-boot
+.Sy U-Boot
 packages with
 .Nm installboot
 installation overlays.
@@ -503,7 +523,7 @@ If not specified, the default path is
 .Pa /usr/pkg/share/u-boot .
 This environment variable is only used on platforms that support
 using
-.Sy U-boot .
+.Sy U-Boot .
 .
 .It Ev MACHINE
 Default value for
@@ -616,23 +636,23 @@ is not found.
 The
 .Nx Ns /evbarm
 platform covers a wide variety of board types, many of which use
-.Sy U-boot .
+.Sy U-Boot .
 Running
 .Nm
 with no options will display a list of known boards.
 Using the verbose option will also display information about which
-.Sy U-boot
+.Sy U-Boot
 package needs to be installed to support that board, and if the required
-.Sy U-boot
+.Sy U-Boot
 package is installed, the path at which it is located.
 .Bl -tag -width /usr/pkg/share/u-boot
 .It Pa /usr/pkg/share/u-boot
 The default location scanned for
-.Sy U-boot
+.Sy U-Boot
 packages with installation overlays.
 .It Pa /usr/share/installboot/evbarm/boards.plist
 Base board database, used to provide information about which
-.Sy U-boot
+.Sy U-Boot
 package is required for a given board.
 .El
 .
@@ -762,20 +782,20 @@ Modify the command line to change the default from "netbsd -ASn2" to
 .
 .Ss Nx Ns /evbarm
 Install the
-.Sy U-boot
+.Sy U-Boot
 boot loader for a Pinebook into an image that will be written to
 an SDMMC card:
 .Dl Ic installboot -m evbarm -o board=pine64,pinebook arm64.img
 .Pp
 Install / update the
-.Sy U-boot
+.Sy U-Boot
 boot loader for the current running system on the eMMC device
 .Sq ld0
 and display verbose information about the procedure:
 .Dl Ic installboot -v /dev/rld0c
 .Pp
 Install a specific
-.Sy U-boot
+.Sy U-Boot
 package for a BeagleBone Black into an image that will be written
 to an SDMMC card:
 .Dl Ic installboot -m evbarm -o board=ti,am335x-bone-black armv7.img \
@@ -984,6 +1004,7 @@ already present:
 .Xr disklabel 8 ,
 .Xr dumpfs 8 ,
 .Xr fdisk 8 ,
+.Xr gpt 8 ,
 .Xr x86/mbr 8 ,
 .Xr x86/pxeboot 8
 .
