@@ -1,4 +1,4 @@
-#	$NetBSD: mi,v 1.2417 2022/07/22 15:43:36 wiz Exp $
+#	$NetBSD: mi,v 1.2421 2022/09/04 21:37:50 thorpej Exp $
 #
 # Note: don't delete entries from here - mark them as "obsolete" instead.
 ./etc/mtree/set.comp				comp-sys-root
@@ -953,8 +953,8 @@
 ./usr/include/fido				comp-c-include
 ./usr/include/fido.h				comp-c-include
 ./usr/include/fido/bio.h			comp-c-include
-./usr/include/fido/credman.h			comp-c-include
 ./usr/include/fido/config.h			comp-c-include
+./usr/include/fido/credman.h			comp-c-include
 ./usr/include/fido/eddsa.h			comp-c-include
 ./usr/include/fido/err.h			comp-c-include
 ./usr/include/fido/es256.h			comp-c-include
@@ -1434,8 +1434,8 @@
 ./usr/include/g++/ext/new_allocator.h		comp-cxx-include	gcc,cxx,libstdcxx
 ./usr/include/g++/ext/numeric			comp-cxx-include	gcc,cxx,libstdcxx
 ./usr/include/g++/ext/numeric_traits.h		comp-cxx-include	gcc,cxx,libstdcxx
-./usr/include/g++/ext/opt_random.h		comp-obsolete		obsolete,gcc=9
 ./usr/include/g++/ext/opt_random.h		comp-cxx-include	gcc,cxx,libstdcxx,gcc=10
+./usr/include/g++/ext/opt_random.h		comp-obsolete		obsolete,gcc=9
 ./usr/include/g++/ext/pb_ds/assoc_container.hpp						comp-cxx-include	gcc,cxx,libstdcxx
 ./usr/include/g++/ext/pb_ds/detail/bin_search_tree_/bin_search_tree_.hpp		comp-cxx-include	gcc,cxx,libstdcxx
 ./usr/include/g++/ext/pb_ds/detail/bin_search_tree_/constructors_destructor_fn_imps.hpp comp-cxx-include	gcc,cxx,libstdcxx
@@ -2638,7 +2638,7 @@
 ./usr/include/net/if_wg.h			comp-c-include
 ./usr/include/net/nd.h				comp-c-include
 ./usr/include/net/net_stats.h			comp-c-include
-./usr/include/net/netisr.h			comp-c-include
+./usr/include/net/netisr.h			comp-obsolete		obsolete
 ./usr/include/net/npf.h				comp-c-include
 ./usr/include/net/npf_ncode.h			comp-obsolete		obsolete
 ./usr/include/net/pfil.h			comp-c-include
@@ -3631,6 +3631,20 @@
 ./usr/include/zconf.h				comp-c-include
 ./usr/include/zlib.h				comp-c-include
 ./usr/lib					base-sys-usr		compatdir
+./usr/lib/clang/13.0.0/include/sanitizer/allocator_interface.h	comp-cxx-include		llvm
+./usr/lib/clang/13.0.0/include/sanitizer/asan_interface.h	comp-cxx-include		llvm
+./usr/lib/clang/13.0.0/include/sanitizer/common_interface_defs.h	comp-cxx-include		llvm
+./usr/lib/clang/13.0.0/include/sanitizer/coverage_interface.h	comp-cxx-include		llvm
+./usr/lib/clang/13.0.0/include/sanitizer/lsan_interface.h	comp-cxx-include		llvm
+./usr/lib/clang/13.0.0/include/sanitizer/msan_interface.h	comp-cxx-include		llvm
+./usr/lib/clang/13.0.0/include/sanitizer/netbsd_syscall_hooks.h	comp-cxx-include		llvm
+./usr/lib/clang/13.0.0/include/sanitizer/tsan_interface.h	comp-cxx-include		llvm
+./usr/lib/clang/13.0.0/include/sanitizer/tsan_interface_atomic.h	comp-cxx-include		llvm
+./usr/lib/clang/13.0.0/include/xray/xray_interface.h	comp-cxx-include		llvm
+./usr/lib/clang/13.0.0/include/xray/xray_log_interface.h	comp-cxx-include		llvm
+./usr/lib/clang/13.0.0/include/xray/xray_records.h	comp-cxx-include		llvm
+./usr/lib/clang/13.0.0/share/asan_blacklist.txt	comp-cxx-include		llvm
+./usr/lib/clang/13.0.0/share/msan_blacklist.txt	comp-cxx-include		llvm
 ./usr/lib/clang/7.0.0/include/sanitizer/allocator_interface.h	comp-obsolete		obsolete
 ./usr/lib/clang/7.0.0/include/sanitizer/asan_interface.h	comp-obsolete		obsolete
 ./usr/lib/clang/7.0.0/include/sanitizer/common_interface_defs.h	comp-obsolete		obsolete
@@ -3659,20 +3673,6 @@
 ./usr/lib/clang/9.0.0/include/xray/xray_records.h	comp-obsolete	obsolete		llvm
 ./usr/lib/clang/9.0.0/share/asan_blacklist.txt	comp-obsolete	obsolete		llvm
 ./usr/lib/clang/9.0.0/share/msan_blacklist.txt	comp-obsolete	obsolete		llvm
-./usr/lib/clang/13.0.0/include/sanitizer/allocator_interface.h	comp-cxx-include		llvm
-./usr/lib/clang/13.0.0/include/sanitizer/asan_interface.h	comp-cxx-include		llvm
-./usr/lib/clang/13.0.0/include/sanitizer/common_interface_defs.h	comp-cxx-include		llvm
-./usr/lib/clang/13.0.0/include/sanitizer/coverage_interface.h	comp-cxx-include		llvm
-./usr/lib/clang/13.0.0/include/sanitizer/lsan_interface.h	comp-cxx-include		llvm
-./usr/lib/clang/13.0.0/include/sanitizer/msan_interface.h	comp-cxx-include		llvm
-./usr/lib/clang/13.0.0/include/sanitizer/netbsd_syscall_hooks.h	comp-cxx-include		llvm
-./usr/lib/clang/13.0.0/include/sanitizer/tsan_interface.h	comp-cxx-include		llvm
-./usr/lib/clang/13.0.0/include/sanitizer/tsan_interface_atomic.h	comp-cxx-include		llvm
-./usr/lib/clang/13.0.0/include/xray/xray_interface.h	comp-cxx-include		llvm
-./usr/lib/clang/13.0.0/include/xray/xray_log_interface.h	comp-cxx-include		llvm
-./usr/lib/clang/13.0.0/include/xray/xray_records.h	comp-cxx-include		llvm
-./usr/lib/clang/13.0.0/share/asan_blacklist.txt	comp-cxx-include		llvm
-./usr/lib/clang/13.0.0/share/msan_blacklist.txt	comp-cxx-include		llvm
 ./usr/lib/crt0.o				comp-c-lib		compatfile
 ./usr/lib/gcrt0.o				comp-c-lib		compatfile
 ./usr/lib/i18n/libBIG5.a			comp-i18n-lib		compatfile
@@ -4100,11 +4100,11 @@
 ./usr/lib/librumpkern_z.a			comp-c-lib		rump
 ./usr/lib/librumpkern_z_p.a			comp-c-proflib		rump,profile
 ./usr/lib/librumpnet.a				comp-c-lib		compatfile,rump
-./usr/lib/librumpnet_altq.a			comp-c-lib		rump
-./usr/lib/librumpnet_altq_p.a			comp-c-proflib		rump,profile
 ./usr/lib/librumpnet_agr.a			comp-c-lib		rump
 ./usr/lib/librumpnet_agr_p.a			comp-c-proflib		rump,profile
 ./usr/lib/librumpnet_altq.a			comp-c-lib		rump
+./usr/lib/librumpnet_altq.a			comp-c-lib		rump
+./usr/lib/librumpnet_altq_p.a			comp-c-proflib		rump,profile
 ./usr/lib/librumpnet_altq_p.a			comp-c-proflib		rump,profile
 ./usr/lib/librumpnet_bpfjit.a			comp-c-lib		rump,sljit
 ./usr/lib/librumpnet_bpfjit_p.a			comp-c-proflib		rump,sljit,profile
@@ -9312,11 +9312,11 @@
 ./usr/share/man/cat3/posix_memalign.0		comp-c-catman		.cat
 ./usr/share/man/cat3/posix_openpt.0		comp-c-catman		.cat
 ./usr/share/man/cat3/posix_spawn.0		comp-c-catman		.cat
+./usr/share/man/cat3/posix_spawn_file_actions_addchdir.0 comp-c-catman		.cat
 ./usr/share/man/cat3/posix_spawn_file_actions_addclose.0	comp-c-catman		.cat
 ./usr/share/man/cat3/posix_spawn_file_actions_adddup2.0 comp-c-catman		.cat
-./usr/share/man/cat3/posix_spawn_file_actions_addopen.0 comp-c-catman		.cat
 ./usr/share/man/cat3/posix_spawn_file_actions_addfchdir.0 comp-c-catman		.cat
-./usr/share/man/cat3/posix_spawn_file_actions_addchdir.0 comp-c-catman		.cat
+./usr/share/man/cat3/posix_spawn_file_actions_addopen.0 comp-c-catman		.cat
 ./usr/share/man/cat3/posix_spawn_file_actions_destroy.0 comp-c-catman		.cat
 ./usr/share/man/cat3/posix_spawn_file_actions_init.0	comp-c-catman		.cat
 ./usr/share/man/cat3/posix_spawnattr_destroy.0	comp-c-catman		.cat
@@ -10280,6 +10280,7 @@
 ./usr/share/man/cat3/simpleq_next.0		comp-obsolete		obsolete
 ./usr/share/man/cat3/simpleq_remove_head.0	comp-obsolete		obsolete
 ./usr/share/man/cat3/sin.0			comp-c-catman		.cat
+./usr/share/man/cat3/sincos.0			comp-c-catman		.cat
 ./usr/share/man/cat3/sinf.0			comp-c-catman		.cat
 ./usr/share/man/cat3/sinh.0			comp-c-catman		.cat
 ./usr/share/man/cat3/sinhf.0			comp-c-catman		.cat
@@ -11305,13 +11306,12 @@
 ./usr/share/man/cat9/VREF.0			comp-obsolete		obsolete
 ./usr/share/man/cat9/__SIMPLELOCK_LOCKED_P.0		comp-sys-catman		.cat
 ./usr/share/man/cat9/__SIMPLELOCK_UNLOCKED_P.0		comp-sys-catman		.cat
+./usr/share/man/cat9/__cpu_simple_lock.0		comp-sys-catman		.cat
 ./usr/share/man/cat9/__cpu_simple_lock_clear.0		comp-sys-catman		.cat
 ./usr/share/man/cat9/__cpu_simple_lock_init.0		comp-sys-catman		.cat
 ./usr/share/man/cat9/__cpu_simple_lock_set.0		comp-sys-catman		.cat
 ./usr/share/man/cat9/__cpu_simple_lock_try.0		comp-sys-catman		.cat
-./usr/share/man/cat9/__cpu_simple_lock.0		comp-sys-catman		.cat
 ./usr/share/man/cat9/__cpu_simple_unlock.0		comp-sys-catman		.cat
-./usr/share/man/cat9/acl.0			comp-sys-catman		.cat
 ./usr/share/man/cat9/accept_filt_add.0		comp-sys-catman		.cat
 ./usr/share/man/cat9/accept_filt_del.0		comp-sys-catman		.cat
 ./usr/share/man/cat9/accept_filt_generic_mod_event.0	comp-sys-catman		.cat
@@ -11320,6 +11320,7 @@
 ./usr/share/man/cat9/access.0			comp-obsolete		obsolete
 ./usr/share/man/cat9/accf_data.0		comp-sys-catman		.cat
 ./usr/share/man/cat9/accf_http.0		comp-sys-catman		.cat
+./usr/share/man/cat9/acl.0			comp-sys-catman		.cat
 ./usr/share/man/cat9/allocbuf.0			comp-sys-catman		.cat
 ./usr/share/man/cat9/altq.0			comp-sys-catman		.cat
 ./usr/share/man/cat9/aprint_debug.0		comp-sys-catman		.cat
@@ -11786,8 +11787,8 @@
 ./usr/share/man/cat9/fuword.0			comp-obsolete		obsolete
 ./usr/share/man/cat9/genfs.0			comp-sys-catman		.cat
 ./usr/share/man/cat9/genfs_can_access.0		comp-sys-catman		.cat
-./usr/share/man/cat9/genfs_can_access_acl_posix1e.0	comp-sys-catman		.cat
 ./usr/share/man/cat9/genfs_can_access_acl_nfs4.0	comp-sys-catman		.cat
+./usr/share/man/cat9/genfs_can_access_acl_posix1e.0	comp-sys-catman		.cat
 ./usr/share/man/cat9/genfs_rename.0		comp-sys-catman		.cat
 ./usr/share/man/cat9/getbintime.0		comp-sys-catman		.cat
 ./usr/share/man/cat9/getbinuptime.0		comp-sys-catman		.cat
@@ -12245,6 +12246,17 @@
 ./usr/share/man/cat9/pgrp_find.0		comp-sys-catman		.cat
 ./usr/share/man/cat9/pgsignal.0			comp-sys-catman		.cat
 ./usr/share/man/cat9/physio.0			comp-sys-catman		.cat
+./usr/share/man/cat9/pktq_barrier.0		comp-sys-catman		.cat
+./usr/share/man/cat9/pktq_create.0		comp-sys-catman		.cat
+./usr/share/man/cat9/pktq_dequeue.0		comp-sys-catman		.cat
+./usr/share/man/cat9/pktq_destroy.0		comp-sys-catman		.cat
+./usr/share/man/cat9/pktq_enqueue.0		comp-sys-catman		.cat
+./usr/share/man/cat9/pktq_flush.0		comp-sys-catman		.cat
+./usr/share/man/cat9/pktq_ifdetach.0		comp-sys-catman		.cat
+./usr/share/man/cat9/pktq_rps_hash.0		comp-sys-catman		.cat
+./usr/share/man/cat9/pktq_set_maxlen.0		comp-sys-catman		.cat
+./usr/share/man/cat9/pktq_sysctl_setup.0	comp-sys-catman		.cat
+./usr/share/man/cat9/pktqueue.0			comp-sys-catman		.cat
 ./usr/share/man/cat9/pmap.0			comp-sys-catman		.cat
 ./usr/share/man/cat9/pmap_activate.0		comp-sys-catman		.cat
 ./usr/share/man/cat9/pmap_clear_modify.0	comp-sys-catman		.cat
@@ -12576,6 +12588,7 @@
 ./usr/share/man/cat9/sysctl_needfunc.0		comp-sys-catman		.cat
 ./usr/share/man/cat9/sysctl_notavail.0		comp-sys-catman		.cat
 ./usr/share/man/cat9/sysctl_null.0		comp-sys-catman		.cat
+./usr/share/man/cat9/sysctl_pktq_rps_hash_handler.0 comp-sys-catman	.cat
 ./usr/share/man/cat9/sysctl_query.0		comp-sys-catman		.cat
 ./usr/share/man/cat9/sysctl_teardown.0		comp-sys-catman		.cat
 ./usr/share/man/cat9/sysctl_unlock.0		comp-sys-catman		.cat
@@ -17618,11 +17631,11 @@
 ./usr/share/man/html3/posix_memalign.html	comp-c-htmlman		html
 ./usr/share/man/html3/posix_openpt.html		comp-c-htmlman		html
 ./usr/share/man/html3/posix_spawn.html		comp-c-htmlman		html
+./usr/share/man/html3/posix_spawn_file_actions_addchdir.html	comp-c-htmlman		html
 ./usr/share/man/html3/posix_spawn_file_actions_addclose.html	comp-c-htmlman		html
 ./usr/share/man/html3/posix_spawn_file_actions_adddup2.html	comp-c-htmlman		html
-./usr/share/man/html3/posix_spawn_file_actions_addopen.html	comp-c-htmlman		html
 ./usr/share/man/html3/posix_spawn_file_actions_addfchdir.html	comp-c-htmlman		html
-./usr/share/man/html3/posix_spawn_file_actions_addchdir.html	comp-c-htmlman		html
+./usr/share/man/html3/posix_spawn_file_actions_addopen.html	comp-c-htmlman		html
 ./usr/share/man/html3/posix_spawn_file_actions_destroy.html	comp-c-htmlman		html
 ./usr/share/man/html3/posix_spawn_file_actions_init.html	comp-c-htmlman		html
 ./usr/share/man/html3/posix_spawnattr_destroy.html	comp-c-htmlman		html
@@ -18562,6 +18575,7 @@
 ./usr/share/man/html3/sigsetops.html		comp-c-htmlman		html
 ./usr/share/man/html3/sigvec.html		comp-c-htmlman		html
 ./usr/share/man/html3/sin.html			comp-c-htmlman		html
+./usr/share/man/html3/sincos.html		comp-c-htmlman		html
 ./usr/share/man/html3/sinf.html			comp-c-htmlman		html
 ./usr/share/man/html3/sinh.html			comp-c-htmlman		html
 ./usr/share/man/html3/sinhf.html		comp-c-htmlman		html
@@ -19552,13 +19566,12 @@
 ./usr/share/man/html9/VREF.html			comp-obsolete	obsolete
 ./usr/share/man/html9/__SIMPLELOCK_LOCKED_P.html		comp-sys-htmlman		html
 ./usr/share/man/html9/__SIMPLELOCK_UNLOCKED_P.html		comp-sys-htmlman		html
+./usr/share/man/html9/__cpu_simple_lock.html		comp-sys-htmlman		html
 ./usr/share/man/html9/__cpu_simple_lock_clear.html		comp-sys-htmlman		html
 ./usr/share/man/html9/__cpu_simple_lock_init.html		comp-sys-htmlman		html
 ./usr/share/man/html9/__cpu_simple_lock_set.html		comp-sys-htmlman		html
 ./usr/share/man/html9/__cpu_simple_lock_try.html		comp-sys-htmlman		html
-./usr/share/man/html9/__cpu_simple_lock.html		comp-sys-htmlman		html
 ./usr/share/man/html9/__cpu_simple_unlock.html		comp-sys-htmlman		html
-./usr/share/man/html9/acl.html			comp-sys-htmlman	html
 ./usr/share/man/html9/accept_filt_add.html	comp-sys-htmlman	html
 ./usr/share/man/html9/accept_filt_del.html	comp-sys-htmlman	html
 ./usr/share/man/html9/accept_filt_generic_mod_event.html	comp-sys-htmlman	html
@@ -19566,6 +19579,7 @@
 ./usr/share/man/html9/accept_filter.html	comp-sys-htmlman	html
 ./usr/share/man/html9/accf_data.html		comp-sys-htmlman	html
 ./usr/share/man/html9/accf_http.html		comp-sys-htmlman	html
+./usr/share/man/html9/acl.html			comp-sys-htmlman	html
 ./usr/share/man/html9/allocbuf.html		comp-sys-htmlman	html
 ./usr/share/man/html9/altq.html			comp-sys-htmlman	html
 ./usr/share/man/html9/aprint_debug.html		comp-sys-htmlman	html
@@ -20012,8 +20026,8 @@
 ./usr/share/man/html9/fuword.html		comp-obsolete		obsolete
 ./usr/share/man/html9/genfs.html		comp-sys-htmlman	html
 ./usr/share/man/html9/genfs_can_access.html	comp-sys-htmlman	html
-./usr/share/man/html9/genfs_can_access_acl_posix1e.html	comp-sys-htmlman	html
 ./usr/share/man/html9/genfs_can_access_acl_nfs4.html	comp-sys-htmlman	html
+./usr/share/man/html9/genfs_can_access_acl_posix1e.html	comp-sys-htmlman	html
 ./usr/share/man/html9/genfs_rename.html		comp-sys-htmlman	html
 ./usr/share/man/html9/getbintime.html		comp-sys-htmlman	html
 ./usr/share/man/html9/getbinuptime.html		comp-sys-htmlman	html
@@ -20463,6 +20477,17 @@
 ./usr/share/man/html9/pgrp_find.html		comp-sys-htmlman	html
 ./usr/share/man/html9/pgsignal.html		comp-sys-htmlman	html
 ./usr/share/man/html9/physio.html		comp-sys-htmlman	html
+./usr/share/man/html9/pktq_barrier.html		comp-sys-htmlman	html
+./usr/share/man/html9/pktq_create.html		comp-sys-htmlman	html
+./usr/share/man/html9/pktq_dequeue.html		comp-sys-htmlman	html
+./usr/share/man/html9/pktq_destroy.html		comp-sys-htmlman	html
+./usr/share/man/html9/pktq_enqueue.html		comp-sys-htmlman	html
+./usr/share/man/html9/pktq_flush.html		comp-sys-htmlman	html
+./usr/share/man/html9/pktq_ifdetach.html	comp-sys-htmlman	html
+./usr/share/man/html9/pktq_rps_hash.html	comp-sys-htmlman	html
+./usr/share/man/html9/pktq_set_maxlen.html	comp-sys-htmlman	html
+./usr/share/man/html9/pktq_sysctl_setup.html	comp-sys-htmlman	html
+./usr/share/man/html9/pktqueue.html		comp-sys-htmlman	html
 ./usr/share/man/html9/pmap.html			comp-sys-htmlman	html
 ./usr/share/man/html9/pmap_activate.html	comp-sys-htmlman	html
 ./usr/share/man/html9/pmap_clear_modify.html	comp-sys-htmlman	html
@@ -20775,6 +20800,7 @@
 ./usr/share/man/html9/sysctl_needfunc.html	comp-sys-htmlman	html
 ./usr/share/man/html9/sysctl_notavail.html	comp-sys-htmlman	html
 ./usr/share/man/html9/sysctl_null.html		comp-sys-htmlman	html
+./usr/share/man/html9/sysctl_pktq_rps_hash_handler.html comp-sys-htmlman html
 ./usr/share/man/html9/sysctl_query.html		comp-sys-htmlman	html
 ./usr/share/man/html9/sysctl_teardown.html	comp-sys-htmlman	html
 ./usr/share/man/html9/sysctl_unlock.html	comp-sys-htmlman	html
@@ -25914,11 +25940,11 @@
 ./usr/share/man/man3/posix_memalign.3		comp-c-man		.man
 ./usr/share/man/man3/posix_openpt.3		comp-c-man		.man
 ./usr/share/man/man3/posix_spawn.3		comp-c-man		.man
+./usr/share/man/man3/posix_spawn_file_actions_addchdir.3 comp-c-man		.man
 ./usr/share/man/man3/posix_spawn_file_actions_addclose.3	comp-c-man		.man
 ./usr/share/man/man3/posix_spawn_file_actions_adddup2.3 comp-c-man		.man
-./usr/share/man/man3/posix_spawn_file_actions_addopen.3 comp-c-man		.man
 ./usr/share/man/man3/posix_spawn_file_actions_addfchdir.3 comp-c-man		.man
-./usr/share/man/man3/posix_spawn_file_actions_addchdir.3 comp-c-man		.man
+./usr/share/man/man3/posix_spawn_file_actions_addopen.3 comp-c-man		.man
 ./usr/share/man/man3/posix_spawn_file_actions_destroy.3 comp-c-man		.man
 ./usr/share/man/man3/posix_spawn_file_actions_init.3	comp-c-man		.man
 ./usr/share/man/man3/posix_spawnattr_destroy.3	comp-c-man		.man
@@ -26878,6 +26904,7 @@
 ./usr/share/man/man3/simpleq_next.3		comp-obsolete		obsolete
 ./usr/share/man/man3/simpleq_remove_head.3	comp-obsolete		obsolete
 ./usr/share/man/man3/sin.3			comp-c-man		.man
+./usr/share/man/man3/sincos.3			comp-c-man		.man
 ./usr/share/man/man3/sinf.3			comp-c-man		.man
 ./usr/share/man/man3/sinh.3			comp-c-man		.man
 ./usr/share/man/man3/sinhf.3			comp-c-man		.man
@@ -27902,13 +27929,12 @@
 ./usr/share/man/man9/VREF.9			comp-obsolete		obsolete
 ./usr/share/man/man9/__SIMPLELOCK_LOCKED_P.9		comp-sys-man		.man
 ./usr/share/man/man9/__SIMPLELOCK_UNLOCKED_P.9		comp-sys-man		.man
+./usr/share/man/man9/__cpu_simple_lock.9		comp-sys-man		.man
 ./usr/share/man/man9/__cpu_simple_lock_clear.9		comp-sys-man		.man
 ./usr/share/man/man9/__cpu_simple_lock_init.9		comp-sys-man		.man
 ./usr/share/man/man9/__cpu_simple_lock_set.9		comp-sys-man		.man
 ./usr/share/man/man9/__cpu_simple_lock_try.9		comp-sys-man		.man
-./usr/share/man/man9/__cpu_simple_lock.9		comp-sys-man		.man
 ./usr/share/man/man9/__cpu_simple_unlock.9		comp-sys-man		.man
-./usr/share/man/man9/acl.9			comp-sys-man		.man
 ./usr/share/man/man9/accept_filt_add.9		comp-sys-man		.man
 ./usr/share/man/man9/accept_filt_del.9		comp-sys-man		.man
 ./usr/share/man/man9/accept_filt_generic_mod_event.9	comp-sys-man		.man
@@ -27917,6 +27943,7 @@
 ./usr/share/man/man9/access.9			comp-obsolete		obsolete
 ./usr/share/man/man9/accf_data.9		comp-sys-man		.man
 ./usr/share/man/man9/accf_http.9		comp-sys-man		.man
+./usr/share/man/man9/acl.9			comp-sys-man		.man
 ./usr/share/man/man9/allocbuf.9			comp-sys-man		.man
 ./usr/share/man/man9/altq.9			comp-sys-man		.man
 ./usr/share/man/man9/aprint_debug.9		comp-sys-man		.man
@@ -28383,8 +28410,8 @@
 ./usr/share/man/man9/fuword.9			comp-obsolete		obsolete
 ./usr/share/man/man9/genfs.9			comp-sys-man		.man
 ./usr/share/man/man9/genfs_can_access.9		comp-sys-man		.man
-./usr/share/man/man9/genfs_can_access_acl_posix1e.9	comp-sys-man		.man
 ./usr/share/man/man9/genfs_can_access_acl_nfs4.9	comp-sys-man		.man
+./usr/share/man/man9/genfs_can_access_acl_posix1e.9	comp-sys-man		.man
 ./usr/share/man/man9/genfs_rename.9		comp-sys-man		.man
 ./usr/share/man/man9/getbintime.9		comp-sys-man		.man
 ./usr/share/man/man9/getbinuptime.9		comp-sys-man		.man
@@ -28842,6 +28869,17 @@
 ./usr/share/man/man9/pgrp_find.9		comp-sys-man		.man
 ./usr/share/man/man9/pgsignal.9			comp-sys-man		.man
 ./usr/share/man/man9/physio.9			comp-sys-man		.man
+./usr/share/man/man9/pktq_barrier.9		comp-sys-man		.man
+./usr/share/man/man9/pktq_create.9		comp-sys-man		.man
+./usr/share/man/man9/pktq_dequeue.9		comp-sys-man		.man
+./usr/share/man/man9/pktq_destroy.9		comp-sys-man		.man
+./usr/share/man/man9/pktq_enqueue.9		comp-sys-man		.man
+./usr/share/man/man9/pktq_flush.9		comp-sys-man		.man
+./usr/share/man/man9/pktq_ifdetach.9		comp-sys-man		.man
+./usr/share/man/man9/pktq_rps_hash.9		comp-sys-man		.man
+./usr/share/man/man9/pktq_set_maxlen.9		comp-sys-man		.man
+./usr/share/man/man9/pktq_sysctl_setup.9	comp-sys-man		.man
+./usr/share/man/man9/pktqueue.9			comp-sys-man		.man
 ./usr/share/man/man9/pmap.9			comp-sys-man		.man
 ./usr/share/man/man9/pmap_activate.9		comp-sys-man		.man
 ./usr/share/man/man9/pmap_clear_modify.9	comp-sys-man		.man
@@ -29173,6 +29211,7 @@
 ./usr/share/man/man9/sysctl_needfunc.9		comp-sys-man		.man
 ./usr/share/man/man9/sysctl_notavail.9		comp-sys-man		.man
 ./usr/share/man/man9/sysctl_null.9		comp-sys-man		.man
+./usr/share/man/man9/sysctl_pktq_rps_hash_handler.9 comp-sys-man	.man
 ./usr/share/man/man9/sysctl_query.9		comp-sys-man		.man
 ./usr/share/man/man9/sysctl_teardown.9		comp-sys-man		.man
 ./usr/share/man/man9/sysctl_unlock.9		comp-sys-man		.man

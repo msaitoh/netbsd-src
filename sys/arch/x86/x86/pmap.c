@@ -1,4 +1,4 @@
-/*	$NetBSD: pmap.c,v 1.415 2022/05/13 09:39:40 riastradh Exp $	*/
+/*	$NetBSD: pmap.c,v 1.421 2022/08/31 12:51:56 bouyer Exp $	*/
 
 /*
  * Copyright (c) 2008, 2010, 2016, 2017, 2019, 2020 The NetBSD Foundation, Inc.
@@ -130,7 +130,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: pmap.c,v 1.415 2022/05/13 09:39:40 riastradh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: pmap.c,v 1.421 2022/08/31 12:51:56 bouyer Exp $");
 
 #include "opt_user_ldt.h"
 #include "opt_lockdebug.h"
@@ -166,7 +166,10 @@ __KERNEL_RCSID(0, "$NetBSD: pmap.c,v 1.415 2022/05/13 09:39:40 riastradh Exp $")
 #include <machine/isa_machdep.h>
 #include <machine/cpuvar.h>
 #include <machine/cputypes.h>
+#include <machine/pmap_private.h>
 
+#include <x86/bootspace.h>
+#include <x86/pat.h>
 #include <x86/pmap_pv.h>
 
 #include <x86/i82489reg.h>
@@ -278,6 +281,23 @@ __KERNEL_RCSID(0, "$NetBSD: pmap.c,v 1.415 2022/05/13 09:39:40 riastradh Exp $")
 static const struct uvm_pagerops pmap_pager = {
 	/* nothing */
 };
+
+/*
+ * pl_i(va, X) == plX_i(va) <= pl_i_roundup(va, X)
+ */
+#define pl_i(va, lvl) \
+        (((VA_SIGN_POS(va)) & ptp_frames[(lvl)-1]) >> ptp_shifts[(lvl)-1])
+
+#define	pl_i_roundup(va, lvl)	pl_i((va)+ ~ptp_frames[(lvl)-1], (lvl))
+
+/*
+ * PTP macros:
+ *   a PTP's index is the PD index of the PDE that points to it
+ *   a PTP's offset is the byte-offset in the PTE space that this PTP is at
+ *   a PTP's VA is the first VA mapped by that PTP
+ */
+
+#define ptp_va2o(va, lvl)	(pl_i(va, (lvl)+1) * PAGE_SIZE)
 
 const vaddr_t ptp_masks[] = PTP_MASK_INITIALIZER;
 const vaddr_t ptp_frames[] = PTP_FRAME_INITIALIZER;
@@ -507,6 +527,20 @@ static void pmap_alloc_level(struct pmap *, vaddr_t, long *);
 
 static void pmap_load1(struct lwp *, struct pmap *, struct pmap *);
 static void pmap_reactivate(struct pmap *);
+
+long
+pmap_resident_count(struct pmap *pmap)
+{
+
+	return pmap->pm_stats.resident_count;
+}
+
+long
+pmap_wired_count(struct pmap *pmap)
+{
+
+	return pmap->pm_stats.wired_count;
+}
 
 /*
  * p m a p   h e l p e r   f u n c t i o n s
@@ -5195,6 +5229,9 @@ pmap_enter_gnt(struct pmap *pmap, vaddr_t va, vaddr_t sva, int nentries,
 {
 	struct pmap_data_gnt *pgnt;
 	pt_entry_t *ptes, opte;
+#ifndef XENPV
+	pt_entry_t npte;
+#endif
 	pt_entry_t *ptep;
 	pd_entry_t * const *pdes;
 	struct vm_page *ptp;
@@ -5271,8 +5308,13 @@ pmap_enter_gnt(struct pmap *pmap, vaddr_t va, vaddr_t sva, int nentries,
 	idx = (va - pgnt->pd_gnt_sva) / PAGE_SIZE;
 	op = &pgnt->pd_gnt_ops[idx];
 
-#ifdef XENPV /* XXX */
+#ifdef XENPV
+	KASSERT(op->flags & GNTMAP_contains_pte);
 	op->host_addr = xpmap_ptetomach(ptep);
+#else
+	KASSERT((op->flags & GNTMAP_contains_pte) == 0);
+	KASSERT(op->flags != 0);
+	KASSERT(op->host_addr != 0);
 #endif
 	op->dev_bus_addr = 0;
 	op->status = GNTST_general_error;
@@ -5294,10 +5336,18 @@ pmap_enter_gnt(struct pmap *pmap, vaddr_t va, vaddr_t sva, int nentries,
 	if (__predict_false(op->status != GNTST_okay)) {
 		printf("%s: GNTTABOP_map_grant_ref status: %d\n",
 		    __func__, op->status);
-		if (have_oldpa) {
+		if (have_oldpa) { /* XXX did the pte really change if XENPV  ?*/
 			ptp->wire_count--;
 		}
 	} else {
+#ifndef XENPV
+		npte = op->host_addr | pmap_pg_nx | PTE_U | PTE_P;
+		if ((op->flags & GNTMAP_readonly) == 0)
+			npte |= PTE_W;
+		do {
+			opte = *ptep;
+		} while (pmap_pte_cas(ptep, opte, npte) != opte);
+#endif
 		pgnt->pd_gnt_refs++;
 		if (!have_oldpa) {
 			ptp->wire_count++;
@@ -5383,7 +5433,6 @@ pmap_remove_gnt(struct pmap *pmap, vaddr_t sva, vaddr_t eva)
 		idx = (va - pgnt->pd_gnt_sva) / PAGE_SIZE;
 		op = &pgnt->pd_gnt_ops[idx];
 		KASSERT(lvl == 1);
-		KASSERT(op->status == GNTST_okay);
 
 		/* Get PTP if non-kernel mapping. */
 		ptp = pmap_find_ptp(pmap, va, 1);
@@ -5392,11 +5441,14 @@ pmap_remove_gnt(struct pmap *pmap, vaddr_t sva, vaddr_t eva)
 
 		if (op->status == GNTST_okay)  {
 			KASSERT(pmap_valid_entry(ptes[pl1_i(va)]));
+#ifdef XENPV 
+			unmap_op.host_addr = xpmap_ptetomach(&ptes[pl1_i(va)]);
+#else
+			unmap_op.host_addr = op->host_addr;
+			pmap_pte_testset(&ptes[pl1_i(va)], 0);
+#endif
 			unmap_op.handle = op->handle;
 			unmap_op.dev_bus_addr = 0;
-#ifdef XENPV /* XXX */
-			unmap_op.host_addr = xpmap_ptetomach(&ptes[pl1_i(va)]);
-#endif
 			ret = HYPERVISOR_grant_table_op(
 			    GNTTABOP_unmap_grant_ref, &unmap_op, 1);
 			if (ret) {
@@ -5406,9 +5458,9 @@ pmap_remove_gnt(struct pmap *pmap, vaddr_t sva, vaddr_t eva)
 
 			ptp->wire_count--;
 			pgnt->pd_gnt_refs--;
-			if (pgnt->pd_gnt_refs == 0) {
-				pmap_free_gnt(pmap, pgnt);
-			}
+		}
+		if (pgnt->pd_gnt_refs == 0) {
+			pmap_free_gnt(pmap, pgnt);
 		}
 		/*
 		 * if mapping removed and the PTP is no longer

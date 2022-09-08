@@ -1,4 +1,4 @@
-# $NetBSD: Makefile,v 1.319 2022/07/26 19:32:25 sjg Exp $
+# $NetBSD: Makefile,v 1.324 2022/09/03 15:03:32 sjg Exp $
 #
 # Unit tests for make(1)
 #
@@ -168,6 +168,7 @@ TESTS+=		directive-export-impl
 TESTS+=		directive-export-gmake
 TESTS+=		directive-export-literal
 TESTS+=		directive-for
+TESTS+=		directive-for-break
 TESTS+=		directive-for-empty
 TESTS+=		directive-for-errors
 TESTS+=		directive-for-escape
@@ -533,6 +534,7 @@ SED_CMDS.var-op-shell+=		${STD_SED_CMDS.shell}
 SED_CMDS.var-op-shell+=		-e '/command/s,No such.*,not found,'
 SED_CMDS.vardebug+=		-e 's,${.SHELL},</path/to/shell>,'
 SED_CMDS.varmod-subst-regex+=	${STD_SED_CMDS.regex}
+SED_CMDS.varparse-errors+=	${STD_SED_CMDS.timestamp}
 SED_CMDS.varname-dot-parsedir=	-e '/in some cases/ s,^make: "[^"]*,make: "<normalized>,'
 SED_CMDS.varname-dot-parsefile=	-e '/in some cases/ s,^make: "[^"]*,make: "<normalized>,'
 SED_CMDS.varname-dot-shell=	-e 's, = /[^ ]*, = (details omitted),g'
@@ -619,6 +621,11 @@ STD_SED_CMDS.shell+=		-e 's,^${.SHELL:T}: ,,'
 # implementations.
 STD_SED_CMDS.regex= \
 	-e 's,\(Regex compilation error:\).*,\1 (details omitted),'
+
+# Normalize timestamps from ':gmtime' or ':localtime' to '<timestamp>'.
+# See STD_SED_CMDS.dg2 for timestamps from the debug log.
+STD_SED_CMDS.timestamp= \
+	-e 's,[A-Z][a-z][a-z] [A-Z][a-z][a-z] [ 0-9][0-9] [0-9][0-9]:[0-9][0-9]:[0-9][0-9] [12][0-9][0-9][0-9],<timestamp>,'
 
 # End of the configuration helpers section.
 
@@ -714,6 +721,7 @@ _SED_CMDS+=	-e 's,${.OBJDIR},<curdir>,g'
 _SED_CMDS+=	-e 's,${.CURDIR},<curdir>,g'
 _SED_CMDS+=	-e 's,<curdir>/,,g'
 _SED_CMDS+=	-e 's,${UNIT_TESTS:S,.,\\.,g}/,,g'
+_SED_CMDS+=	-e '/MAKE_VERSION/d'
 
 .rawout.out:
 	@${TOOL_SED} ${_SED_CMDS} ${SED_CMDS.${.PREFIX:T}} \
@@ -753,7 +761,8 @@ sync-mi:
 	testsdir="usr.bin/make/unit-tests";				\
 	fmt="./usr/tests/$$testsdir/%s\ttests-usr.bin-tests\tcompattestfile,atf\\n"; \
 	cat "$$mi" > "$$mi.tmp";					\
-	(cd "$$testsdir" && ls *.exp *.mk) | xargs printf "$$fmt" >> "$$mi.tmp"; \
+	(cd "$$testsdir" && egrep '\.(exp|mk)/' CVS/Entries | cut -d/ -f2) | \
+	xargs printf "$$fmt" >> "$$mi.tmp"; \
 	distrib/sets/fmt-list "$$mi.tmp";				\
 	mv "$$mi.tmp" "$$mi";						\
 	cvs diff "$$mi" || true

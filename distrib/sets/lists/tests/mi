@@ -1,4 +1,4 @@
-# $NetBSD: mi,v 1.1217 2022/07/21 09:52:48 kre Exp $
+# $NetBSD: mi,v 1.1222 2022/09/03 03:33:37 rillig Exp $
 #
 # Note: don't delete entries from here - mark them as "obsolete" instead.
 #
@@ -1417,6 +1417,7 @@
 ./usr/tests/dev/cgd					tests-fs-tests		compattestfile,atf
 ./usr/tests/dev/cgd/Atffile				tests-fs-tests		compattestfile,atf
 ./usr/tests/dev/cgd/Kyuafile				tests-fs-tests		compattestfile,atf,kyua
+./usr/tests/dev/cgd/h_countkey				tests-fs-tests		compattestfile,atf
 ./usr/tests/dev/cgd/h_img2cgd				tests-obsolete		obsolete
 ./usr/tests/dev/cgd/h_img2cgd/cgd.conf			tests-obsolete		obsolete
 ./usr/tests/dev/cgd/h_img2cgd/h_img2cgd			tests-obsolete		obsolete
@@ -1426,6 +1427,7 @@
 ./usr/tests/dev/cgd/t_cgd_adiantum			tests-fs-tests		atf,compattestfile,rump
 ./usr/tests/dev/cgd/t_cgd_aes				tests-fs-tests		atf,compattestfile,rump
 ./usr/tests/dev/cgd/t_cgd_blowfish			tests-fs-tests		atf,compattestfile,rump
+./usr/tests/dev/cgd/t_cgdconfig				tests-fs-tests		compattestfile,atf
 ./usr/tests/dev/clock_subr				tests-fs-tests		compattestfile,atf
 ./usr/tests/dev/clock_subr/Atffile			tests-fs-tests		compattestfile,atf
 ./usr/tests/dev/clock_subr/Kyuafile			tests-fs-tests		compattestfile,atf,kyua
@@ -3839,6 +3841,7 @@
 ./usr/tests/lib/libm/t_round				tests-lib-tests		compattestfile,atf
 ./usr/tests/lib/libm/t_scalbn				tests-lib-tests		compattestfile,atf
 ./usr/tests/lib/libm/t_sin				tests-lib-tests		compattestfile,atf
+./usr/tests/lib/libm/t_sincos				tests-lib-tests		compattestfile,atf
 ./usr/tests/lib/libm/t_sinh				tests-lib-tests		compattestfile,atf
 ./usr/tests/lib/libm/t_sqrt				tests-lib-tests		compattestfile,atf
 ./usr/tests/lib/libm/t_tan				tests-lib-tests		compattestfile,atf
@@ -5631,6 +5634,8 @@
 ./usr/tests/usr.bin/make/unit-tests/directive-export-literal.mk			tests-usr.bin-tests	compattestfile,atf
 ./usr/tests/usr.bin/make/unit-tests/directive-export.exp			tests-usr.bin-tests	compattestfile,atf
 ./usr/tests/usr.bin/make/unit-tests/directive-export.mk				tests-usr.bin-tests	compattestfile,atf
+./usr/tests/usr.bin/make/unit-tests/directive-for-break.exp			tests-usr.bin-tests	compattestfile,atf
+./usr/tests/usr.bin/make/unit-tests/directive-for-break.mk			tests-usr.bin-tests	compattestfile,atf
 ./usr/tests/usr.bin/make/unit-tests/directive-for-empty.exp			tests-usr.bin-tests	compattestfile,atf
 ./usr/tests/usr.bin/make/unit-tests/directive-for-empty.mk			tests-usr.bin-tests	compattestfile,atf
 ./usr/tests/usr.bin/make/unit-tests/directive-for-errors.exp			tests-usr.bin-tests	compattestfile,atf

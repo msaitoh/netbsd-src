@@ -1,4 +1,4 @@
-/* $NetBSD: params.c,v 1.32 2021/11/22 14:34:35 nia Exp $ */
+/* $NetBSD: params.c,v 1.34 2022/08/12 10:49:35 riastradh Exp $ */
 
 /*-
  * Copyright (c) 2002, 2003 The NetBSD Foundation, Inc.
@@ -31,11 +31,13 @@
 
 #include <sys/cdefs.h>
 #ifndef lint
-__RCSID("$NetBSD: params.c,v 1.32 2021/11/22 14:34:35 nia Exp $");
+__RCSID("$NetBSD: params.c,v 1.34 2022/08/12 10:49:35 riastradh Exp $");
 #endif
 
 #include <sys/types.h>
 #include <sys/param.h>
+
+#include <sys/sha2.h>
 #include <sys/stat.h>
 
 #include <err.h>
@@ -44,6 +46,7 @@ __RCSID("$NetBSD: params.c,v 1.32 2021/11/22 14:34:35 nia Exp $");
 #include <stdlib.h>
 #include <string.h>
 #include <util.h>
+#include <uuid.h>
 
 #ifdef HAVE_ARGON2
 #include <argon2.h>
@@ -325,6 +328,10 @@ keygen_new(void)
 	kg->kg_salt = NULL;
 	kg->kg_key = NULL;
 	kg->kg_cmd = NULL;
+	kg->kg_sharedid = NULL;
+	kg->kg_sharedalg = SHARED_ALG_UNKNOWN;
+	kg->kg_sharedlen = (size_t)-1;
+	kg->kg_sharedinfo = NULL;
 	kg->next = NULL;
 	return kg;
 }
@@ -338,6 +345,8 @@ keygen_free(struct keygen *kg)
 	bits_free(kg->kg_salt);
 	bits_free(kg->kg_key);
 	string_free(kg->kg_cmd);
+	string_free(kg->kg_sharedid);
+	bits_free(kg->kg_sharedinfo);
 	keygen_free(kg->next);
 	free(kg);
 }
@@ -432,6 +441,8 @@ keygen_verify(const struct keygen *kg)
 			warnx("keygen [u]randomkey does not need `salt'");
 		if (kg->kg_cmd)
 			warnx("keygen [u]randomkey does not need `cmd'");
+		if (kg->kg_sharedid)
+			warnx("keygen [u]randomkey makes no sense shared");
 		break;
 	case KEYGEN_SHELL_CMD:
 		if (kg->kg_iterations != (size_t)-1)
@@ -514,6 +525,122 @@ keygen_filldefaults(struct keygen *kg, size_t keylen)
 	return keygen_filldefaults(kg->next, keylen);
 }
 
+/*
+ * Strip the storedkey entries in preparation for inserting a shared
+ * clause with a newly generated info string to derive this key from
+ * KDF.  The result is that the key generated here is independent of
+ * whatever storedkeys were involved in the old one, so there is no
+ * need to keep them around,
+ */
+void
+keygen_stripstored(struct keygen **kgp)
+{
+	struct keygen *kg, *to_free = NULL;
+
+	while ((kg = *kgp) != NULL) {
+		if (kg->kg_method == KEYGEN_STOREDKEY) {
+			*kgp = kg->next;
+			kg->next = to_free;
+			to_free = kg;
+		} else {
+			kgp = &kg->next;
+		}
+	}
+	keygen_free(to_free);
+}
+
+int
+keygen_makeshared(struct keygen *kg0)
+{
+	struct keygen *kg;
+
+	for (kg = kg0; kg != NULL; kg = kg->next) {
+		switch (kg->kg_method) {
+		case KEYGEN_RANDOMKEY:
+		case KEYGEN_URANDOMKEY:
+			warnx("(u)randomkey keygen cannot be shared");
+			return -1;
+		case KEYGEN_SHELL_CMD:
+#ifdef HAVE_ARGON2
+		case KEYGEN_ARGON2ID:
+#endif
+		case KEYGEN_PKCS5_PBKDF2_OLD:
+		case KEYGEN_PKCS5_PBKDF2_SHA1:
+			break;
+		case KEYGEN_STOREDKEY:
+			warnx("storedkey does not make sense as shared");
+			return -1;
+		default:
+			return -1;
+		}
+		if (kg->kg_sharedid != NULL) {
+			warnx("keygen already shared");
+			return -1;
+		}
+	}
+	for (kg = kg0; kg != NULL; kg = kg->next) {
+		struct uuid id;
+		char *idstr;
+		uint32_t status;
+
+		if (uuidgen(&id, 1) == -1) {
+			warn("uuidgen");
+			return -1;
+		}
+		uuid_to_string(&id, &idstr, &status);
+		if (status != uuid_s_ok) {
+			warnx("uuid_to_string: %"PRIu32, status);
+			return -1;
+		}
+
+		kg->kg_sharedid = string_fromcharstar(idstr);
+		kg->kg_sharedalg = SHARED_ALG_HKDF_HMAC_SHA256;
+		kg->kg_sharedlen = 8*SHA256_DIGEST_LENGTH;
+		kg->kg_sharedinfo = bits_getrandombits(DEFAULT_SALTLEN, 0);
+
+		free(idstr);
+	}
+	return 0;
+}
+
+int
+keygen_tweakshared(struct keygen *kg0)
+{
+	struct keygen *kg;
+
+	for (kg = kg0; kg != NULL; kg = kg->next) {
+		switch (kg->kg_method) {
+		case KEYGEN_RANDOMKEY:
+		case KEYGEN_URANDOMKEY:
+			warnx("(u)randomkey keygen cannot be shared");
+			return -1;
+		case KEYGEN_SHELL_CMD:
+#ifdef HAVE_ARGON2
+		case KEYGEN_ARGON2ID:
+#endif
+		case KEYGEN_PKCS5_PBKDF2_OLD:
+		case KEYGEN_PKCS5_PBKDF2_SHA1:
+			break;
+		case KEYGEN_STOREDKEY:
+			warnx("storedkey does not make sense as shared");
+			return -1;
+		default:
+			return -1;
+		}
+		if (kg->kg_sharedid == NULL) {
+			warnx("keygen not shared");
+			return -1;
+		}
+	}
+	for (kg = kg0; kg != NULL; kg = kg->next) {
+		if (kg->kg_method == KEYGEN_STOREDKEY)
+			continue;
+		bits_free(kg->kg_sharedinfo);
+		kg->kg_sharedinfo = bits_getrandombits(DEFAULT_SALTLEN, 0);
+	}
+	return 0;
+}
+
 struct keygen *
 keygen_combine(struct keygen *kg1, struct keygen *kg2)
 {
@@ -549,6 +676,15 @@ keygen_combine(struct keygen *kg1, struct keygen *kg2)
 
 	if (kg2->kg_cmd)
 		string_assign(&kg1->kg_cmd, kg2->kg_cmd);
+
+	if (kg2->kg_sharedid)
+		string_assign(&kg1->kg_sharedid, kg2->kg_sharedid);
+	if (kg2->kg_sharedalg != SHARED_ALG_UNKNOWN) {
+		kg1->kg_sharedalg = kg2->kg_sharedalg;
+		kg1->kg_sharedlen = kg2->kg_sharedlen;
+	}
+	if (kg2->kg_sharedinfo)
+		bits_assign(&kg1->kg_sharedinfo, kg2->kg_sharedinfo);
 
 	return kg1;
 }
@@ -665,6 +801,27 @@ keygen_cmd(string_t *in)
 	struct keygen *kg = keygen_new();
 
 	kg->kg_cmd = in;
+	return kg;
+}
+
+struct keygen *
+keygen_shared(string_t *id, string_t *alg, bits_t *info)
+{
+	struct keygen *kg = keygen_new();
+	const char *algname = string_tocharstar(alg);
+
+	if (!strcmp("hkdf-hmac-sha256", algname)) {
+		kg->kg_sharedalg = SHARED_ALG_HKDF_HMAC_SHA256;
+		kg->kg_sharedlen = 8*SHA256_DIGEST_LENGTH;
+	}
+
+	if (kg->kg_sharedalg == SHARED_ALG_UNKNOWN) {
+		warnx("unrecognized shared key derivation algorithm \"%s\"",
+		    algname);
+	}
+
+	kg->kg_sharedid = id;
+	kg->kg_sharedinfo = info;
 	return kg;
 }
 
@@ -806,6 +963,26 @@ print_kvpair_b64(FILE *f, int curpos, int ts, const char *key, bits_t *val)
 	string_free(str);
 }
 
+static void
+print_shared(FILE *f, int ts, struct keygen *kg)
+{
+	static const char *const sharedalgs[] = {
+		[SHARED_ALG_UNKNOWN] = "unknown",
+		[SHARED_ALG_HKDF_HMAC_SHA256] = "hkdf-hmac-sha256",
+	};
+
+	if (kg->kg_sharedid == NULL ||
+	    kg->kg_sharedalg < 0 ||
+	    (size_t)kg->kg_sharedalg >= __arraycount(sharedalgs))
+		return;
+	fprintf(f, "%*sshared \"%s\" \\\n", ts, "",
+	    string_tocharstar(kg->kg_sharedid));
+	ts += 4;
+	fprintf(f, "%*salgorithm %s \\\n", ts, "",
+	    sharedalgs[kg->kg_sharedalg]);
+	print_kvpair_b64(f, 0, ts, "subkey", kg->kg_sharedinfo);
+}
+
 int
 keygen_fput(struct keygen *kg, int ts, FILE *f)
 {
@@ -835,6 +1012,7 @@ keygen_fput(struct keygen *kg, int ts, FILE *f)
 		print_kvpair_int(f, ts, "parallelism", kg->kg_parallelism);
 		print_kvpair_int(f, ts, "version", kg->kg_version);
 		print_kvpair_b64(f, 0, ts, "salt", kg->kg_salt);
+		print_shared(f, ts, kg);
 		(void)fprintf(f, "};\n");
 		break;
 #endif
@@ -842,12 +1020,14 @@ keygen_fput(struct keygen *kg, int ts, FILE *f)
 		(void)fprintf(f, "pkcs5_pbkdf2 {\n");
 		print_kvpair_int(f, ts, "iterations", kg->kg_iterations);
 		print_kvpair_b64(f, 0, ts, "salt", kg->kg_salt);
+		print_shared(f, ts, kg);
 		(void)fprintf(f, "};\n");
 		break;
 	case KEYGEN_PKCS5_PBKDF2_SHA1:
 		(void)fprintf(f, "pkcs5_pbkdf2/sha1 {\n");
 		print_kvpair_int(f, ts, "iterations", kg->kg_iterations);
 		print_kvpair_b64(f, 0, ts, "salt", kg->kg_salt);
+		print_shared(f, ts, kg);
 		(void)fprintf(f, "};\n");
 		break;
 	default:

@@ -1,4 +1,4 @@
-/*	$NetBSD: parse.c,v 1.3 2022/05/22 11:27:37 andvar Exp $	*/
+/*	$NetBSD: parse.c,v 1.5 2022/08/10 08:37:53 christos Exp $	*/
 
 /*-
  * Copyright (c) 1998, 2003 The NetBSD Foundation, Inc.
@@ -64,7 +64,7 @@
 #if 0
 static char sccsid[] = "@(#)inetd.c	8.4 (Berkeley) 4/13/94";
 #else
-__RCSID("$NetBSD: parse.c,v 1.3 2022/05/22 11:27:37 andvar Exp $");
+__RCSID("$NetBSD: parse.c,v 1.5 2022/08/10 08:37:53 christos Exp $");
 #endif
 #endif /* not lint */
 
@@ -321,7 +321,7 @@ config(void)
 				if (sep->se_fd != -1)
 					register_rpc(sep);
 			} else
-#endif
+#endif /* RPC */
 			{
 				if (sep->se_fd >= 0)
 					close_sep(sep);

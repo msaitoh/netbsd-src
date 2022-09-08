@@ -1,4 +1,4 @@
-# $NetBSD: mi,v 1.1752 2022/07/10 19:49:24 nia Exp $
+# $NetBSD: mi,v 1.1754 2022/08/27 21:53:38 dholland Exp $
 #
 # Note: don't delete entries from here - mark them as "obsolete" instead.
 #
@@ -594,6 +594,7 @@
 ./usr/share/man/cat1/tpm_version.0		man-tpm-catman		tpm,.cat
 ./usr/share/man/cat1/tput.0			man-util-catman		.cat
 ./usr/share/man/cat1/tr.0			man-util-catman		.cat
+./usr/share/man/cat1/tradcpp.0			man-util-catman		.cat
 ./usr/share/man/cat1/true.0			man-util-catman		.cat
 ./usr/share/man/cat1/tset.0			man-util-catman		.cat
 ./usr/share/man/cat1/tty.0			man-util-catman		.cat
@@ -2047,6 +2048,7 @@
 ./usr/share/man/cat4/video.0			man-sys-catman		.cat
 ./usr/share/man/cat4/vinum.0			man-obsolete		obsolete
 ./usr/share/man/cat4/vio9p.0			man-sys-catman		.cat
+./usr/share/man/cat4/viocon.0			man-sys-catman		.cat
 ./usr/share/man/cat4/vioif.0			man-sys-catman		.cat
 ./usr/share/man/cat4/viomb.0			man-sys-catman		.cat
 ./usr/share/man/cat4/viornd.0			man-sys-catman		.cat
@@ -3919,6 +3921,7 @@
 ./usr/share/man/html1/tpm_version.html		man-tpm-htmlman		tpm,html
 ./usr/share/man/html1/tput.html			man-util-htmlman	html
 ./usr/share/man/html1/tr.html			man-util-htmlman	html
+./usr/share/man/html1/tradcpp.html		man-util-htmlman	html
 ./usr/share/man/html1/true.html			man-util-htmlman	html
 ./usr/share/man/html1/tset.html			man-util-htmlman	html
 ./usr/share/man/html1/tty.html			man-util-htmlman	html
@@ -5233,6 +5236,7 @@
 ./usr/share/man/html4/viaide.html		man-sys-htmlman		html
 ./usr/share/man/html4/video.html		man-sys-htmlman		html
 ./usr/share/man/html4/vio9p.html		man-sys-htmlman		html
+./usr/share/man/html4/viocon.html		man-sys-htmlman		html
 ./usr/share/man/html4/vioif.html		man-sys-htmlman		html
 ./usr/share/man/html4/viomb.html		man-sys-htmlman		html
 ./usr/share/man/html4/viornd.html		man-sys-htmlman		html
@@ -6898,6 +6902,7 @@
 ./usr/share/man/man1/tpm_version.1		man-tpm-man		tpm,.man
 ./usr/share/man/man1/tput.1			man-util-man		.man
 ./usr/share/man/man1/tr.1			man-util-man		.man
+./usr/share/man/man1/tradcpp.1			man-util-man		.man
 ./usr/share/man/man1/true.1			man-util-man		.man
 ./usr/share/man/man1/tset.1			man-util-man		.man
 ./usr/share/man/man1/tty.1			man-util-man		.man
@@ -8351,6 +8356,7 @@
 ./usr/share/man/man4/video.4			man-sys-man		.man
 ./usr/share/man/man4/vinum.4			man-obsolete		obsolete
 ./usr/share/man/man4/vio9p.4			man-sys-man		.man
+./usr/share/man/man4/viocon.4			man-sys-man		.man
 ./usr/share/man/man4/vioif.4			man-sys-man		.man
 ./usr/share/man/man4/viomb.4			man-sys-man		.man
 ./usr/share/man/man4/viornd.4			man-sys-man		.man

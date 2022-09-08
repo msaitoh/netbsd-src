@@ -1,5 +1,5 @@
 #	from: @(#)Makefile	8.1 (Berkeley) 6/6/93
-#	$NetBSD: Makefile,v 1.30 2021/10/12 19:08:04 christos Exp $
+#	$NetBSD: Makefile,v 1.32 2022/08/10 08:38:43 christos Exp $
 
 .include <bsd.own.mk>
 

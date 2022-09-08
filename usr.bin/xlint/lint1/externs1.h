@@ -1,4 +1,4 @@
-/*	$NetBSD: externs1.h,v 1.165 2022/07/05 22:50:41 rillig Exp $	*/
+/*	$NetBSD: externs1.h,v 1.169 2022/08/28 19:09:12 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -189,22 +189,22 @@ extern	type_t	*block_dup_type(const type_t *);
 extern	type_t	*expr_dup_type(const type_t *);
 extern	type_t	*expr_unqualified_type(const type_t *);
 extern	bool	is_incomplete(const type_t *);
-extern	void	add_storage_class(scl_t);
-extern	void	add_type(type_t *);
-extern	void	add_qualifier(tqual_t);
-extern	void	addpacked(void);
-extern	void	add_attr_used(void);
+extern	void	dcs_add_storage_class(scl_t);
+extern	void	dcs_add_type(type_t *);
+extern	void	dcs_add_qualifier(tqual_t);
+extern	void	dcs_add_packed(void);
+extern	void	dcs_set_used(void);
 extern	void	begin_declaration_level(declaration_kind);
 extern	void	end_declaration_level(void);
-extern	void	setasm(void);
-extern	void	begin_type(void);
-extern	void	end_type(void);
+extern	void	dcs_set_asm(void);
+extern	void	dcs_begin_type(void);
+extern	void	dcs_end_type(void);
 extern	int	length_in_bits(const type_t *, const char *);
 extern	unsigned int alignment_in_bits(const type_t *);
-extern	sym_t	*lnklst(sym_t *, sym_t *);
+extern	sym_t	*concat_lists(sym_t *, sym_t *);
 extern	void	check_type(sym_t *);
 extern	sym_t	*declarator_1_struct_union(sym_t *);
-extern	sym_t	*bitfield(sym_t *, int);
+extern	sym_t	*set_bit_field_width(sym_t *, int);
 extern	qual_ptr *merge_qualified_pointer(qual_ptr *, qual_ptr *);
 extern	sym_t	*add_pointer(sym_t *, qual_ptr *);
 extern	sym_t	*add_array(sym_t *, bool, int);
@@ -212,7 +212,7 @@ extern	sym_t	*add_function(sym_t *, sym_t *);
 extern	void	check_function_definition(sym_t *, bool);
 extern	sym_t	*declarator_name(sym_t *);
 extern	sym_t	*old_style_function_name(sym_t *);
-extern	type_t	*mktag(sym_t *, tspec_t, bool, bool);
+extern	type_t	*make_tag_type(sym_t *, tspec_t, bool, bool);
 extern	const	char *storage_class_name(scl_t);
 extern	type_t	*complete_tag_struct_or_union(type_t *, sym_t *);
 extern	type_t	*complete_tag_enum(type_t *, sym_t *);
@@ -220,8 +220,10 @@ extern	sym_t	*enumeration_constant(sym_t *, int, bool);
 extern	void	declare(sym_t *, bool, sbuf_t *);
 extern	void	copy_usage_info(sym_t *, sym_t *);
 extern	bool	check_redeclaration(sym_t *, bool *);
-extern	bool	eqptrtype(const type_t *, const type_t *, bool);
-extern	bool	eqtype(const type_t *, const type_t *, bool, bool, bool *);
+extern	bool	pointer_types_are_compatible(const type_t *, const type_t *,
+		    bool);
+extern	bool	types_compatible(const type_t *, const type_t *,
+		    bool, bool, bool *);
 extern	void	complete_type(sym_t *, sym_t *);
 extern	sym_t	*declare_argument(sym_t *, bool);
 extern	void	check_func_lint_directives(void);
@@ -237,7 +239,7 @@ extern	void	mark_as_used(sym_t *, bool, bool);
 extern	void	check_usage(dinfo_t *);
 extern	void	check_usage_sym(bool, sym_t *);
 extern	void	check_global_symbols(void);
-extern	void	print_previous_declaration(int, const sym_t *);
+extern	void	print_previous_declaration(const sym_t *);
 extern	int	to_int_constant(tnode_t *, bool);
 
 /*

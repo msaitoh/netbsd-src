@@ -1,7 +1,7 @@
 #! /usr/bin/env sh
-#	$NetBSD: build.sh,v 1.361 2021/12/31 15:43:35 christos Exp $
+#	$NetBSD: build.sh,v 1.365 2022/08/21 07:57:50 lukem Exp $
 #
-# Copyright (c) 2001-2011 The NetBSD Foundation, Inc.
+# Copyright (c) 2001-2022 The NetBSD Foundation, Inc.
 # All rights reserved.
 #
 # This code is derived from software contributed to The NetBSD Foundation
@@ -272,6 +272,7 @@ bomb()
 	cat >&2 <<ERRORMESSAGE
 
 ERROR: $@
+
 *** BUILD ABORTED ***
 ERRORMESSAGE
 	kill ${toppid}		# in case we were invoked from a subshell
@@ -360,6 +361,7 @@ warning()
 # Find a program in the PATH, and print the result.  If not found,
 # print a default.  If $2 is defined (even if it is an empty string),
 # then that is the default; otherwise, $1 is used as the default.
+#
 find_in_PATH()
 {
 	local prog="$1"
@@ -379,6 +381,7 @@ find_in_PATH()
 
 # Try to find a working POSIX shell, and set HOST_SH to refer to it.
 # Assumes that uname_s, uname_m, and PWD have been set.
+#
 set_HOST_SH()
 {
 	# Even if ${HOST_SH} is already defined, we still do the
@@ -427,21 +430,21 @@ set_HOST_SH()
 	case "${HOST_SH}" in
 	/*)	:
 		;;
-	*)	bomb "HOST_SH=\"${HOST_SH}\" is not an absolute path."
+	*)	bomb "HOST_SH=\"${HOST_SH}\" is not an absolute path"
 		;;
 	esac
 
 	# If HOST_SH is not executable, bomb.
 	#
 	[ -x "${HOST_SH}" ] ||
-	    bomb "HOST_SH=\"${HOST_SH}\" is not executable."
+	    bomb "HOST_SH=\"${HOST_SH}\" is not executable"
 
 	# If HOST_SH fails tests, bomb.
 	# ("$0" may be a path that is no longer valid, because we have
 	# performed "cd $(dirname $0)", so don't use $0 here.)
 	#
 	"${HOST_SH}" build.sh --shelltest ||
-	    bomb "HOST_SH=\"${HOST_SH}\" failed functionality tests."
+	    bomb "HOST_SH=\"${HOST_SH}\" failed functionality tests"
 }
 
 # initdefaults --
@@ -810,7 +813,7 @@ validatearch()
 
 	case "${MACHINE_ARCH}" in
 	"")
-		bomb "No MACHINE_ARCH provided. Use 'build.sh -m ${MACHINE} list-arch' to show options."
+		bomb "No MACHINE_ARCH provided. Use 'build.sh -m ${MACHINE} list-arch' to show options"
 		;;
 	esac
 
@@ -948,6 +951,7 @@ setmakeenv()
 	eval "$1='$2'; export $1"
 	makeenv="${makeenv} $1"
 }
+
 safe_setmakeenv()
 {
 	case "$1" in
@@ -966,6 +970,7 @@ unsetmakeenv()
 	eval "unset $1"
 	makeenv="${makeenv} $1"
 }
+
 safe_unsetmakeenv()
 {
 	case "$1" in
@@ -980,6 +985,7 @@ safe_unsetmakeenv()
 
 # Given a variable name in $1, modify the variable in place as follows:
 # For each space-separated word in the variable, call resolvepath.
+#
 resolvepaths()
 {
 	local var="$1"
@@ -997,6 +1003,7 @@ resolvepaths()
 # Given a variable name in $1, modify the variable in place as follows:
 # Convert possibly-relative path to absolute path by prepending
 # ${TOP} if necessary.  Also delete trailing "/", if any.
+#
 resolvepath()
 {
 	local var="$1"
@@ -1015,42 +1022,49 @@ resolvepath()
 	eval ${var}=\"\${val}\"
 }
 
-usage()
+# Display synopsis to stdout.
+synopsis()
 {
-	if [ -n "$*" ]; then
-		echo ""
-		echo "${progname}: $*"
-	fi
 	cat <<_usage_
 
-Usage: ${progname} [-EhnoPRrUuxy] [-a arch] [-B buildid] [-C cdextras]
-                [-c compiler] [-D dest] [-j njob] [-M obj] [-m mach]
-                [-N noisy] [-O obj] [-R release] [-S seed] [-T tools]
-                [-V var=[value]] [-w wrapper] [-X x11src] [-Y extsrcsrc]
-                [-Z var]
-                operation [...]
+Usage: ${progname} [-EnoPRrUux] [-a ARCH] [-B BID] [-C EXTRAS]
+                [-c COMPILER] [-D DEST] [-j NJOB] [-M MOBJ] [-m MACH]
+                [-N NOISY] [-O OOBJ] [-R RELEASE] [-S SEED] [-T TOOLS]
+                [-V VAR=[VALUE]] [-w WRAPPER] [-X X11SRC]
+                [-Z VAR]
+                OPERATION ...
+       ${progname} ( -h | -? )
 
- Build operations (all imply "obj" and "tools"):
+_usage_
+}
+
+# Display help to stdout.
+#
+help()
+{
+	synopsis
+	cat <<_usage_
+ Build OPERATIONs (all imply "obj" and "tools"):
     build               Run "make build".
     distribution        Run "make distribution" (includes DESTDIR/etc/ files).
     release             Run "make release" (includes kernels & distrib media).
 
- Other operations:
+ Other OPERATIONs:
     help                Show this message and exit.
     makewrapper         Create ${toolprefix}make-\${MACHINE} wrapper and ${toolprefix}make.
                         Always performed.
     cleandir            Run "make cleandir".  [Default unless -u is used]
-    dtb			Build devicetree blobs.
+    dtb                 Build devicetree blobs.
     obj                 Run "make obj".  [Default unless -o is used]
     tools               Build and install tools.
-    install=idir        Run "make installworld" to \`idir' to install all sets
-                        except \`etc'.  Useful after "distribution" or "release"
-    kernel=conf         Build kernel with config file \`conf'
-    kernel.gdb=conf     Build kernel (including netbsd.gdb) with config
-                        file \`conf'
-    releasekernel=conf  Install kernel built by kernel=conf to RELEASEDIR.
-    kernels             Build all kernels
-    installmodules=idir Run "make installmodules" to \`idir' to install all
+    install=IDIR        Run "make installworld" to IDIR to install all sets
+                        except 'etc'.  Useful after "distribution" or "release".
+    kernel=CONF         Build kernel with config file CONF.
+    kernel.gdb=CONF     Build kernel (including netbsd.gdb) with config
+                        file CONF.
+    releasekernel=CONF  Install kernel built by kernel=CONF to RELEASEDIR.
+    kernels             Build all kernels.
+    installmodules=IDIR Run "make installmodules" to IDIR to install all
                         kernel modules.
     modules             Build kernel modules.
     rumptest            Do a linktest for rump (for developers).
@@ -1067,8 +1081,8 @@ Usage: ${progname} [-EhnoPRrUuxy] [-a arch] [-B buildid] [-C cdextras]
                         RELEASEDIR/RELEASEMACHINEDIR/installation/liveimage.
     install-image       Create bootable installation image in
                         RELEASEDIR/RELEASEMACHINEDIR/installation/installimage.
-    disk-image=target   Create bootable disk image in
-                        RELEASEDIR/RELEASEMACHINEDIR/binary/gzimg/target.img.gz.
+    disk-image=TARGET   Create bootable disk image in
+                        RELEASEDIR/RELEASEMACHINEDIR/binary/gzimg/TARGET.img.gz.
     params              Display various make(1) parameters.
     list-arch           Display a list of valid MACHINE/MACHINE_ARCH values,
                         and exit.  The list may be narrowed by passing glob
@@ -1077,72 +1091,85 @@ Usage: ${progname} [-EhnoPRrUuxy] [-a arch] [-B buildid] [-C cdextras]
                         builds and exit.  Requires -P or -V MKREPRO=yes.
 
  Options:
-    -a arch        Set MACHINE_ARCH to arch.  [Default: deduced from MACHINE]
-    -B buildid     Set BUILDID to buildid.
-    -C cdextras    Append cdextras to CDEXTRA variable for inclusion on CD-ROM.
-    -c compiler    Select compiler:
+    -a ARCH        Set MACHINE_ARCH=ARCH.  [Default: deduced from MACHINE]
+    -B BID         Set BUILDID=BID.
+    -C EXTRAS      Append EXTRAS to CDEXTRA for inclusion on CD-ROM.
+    -c COMPILER    Select compiler from COMPILER:
                        clang
                        gcc
                    [Default: gcc]
-    -D dest        Set DESTDIR to dest.  [Default: destdir.MACHINE]
+    -D DEST        Set DESTDIR=DEST.  [Default: destdir.\${MACHINE}]
     -E             Set "expert" mode; disables various safety checks.
                    Should not be used without expert knowledge of the build
                    system.
-    -h             Print this help message.
-    -j njob        Run up to njob jobs in parallel; see make(1) -j.
-    -M obj         Set obj root directory to obj; sets MAKEOBJDIRPREFIX.
-                   Unsets MAKEOBJDIR.
-    -m mach        Set MACHINE to mach.  Some mach values are actually
+    -h             Print this help message, and exit.
+    -j NJOB        Run up to NJOB jobs in parallel; see make(1) -j.
+    -M MOBJ        Set obj root directory to MOBJ; sets MAKEOBJDIRPREFIX=MOBJ,
+                   unsets MAKEOBJDIR.
+    -m MACH        Set MACHINE=MACH.  Some MACH values are actually
                    aliases that set MACHINE/MACHINE_ARCH pairs.
                    [Default: deduced from the host system if the host
                    OS is NetBSD]
-    -N noisy       Set the noisyness (MAKEVERBOSE) level of the build:
-                       0   Minimal output ("quiet")
-                       1   Describe what is occurring
+    -N NOISY       Set the noisyness (MAKEVERBOSE) level of the build to NOISY:
+                       0   Minimal output ("quiet").
+                       1   Describe what is occurring.
                        2   Describe what is occurring and echo the actual
-                           command
-                       3   Ignore the effect of the "@" prefix in make commands
-                       4   Trace shell commands using the shell's -x flag
+                           command.
+                       3   Ignore the effect of the "@" prefix in make
+                           commands.
+                       4   Trace shell commands using the shell's -x flag.
                    [Default: 2]
-    -n             Show commands that would be executed, but do not execute them.
-    -O obj         Set obj root directory to obj; sets a MAKEOBJDIR pattern.
-                   Unsets MAKEOBJDIRPREFIX.
+    -n             Show commands that would be executed, but do not execute
+                   them.
+    -O OOBJ        Set obj root directory to OOBJ; sets a MAKEOBJDIR pattern
+                   using OOBJ, unsets MAKEOBJDIRPREFIX.
     -o             Set MKOBJDIRS=no; do not create objdirs at start of build.
     -P             Set MKREPRO and MKREPRO_TIMESTAMP to the latest source
                    CVS timestamp for reproducible builds.
-    -R release     Set RELEASEDIR to release.  [Default: releasedir]
+    -R RELEASE     Set RELEASEDIR=RELEASE.  [Default: releasedir]
     -r             Remove contents of TOOLDIR and DESTDIR before building.
-    -S seed        Set BUILDSEED to seed.  [Default: NetBSD-majorversion]
-    -T tools       Set TOOLDIR to tools.  If unset, and TOOLDIR is not set in
-                   the environment, ${toolprefix}make will be (re)built
+    -S SEED        Set BUILDSEED=SEED.  [Default: NetBSD-majorversion]
+    -T TOOLS       Set TOOLDIR=TOOLS.  If unset, and TOOLDIR is not set
+                   in the environment, ${toolprefix}make will be (re)built
                    unconditionally.
     -U             Set MKUNPRIVED=yes; build without requiring root privileges,
-                   install from an UNPRIVED build with proper file permissions.
+                   install from an unprivileged build with proper file
+                   permissions.
     -u             Set MKUPDATE=yes; do not run "make cleandir" first.
                    Without this, everything is rebuilt, including the tools.
-    -V var=[value] Set variable \`var' to \`value'.
-    -w wrapper     Create ${toolprefix}make script as wrapper.
+    -V VAR=[VALUE] Set variable VAR=VALUE.
+    -w WRAPPER     Create ${toolprefix}make script as WRAPPER.
                    [Default: \${TOOLDIR}/bin/${toolprefix}make-\${MACHINE}]
-    -X x11src      Set X11SRCDIR to x11src.  [Default: /usr/xsrc]
-    -x             Set MKX11=yes; build X11 from X11SRCDIR
-    -Y extsrcsrc   Set EXTSRCSRCDIR to extsrcsrc.  [Default: /usr/extsrc]
-    -y             Set MKEXTSRC=yes; build extsrc from EXTSRCSRCDIR
-    -Z var         Unset ("zap") variable \`var'.
+    -X X11SRC      Set X11SRCDIR=X11SRC.  [Default: /usr/xsrc]
+    -x             Set MKX11=yes; build X11 from X11SRCDIR.
+    -Z VAR         Unset ("zap") variable VAR.
+    -?             Print this help message, and exit.
 
 _usage_
+}
+
+# Display optional error message, help to stderr, and exit 1.
+#
+usage()
+{
+	if [ -n "$*" ]; then
+		echo 1>&2 ""
+		echo 1>&2 "${progname}: $*"
+	fi
+	synopsis 1>&2
 	exit 1
 }
 
 parseoptions()
 {
-	opts='a:B:C:c:D:Ehj:M:m:N:nO:oPR:rS:T:UuV:w:X:xY:yZ:'
+	opts='a:B:C:c:D:Ehj:M:m:N:nO:oPR:rS:T:UuV:w:X:xZ:'
 	opt_a=false
 	opt_m=false
 
 	if type getopts >/dev/null 2>&1; then
 		# Use POSIX getopts.
 		#
-		getoptcmd='getopts ${opts} opt && opt=-${opt}'
+		getoptcmd='getopts :${opts} opt && opt=-${opt}'
 		optargcmd=':'
 		optremcmd='shift $((${OPTIND} -1))'
 	else
@@ -1310,7 +1337,7 @@ parseoptions()
 				safe_setmakeenv "${OPTARG}" ""
 				;;
 			*)
-				usage "-V argument must be of the form 'var[=value]'"
+				usage "-V argument must be of the form 'VAR[=VALUE]'"
 				;;
 			esac
 			;;
@@ -1329,15 +1356,6 @@ parseoptions()
 			setmakeenv MKX11 yes
 			;;
 
-		-Y)
-			eval ${optargcmd}; resolvepath OPTARG
-			setmakeenv EXTSRCSRCDIR "${OPTARG}"
-			;;
-
-		-y)
-			setmakeenv MKEXTSRC yes
-			;;
-
 		-Z)
 			eval ${optargcmd}
 		    # XXX: consider restricting which variables can be unset?
@@ -1348,8 +1366,25 @@ parseoptions()
 			break
 			;;
 
-		-'?'|-h)
-			usage
+		-h)
+			help
+			exit 0
+			;;
+
+		'-?')
+			if [ "${OPTARG}" = '?' ]; then
+				help
+				exit 0
+			fi
+			usage "Unknown option -${OPTARG}"
+			;;
+
+		-:)
+			usage "Missing argument for option -${OPTARG}"
+			;;
+
+		*)
+			usage "Unimplemented option ${opt}"
 			;;
 
 		esac
@@ -1365,7 +1400,8 @@ parseoptions()
 		case "${op}" in
 
 		help)
-			usage
+			help
+			exit 0
 			;;
 
 		list-arch)
@@ -1382,14 +1418,14 @@ parseoptions()
 			arg=${op#*=}
 			op=${op%%=*}
 			[ -n "${arg}" ] ||
-			    bomb "Must supply a kernel name with \`${op}=...'"
+			    bomb "Must supply a kernel name with '${op}=...'"
 			;;
 
 		disk-image=*)
 			arg=${op#*=}
 			op=disk_image
 			[ -n "${arg}" ] ||
-			    bomb "Must supply a target name with \`${op}=...'"
+			    bomb "Must supply a target name with '${op}=...'"
 
 			;;
 
@@ -1397,7 +1433,7 @@ parseoptions()
 			arg=${op#*=}
 			op=${op%%=*}
 			[ -n "${arg}" ] ||
-			    bomb "Must supply a directory with \`install=...'"
+			    bomb "Must supply a directory with 'install=...'"
 			;;
 
 		distsets)
@@ -1430,7 +1466,7 @@ parseoptions()
 			;;
 
 		*)
-			usage "Unknown operation \`${op}'"
+			usage "Unknown OPERATION '${op}'"
 			;;
 
 		esac
@@ -1439,13 +1475,13 @@ parseoptions()
 		op="$( echo "$op" | tr -s '.-' '__')"
 		eval do_${op}=true
 	done
-	[ -n "${operations}" ] || usage "Missing operation to perform."
+	[ -n "${operations}" ] || usage "Missing OPERATION to perform"
 
 	# Set up MACHINE*.  On a NetBSD host, these are allowed to be unset.
 	#
 	if [ -z "${MACHINE}" ]; then
 		[ "${uname_s}" = "NetBSD" ] ||
-		    bomb "MACHINE must be set, or -m must be used, for cross builds."
+		    bomb "MACHINE must be set, or -m must be used, for cross builds"
 		MACHINE=${uname_m}
 		MACHINE_ARCH=${uname_p}
 	fi
@@ -1479,9 +1515,9 @@ sanitycheck()
 	#
 	if ${do_install} && [ "$id_u" -ne 0 ] ; then
 		if ${do_expertmode}; then
-			warning "Will install as an unprivileged user."
+			warning "Will install as an unprivileged user"
 		else
-			bomb "-E must be set for install as an unprivileged user."
+			bomb "-E must be set for install as an unprivileged user"
 		fi
 	fi
 
@@ -1749,7 +1785,7 @@ validatemakeparams()
 	if ! ${do_expertmode} && \
 	    [ "$id_u" -ne 0 ] && \
 	    [ "${MKUNPRIVED}" = "no" ] ; then
-		bomb "-U or -E must be set for build as an unprivileged user."
+		bomb "-U or -E must be set for build as an unprivileged user"
 	fi
 
 	if [ "${runcmd}" = "echo" ]; then
@@ -1860,7 +1896,7 @@ validatemakeparams()
 		if ${do_distribution} || ${do_release} || \
 		   [ "${uname_s}" != "NetBSD" ] || \
 		   [ "${uname_m}" != "${MACHINE}" ]; then
-			bomb "DESTDIR must != / for cross builds, or ${progname} 'distribution' or 'release'."
+			bomb "DESTDIR must != / for cross builds, or ${progname} 'distribution' or 'release'"
 		fi
 		if ! ${do_expertmode}; then
 			bomb "DESTDIR must != / for non -E (expert) builds"
@@ -1874,7 +1910,7 @@ validatemakeparams()
 		removedirs="${removedirs} ${DESTDIR}"
 	fi
 	if ${do_releasekernel} && [ -z "${RELEASEDIR}" ]; then
-		bomb "Must set RELEASEDIR with \`releasekernel=...'"
+		bomb "Must set RELEASEDIR with 'releasekernel=...'"
 	fi
 
 	# If a previous build.sh run used -U (and therefore created a
@@ -1890,9 +1926,9 @@ validatemakeparams()
 		if [ -e "${DESTDIR}/METALOG" ] && \
 		    [ "${MKUNPRIVED}" = "no" ] ; then
 			if $do_expertmode; then
-				warning "A previous build.sh run specified -U."
+				warning "A previous build.sh run specified -U"
 			else
-				bomb "A previous build.sh run specified -U; you must specify it again now."
+				bomb "A previous build.sh run specified -U; you must specify it again now"
 			fi
 		fi
 		;;
@@ -1905,7 +1941,7 @@ validatemakeparams()
 	#
 	if ${do_release} && ( ${do_live_image} || ${do_install_image} ) && \
 	    [ "${MKUNPRIVED}" = "no" ] ; then
-		bomb "-U must be specified on building release to create images later."
+		bomb "-U must be specified on building release to create images later"
 	fi
 }
 
@@ -1974,7 +2010,7 @@ createmakewrapper()
 	eval cat <<EOF ${makewrapout}
 #! ${HOST_SH}
 # Set proper variables to allow easy "make" building of a NetBSD subtree.
-# Generated from:  \$NetBSD: build.sh,v 1.361 2021/12/31 15:43:35 christos Exp $
+# Generated from:  \$NetBSD: build.sh,v 1.365 2022/08/21 07:57:50 lukem Exp $
 # with these arguments: ${_args}
 #
 
@@ -2103,7 +2139,7 @@ buildkernel()
 		make_in_dir "${kernelbuildpath}" cleandir
 	fi
 	[ -x "${TOOLDIR}/bin/${toolprefix}config" ] \
-	|| bomb "${TOOLDIR}/bin/${toolprefix}config does not exist. You need to \"$0 tools\" first."
+	|| bomb "${TOOLDIR}/bin/${toolprefix}config does not exist. You need to \"$0 tools\" first"
 	CONFIGOPTS=$(getmakevar CONFIGOPTS)
 	${runcmd} "${TOOLDIR}/bin/${toolprefix}config" ${CONFIGOPTS} \
 		-b "${kernelbuildpath}" -s "${TOP}/sys" ${configopts} \
@@ -2247,7 +2283,7 @@ dorump()
 		make_in_dir "${NETBSDSRCDIR}/sys/rump" obj
 	fi
 	${runcmd} "${makewrapper}" ${parallel} do-distrib-dirs \
-	    || bomb 'could not create distrib-dirs'
+	    || bomb "Could not create distrib-dirs"
 
 	[ "${MKUPDATE}" = "no" ] && doclean="cleandir"
 	targlist="${doclean} ${doobjs} dependall install"
@@ -2447,7 +2483,7 @@ main()
 			# built with UNPRIVED.  Assume UNPRIVED build has been
 			# performed if METALOG file is created in DESTDIR.
 			if [ ! -e "${DESTDIR}/METALOG" ] ; then
-				bomb "The release binaries must have been built with -U to create images."
+				bomb "The release binaries must have been built with -U to create images"
 			fi
 			${runcmd} "${makewrapper}" ${parallel} ${op} ||
 			    bomb "Failed to make ${op}"
@@ -2489,7 +2525,7 @@ main()
 			if [ "${arg}" = "/" ] && \
 			    (	[ "${uname_s}" != "NetBSD" ] || \
 				[ "${uname_m}" != "${MACHINE}" ] ); then
-				bomb "'${op}' must != / for cross builds."
+				bomb "'${op}' must != / for cross builds"
 			fi
 			installmodules "${arg}"
 			;;
@@ -2499,7 +2535,7 @@ main()
 			if [ "${arg}" = "/" ] && \
 			    (	[ "${uname_s}" != "NetBSD" ] || \
 				[ "${uname_m}" != "${MACHINE}" ] ); then
-				bomb "'${op}' must != / for cross builds."
+				bomb "'${op}' must != / for cross builds"
 			fi
 			installworld "${arg}"
 			;;
@@ -2519,7 +2555,7 @@ main()
 			;;
 
 		*)
-			bomb "Unknown operation \`${op}'"
+			bomb "Unknown OPERATION '${op}'"
 			;;
 
 		esac
