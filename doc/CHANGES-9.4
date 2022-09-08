@@ -1,0 +1,139 @@
+# $NetBSD: CHANGES-9.4,v 1.1.2.9 2022/09/07 10:07:43 martin Exp $
+
+A complete list of changes from the NetBSD 9.3 release to the NetBSD 9.4
+release:
+
+external/gpl2/groff/tmac/mdoc.local		patched by hand
+sys/sys/param.h 				patched by hand
+doc/README.files				patched by hand
+doc/CHANGES-9.4					added
+
+	Welcome to 9.3_STABLE.
+	[martin]
+
+sys/netinet6/nd6.c				(apply patch)
+
+	PR 55680: avoid duplicate free of link layer entries.
+	[kim, ticket #1497]
+
+lib/libpthread/pthread.c			1.181 (via patch)
+
+	Fix pthread hangs on startup.
+	[riastradh, #1498]
+
+sys/dev/ic/dwc_gmac.c				1.76,1.77
+
+	Fix chip configuration so that stripping of the FCS is
+	consistent for all packet types.
+	[sekiya, ticket #1499]
+
+sys/dev/raidframe/rf_disks.c			1.93 (patch)
+sys/dev/raidframe/rf_driver.c			1.140(patch)
+sys/dev/raidframe/rf_netbsdkintf.c		1.408(patch)
+
+	raid(4): reject invalid values for numCol and numSpares.
+	Explicitly nul-terminate all strings coming from userland.
+	Avoids signed arithmetic in some ioctl commands.
+	[mrg, ticket #1500]
+
+sys/kern/uipc_sem.c				1.60
+
+	PR 55509: fix per-uid "semcnt" bookeeping.
+	[chs, ticket #1501]
+
+libexec/telnetd/utility.c			1.34
+
+	telnetd(8): fix CVE-2020-10188.
+	[hgutch, ticket #1502]
+
+external/cddl/osnet/dist/lib/libzfs/common/libzfs_import.c 1.6,1.7
+
+	Enable zpool(8) to reliably find components on dk(4) wedges.
+	[riastradh, ticket #1503]
+
+sys/fs/ptyfs/ptyfs_vnops.c			1.69
+
+	ptyfs: fix buffer overrun.
+	[riastradh, ticket #1504]
+
+sys/dev/ic/tpm.c				1.20
+sys/dev/isa/tpm_isa.c				1.8
+
+	tpm(4): kernel attach messages cosmetics.
+	[riastradh, ticket #1505]
+
+sys/dev/raidframe/rf_netbsdkintf.c		1.409
+
+	raid(4): reject the RAIDFRAME_SET_LAST_UNIT and RAIDFRAME_SHUTDOWN
+	ioctls when RAIDframe is not initialized.
+	[oster, ticket #1506]
+
+bin/test/test.c					1.45
+
+	PR 56983: fix confusing message in test(1).
+	[dholland, ticket #1507]
+
+libexec/telnetd/telnetd.c			1.58 (patch)
+
+	telnetd(8): fix a crash accessing the slc table before initialization.
+	[dholland, ticket #1508]
+
+sys/dev/scsipi/sd.c				1.335
+sys/dev/scsipi/sdvar.h				1.40
+
+	sd(4): fix buffer over-read leading to garbage appended
+	to the device type string and possible information disclosure.
+	[mlelstv, ticket #1509]
+
+
+external/mit/xorg/bin/xdm/Makefile		1.18,1.19
+external/mit/xorg/bin/xdm/Makefile.xdm		1.11
+
+	PR 54851: xdm(8): fix the man page generation, and include
+	"sbin" directories (and games) in DEF_USER_PATH.
+	[nia, ticket #1510]
+
+external/mit/xorg/server/drivers/xf86-video-wsfb/Makefile 1.6
+
+	wsfb(4): disable broken DGA extension for xf86-video-wsfb.
+	[rin, ticket #1511]
+
+sys/dev/ata/ata.c				1.163
+
+	wd(4): fix verbose attach messages for ATA controllers w/o UltraDMA
+	support.
+	[tsutsui, ticket #1512]
+
+sys/arch/m68k/m68k/m68k_trap.c			1.3
+
+	m68k: make a DEBUG kernel compilable.
+	[tsutsui, ticket #1513]
+
+distrib/amiga/floppies/inst-common/dot.commonutils 1.9
+distrib/amiga/miniroot/dot.profile		1.11
+distrib/atari/floppies/common/dot.profile	1.9
+distrib/utils/script-installer/dot.commonutils	1.8
+distrib/vax/inst-common/dot.commonutils		1.6
+
+	PRs 54835, 54835, 56983: adapt install scripts to the shell
+	being compiled without support for depracated test expressions.
+	[tsutsui, ticket #1514]
+
+sys/dev/pci/if_wm.c				1.741-1.749,1.753-1.757,
+						1.762 via patch
+sys/dev/pci/if_wmreg.h				1.126-1.127
+
+	- Fix I219 workaround in wm_flush_desc_rings().
+	- Add more statistics counters.
+	- To avoid releasing mutex temporally, use new
+	  wm_set_mdio_slow_mode_hv_locked().
+	- No functional changes:
+	  - Turn a locking botch (shouldn't drop lock on error) into a KASSERT
+	    in wm_deferred_start_locked().
+	  - Remove unneeded header inclusion.
+	  - Use __BIT() a little.
+	  - Modify comment and debug messages.
+	  - Consistency use -1 instead of 1 for some error code.
+	  - KNF.
+	[msaitoh, ticket #1515]
+

@@ -1,4 +1,4 @@
-/*	$NetBSD: rf_netbsdkintf.c,v 1.376.4.1 2020/03/21 15:52:09 martin Exp $	*/
+/*	$NetBSD: rf_netbsdkintf.c,v 1.376.4.4 2022/08/29 16:02:34 martin Exp $	*/
 
 /*-
  * Copyright (c) 1996, 1997, 1998, 2008-2011 The NetBSD Foundation, Inc.
@@ -101,7 +101,7 @@
  ***********************************************************/
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: rf_netbsdkintf.c,v 1.376.4.1 2020/03/21 15:52:09 martin Exp $");
+__KERNEL_RCSID(0, "$NetBSD: rf_netbsdkintf.c,v 1.376.4.4 2022/08/29 16:02:34 martin Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_raid_autoconfig.h"
@@ -1066,7 +1066,9 @@ rf_must_be_initialized(const struct raid_softc *rs, u_long cmd)
 	case RAIDFRAME_REWRITEPARITY:
 	case RAIDFRAME_SET_AUTOCONFIG:
 	case RAIDFRAME_SET_COMPONENT_LABEL:
+	case RAIDFRAME_SET_LAST_UNIT:
 	case RAIDFRAME_SET_ROOT:
+	case RAIDFRAME_SHUTDOWN:
 		return (rs->sc_flags & RAIDF_INITED) == 0;
 	}
 	return false;
@@ -1179,7 +1181,7 @@ rf_getConfiguration(struct raid_softc *rs, void *data, RF_Config_t **k_cfg)
 int
 rf_construct(struct raid_softc *rs, RF_Config_t *k_cfg)
 {
-	int retcode;
+	int retcode, i;
 	RF_Raid_t *raidPtr = &rs->sc_r;
 
 	rs->sc_flags &= ~RAIDF_SHUTDOWN;
@@ -1189,6 +1191,29 @@ rf_construct(struct raid_softc *rs, RF_Config_t *k_cfg)
 
 	/* should do some kind of sanity check on the configuration.
 	 * Store the sum of all the bytes in the last byte? */
+
+	/* Force nul-termination on all strings. */
+#define ZERO_FINAL(s)	do { s[sizeof(s) - 1] = '\0'; } while (0)
+	for (i = 0; i < RF_MAXCOL; i++) {
+		ZERO_FINAL(k_cfg->devnames[0][i]);
+	}
+	for (i = 0; i < RF_MAXSPARE; i++) {
+		ZERO_FINAL(k_cfg->spare_names[i]);
+	}
+	for (i = 0; i < RF_MAXDBGV; i++) {
+		ZERO_FINAL(k_cfg->debugVars[i]);
+	}
+#undef ZERO_FINAL
+
+	/* Check some basic limits. */
+	if (k_cfg->numCol >= RF_MAXCOL || k_cfg->numCol < 0) {
+		retcode = EINVAL;
+		goto out;
+	}
+	if (k_cfg->numSpare >= RF_MAXSPARE || k_cfg->numSpare < 0) {
+		retcode = EINVAL;
+		goto out;
+	}
 
 	/* configure the system */
 
@@ -1390,6 +1415,18 @@ rf_check_recon_status(RF_Raid_t *raidPtr, int *data)
 	return 0;
 }
 
+/*
+ * Copy a RF_SingleComponent_t from 'data', ensuring nul-termination
+ * on the component_name[] array.
+ */
+static void
+rf_copy_single_component(RF_SingleComponent_t *component, void *data)
+{
+
+	memcpy(component, data, sizeof *component);
+	component->component_name[sizeof(component->component_name) - 1] = '\0';
+}
+
 static int
 raidioctl(dev_t dev, u_long cmd, void *data, int flag, struct lwp *l)
 {
@@ -1405,7 +1442,6 @@ raidioctl(dev_t dev, u_long cmd, void *data, int flag, struct lwp *l)
 	int retcode = 0;
 	int column;
 	RF_ComponentLabel_t *clabel;
-	RF_SingleComponent_t *sparePtr,*componentPtr;
 	int d;
 
 	if ((rs = raidget(unit, false)) == NULL)
@@ -1494,21 +1530,18 @@ raidioctl(dev_t dev, u_long cmd, void *data, int flag, struct lwp *l)
 		    rf_RewriteParityThread, raidPtr,"raid_parity");
 
 	case RAIDFRAME_ADD_HOT_SPARE:
-		sparePtr = (RF_SingleComponent_t *) data;
-		memcpy(&component, sparePtr, sizeof(RF_SingleComponent_t));
+		rf_copy_single_component(&component, data);
 		return rf_add_hot_spare(raidPtr, &component);
 
 	case RAIDFRAME_REMOVE_HOT_SPARE:
 		return retcode;
 
 	case RAIDFRAME_DELETE_COMPONENT:
-		componentPtr = (RF_SingleComponent_t *)data;
-		memcpy(&component, componentPtr, sizeof(RF_SingleComponent_t));
+		rf_copy_single_component(&component, data);
 		return rf_delete_component(raidPtr, &component);
 
 	case RAIDFRAME_INCORPORATE_HOT_SPARE:
-		componentPtr = (RF_SingleComponent_t *)data;
-		memcpy(&component, componentPtr, sizeof(RF_SingleComponent_t));
+		rf_copy_single_component(&component, data);
 		return rf_incorporate_hot_spare(raidPtr, &component);
 
 	case RAIDFRAME_REBUILD_IN_PLACE:
@@ -3748,6 +3781,8 @@ void
 rf_check_recon_status_ext(RF_Raid_t *raidPtr, RF_ProgressInfo_t *info)
 {
 
+	memset(info, 0, sizeof(*info));
+
 	if (raidPtr->status != rf_rs_reconstructing) {
 		info->total = 100;
 		info->completed = 100;
@@ -3763,6 +3798,8 @@ void
 rf_check_parityrewrite_status_ext(RF_Raid_t *raidPtr, RF_ProgressInfo_t *info)
 {
 
+	memset(info, 0, sizeof(*info));
+
 	if (raidPtr->parity_rewrite_in_progress == 1) {
 		info->total = raidPtr->Layout.numStripe;
 		info->completed = raidPtr->parity_rewrite_stripes_done;
@@ -3777,6 +3814,8 @@ rf_check_parityrewrite_status_ext(RF_Raid_t *raidPtr, RF_ProgressInfo_t *info)
 void
 rf_check_copyback_status_ext(RF_Raid_t *raidPtr, RF_ProgressInfo_t *info)
 {
+
+	memset(info, 0, sizeof(*info));
 
 	if (raidPtr->copyback_in_progress == 1) {
 		info->total = raidPtr->Layout.numStripe;

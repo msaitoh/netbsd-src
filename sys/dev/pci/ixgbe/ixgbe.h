@@ -1,4 +1,4 @@
-/* $NetBSD: ixgbe.h,v 1.56.2.6 2021/11/20 15:16:53 martin Exp $ */
+/* $NetBSD: ixgbe.h,v 1.56.2.9 2022/06/02 10:45:12 martin Exp $ */
 
 /******************************************************************************
   SPDX-License-Identifier: BSD-3-Clause
@@ -479,7 +479,6 @@ struct adapter {
 	struct if_percpuq	*ipq;	/* softint-based input queues */
 
 	struct resource		*pci_mem;
-	struct resource		*msix_mem;
 
 	/* NetBSD: Interrupt resources are in osdep */
 
@@ -602,7 +601,7 @@ struct adapter {
 	struct evcnt		enomem_tx_dma_setup;
 	struct evcnt		tso_err;
 	struct evcnt		watchdog_events;
-	struct evcnt		link_irq;
+	struct evcnt		admin_irq;
 	struct evcnt		link_sicount;
 	struct evcnt		mod_sicount;
 	struct evcnt		msf_sicount;
@@ -634,6 +633,7 @@ struct adapter {
 
 	struct sysctllog	*sysctllog;
 	const struct sysctlnode *sysctltop;
+	struct timeval		lasterr_time;
 };
 
 /* Precision Time Sync (IEEE 1588) defines */
@@ -665,10 +665,10 @@ struct adapter {
 /* Sysctl help messages; displayed with sysctl -d */
 #define IXGBE_SYSCTL_DESC_ADV_SPEED \
 	"\nControl advertised link speed using these flags:\n" \
-	"\t0x01 - advertise 100M\n" \
-	"\t0x02 - advertise 1G\n" \
-	"\t0x04 - advertise 10G\n" \
-	"\t0x08 - advertise 10M\n" \
+	"\t0x1  - advertise 100M\n" \
+	"\t0x2  - advertise 1G\n" \
+	"\t0x4  - advertise 10G\n" \
+	"\t0x8  - advertise 10M\n" \
 	"\t0x10 - advertise 2.5G\n" \
 	"\t0x20 - advertise 5G\n\n" \
 	"\t5G, 2.5G, 100M and 10M are only supported on certain adapters."

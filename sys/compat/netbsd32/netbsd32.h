@@ -1,4 +1,4 @@
-/*	$NetBSD: netbsd32.h,v 1.123.4.1 2019/11/19 13:36:25 martin Exp $	*/
+/*	$NetBSD: netbsd32.h,v 1.123.4.3 2022/08/03 11:05:51 martin Exp $	*/
 
 /*
  * Copyright (c) 1998, 2001, 2008, 2015 Matthew R. Green
@@ -57,7 +57,7 @@
 #include <nfs/rpcv2.h>
 
 /*
- * first, define the basic types we need.
+ * first define the basic types we need, and any applicable limits.
  */
 
 typedef int32_t netbsd32_long;
@@ -71,6 +71,9 @@ typedef int32_t netbsd32_clockid_t;
 typedef int32_t netbsd32_key_t;
 typedef int32_t netbsd32_intptr_t;
 typedef uint32_t netbsd32_uintptr_t;
+
+/* Note: 32-bit sparc defines ssize_t as long but still has same size as int. */
+#define	NETBSD32_SSIZE_MAX	INT32_MAX
 
 /* netbsd32_[u]int64 are machine dependent and defined below */
 
@@ -1093,6 +1096,25 @@ struct netbsd32_msdosfs_args {
 	int	version;	/* version of the struct */
 	mode_t  dirmask;	/* v2: mask to be applied for msdosfs perms */
 	int	gmtoff;		/* v3: offset from UTC in seconds */
+};
+
+/* from <udf/udf_mount.h> */
+struct netbsd32_udf_args {
+	uint32_t	 version;	/* version of this structure         */
+	netbsd32_charp	 fspec;		/* mount specifier                   */
+	int32_t		 sessionnr;	/* session specifier, rel of abs     */
+	uint32_t	 udfmflags;	/* mount options                     */
+	int32_t		 gmtoff;	/* offset from UTC in seconds        */
+
+	uid_t		 anon_uid;	/* mapping of anonymous files uid    */
+	gid_t		 anon_gid;	/* mapping of anonymous files gid    */
+	uid_t		 nobody_uid;	/* nobody:nobody will map to -1:-1   */
+	gid_t		 nobody_gid;	/* nobody:nobody will map to -1:-1   */
+
+	uint32_t	 sector_size;	/* for mounting dumps/files          */
+
+	/* extendable */
+	uint8_t	 reserved[32];
 };
 
 /* from <miscfs/genfs/layer.h> */

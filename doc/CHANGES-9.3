@@ -1,4 +1,4 @@
-29~# $NetBSD: CHANGES-9.3,v 1.1.2.68 2022/01/29 17:19:50 martin Exp $
+# $NetBSD: CHANGES-9.3,v 1.1.2.119 2022/08/04 15:30:36 martin Exp $
 
 A complete list of changes from the NetBSD 9.2 release to the NetBSD 9.3
 release:
@@ -1258,4 +1258,809 @@ sys/dev/pci/pcireg.h				1.62-1.63
 	  preset. One of them is known to be the default value.
 	- Fix typo.
 	[msaitoh, ticket #1412]
+
+sys/dev/pci/ixgbe/if_sriov.c			1.12-1.16
+sys/dev/pci/ixgbe/ixgbe.c			1.295-1.297, 1.300,
+						1.304 via patch
+sys/dev/pci/ixgbe/ixgbe.h			1.84
+sys/dev/pci/ixgbe/ixgbe_82598.c			1.17-1.18
+sys/dev/pci/ixgbe/ixgbe_82598.h			1.9
+sys/dev/pci/ixgbe/ixgbe_82599.c			1.24-1.28
+sys/dev/pci/ixgbe/ixgbe_82599.h			1.8
+sys/dev/pci/ixgbe/ixgbe_api.c			1.26-1.27
+sys/dev/pci/ixgbe/ixgbe_api.h			1.16
+sys/dev/pci/ixgbe/ixgbe_bypass.h		1.3
+sys/dev/pci/ixgbe/ixgbe_common.c		1.34-1.42
+sys/dev/pci/ixgbe/ixgbe_common.h		1.15-1.16
+sys/dev/pci/ixgbe/ixgbe_dcb.c			1.12-1.13
+sys/dev/pci/ixgbe/ixgbe_dcb.h			1.8-1.9
+sys/dev/pci/ixgbe/ixgbe_dcb_82598.c		1.10-1.12
+sys/dev/pci/ixgbe/ixgbe_dcb_82598.h		1.8
+sys/dev/pci/ixgbe/ixgbe_dcb_82599.c		1.10-1.11
+sys/dev/pci/ixgbe/ixgbe_dcb_82599.h		1.8
+sys/dev/pci/ixgbe/ixgbe_fdir.h			1.4
+sys/dev/pci/ixgbe/ixgbe_features.h		1.4
+sys/dev/pci/ixgbe/ixgbe_mbx.c			1.13-1.15
+sys/dev/pci/ixgbe/ixgbe_mbx.h			1.15-1.18
+sys/dev/pci/ixgbe/ixgbe_netmap.c		1.5
+sys/dev/pci/ixgbe/ixgbe_osdep.c			1.8
+sys/dev/pci/ixgbe/ixgbe_osdep.h			1.31
+sys/dev/pci/ixgbe/ixgbe_phy.c			1.25-1.29
+sys/dev/pci/ixgbe/ixgbe_phy.h			1.13
+sys/dev/pci/ixgbe/ixgbe_rss.h			1.6
+sys/dev/pci/ixgbe/ixgbe_sriov.h			1.5
+sys/dev/pci/ixgbe/ixgbe_type.h			1.51-1.54
+sys/dev/pci/ixgbe/ixgbe_vf.c			1.28-1.29
+sys/dev/pci/ixgbe/ixgbe_vf.h			1.15
+sys/dev/pci/ixgbe/ixgbe_x540.c			1.20-1.22
+sys/dev/pci/ixgbe/ixgbe_x540.h			1.10
+sys/dev/pci/ixgbe/ixgbe_x550.c			1.21-1.25
+sys/dev/pci/ixgbe/ixgbe_x550.h			1.7
+sys/dev/pci/ixgbe/ixv.c				1.170, 1.174-1.175 via patch
+
+	- Add typecast for type mismatch.
+	- Fix retry count calculation of I2C read/write.
+	- Wait longer for link after fiber MAC setup.
+	- ixv(4): Use adapter->mta for the multicast array memory instead of
+	  the on-stack array.
+	- Match X550_PHY_ID correctly on X550.
+	- Print NVM image version on 82598.
+	- Use 64bit for lxon + lxoff.
+	- Don't expose garbage data of hw.ixvN.debug.
+	- Some NetBSD unrelated changes:
+	  - Fix infinite recursion on PCIe link down if VMDQ is used.
+	  - Move PF mailbox initialization from ixgbe_attach() to
+	    ixgbe_init_iov().
+	  - Add IPv6 mask for flow director.
+	  - Change error level in ixgbe_fc_autoneg().
+	  - Check host interface return status when writing NVM.
+	  - Change DCB credit parameters.
+	- Restore some mailbox related functions. Revert part of ixgbe_mbx.c
+	  rev. 1.7 and ixgbe_mbx.h rev. 1.11. No functional change.
+	- Rename IXGBE_VT_MSGTYPE_{ACK,NACK} to
+	  IXGBE_VT_MSGTYPE_{SUCCESS,FAILURE}. No functional change.
+	- Remove unused argument. Change argument.
+	- Remove unnecessary return value check.
+	- Remove debug error message.
+	- Remove dead code.
+	- Add some unused macros.
+	- Fix typo in comment.
+	- Rename some functions.
+	- Sort lines, modify comment.
+	- Whitespace fix.
+	[msaitoh, ticket #1414]
+
+sys/dev/usb/usbnet.c				1.44 (patch)
+
+	usbnet(9): defer hardware multicast filter updates to USB task.
+	[riastradh, ticket #1415]
+
+sys/dev/pci/ixgbe/if_sriov.c			1.17
+sys/dev/pci/ixgbe/ixgbe.c			1.301
+sys/dev/pci/ixgbe/ixgbe_82599.c			1.29
+sys/dev/pci/ixgbe/ixgbe_mbx.c			1.16
+sys/dev/pci/ixgbe/ixgbe_mbx.c			1.17
+sys/dev/pci/ixgbe/ixgbe_mbx.c			1.18
+sys/dev/pci/ixgbe/ixgbe_mbx.h			1.19
+sys/dev/pci/ixgbe/ixgbe_type.h			1.55
+sys/dev/pci/ixgbe/ixgbe_vf.c			1.31
+sys/dev/pci/ixgbe/ixgbe_x540.c			1.23
+sys/dev/pci/ixgbe/ixv.c				1.172
+sys/dev/pci/ixgbe/ixv.c				1.173
+
+	Add code to support mailbox API 1.5.
+	[msaitoh, ticket #1416]
+
+sys/arch/x86/include/specialreg.h		1.179-1.188 (patch)
+
+	- Add CPUID definitions of Last Branch Record, Thread Director,
+	  AVX version of VNNI, Fast short REP MOV, HRESET, PPIN, Architectural
+	  LBR, Linear Address Masking and Hybrid Information from the latest
+	  Intel SDM.
+	- Add CPUID definitions of AddrMaskExt, INT_WBINVD, IbrsSameMode,
+	  EferLmsleUnsupported, PSFD and SecureTSC from AMD APM.
+	- Print CLFSH instead of CLFLUSH because both Intel and AMD documents
+	  say so.
+	- Modify comment. Add comment. Fix typo. Use __BIT(). KNF. Sort lines.
+	  No functional change.
+	[msaitoh, ticket #1417]
+
+usr.sbin/cpuctl/arch/i386.c			1.125-1.127
+
+	- Add Alder Lake, Rocket Lake and Sapphire Rapids.
+	- Decode Intel Hybrid Information Enumeration (CPUID Fn0000_001a).
+	- Remove debug code and simplify. No functional change.
+	[msaitoh, ticket #1418]
+
+sys/arch/x86/x86/procfs_machdep.c		1.43-1.44
+
+	- The CPUID table 11 was changed from CPUID 0x0f leaf 0 %edx to a Linux
+	  mapping.
+	- The CPUID table 12 was changed from CPUID 0x0f leaf 1 %edx to CPUID
+	  0x07 leaf 1 %eax. Print avx_vnni and avx512_bf16.
+	- Print cppc, enqcmd and arch_lbr.
+	- Modify linux mapping. Not used on NetBSD.
+	[msaitoh, ticket #1419]
+
+sys/dev/pci/ixgbe/ixgbe.c			1.264,1.269,1.272,
+						1.306 via patch
+
+	Four INTx related fixes:
+	- Fix a bug that the all interrupt sources are enabled when the
+	  interface is UP and the INTx line is shared with other devices.
+	- Fix a bug that it might incorrectly enable interrupt when
+	  IFF_RUNNING is not set.
+	- Don't process TX/RX if a queue interrupt isn't occurred.
+	- Increment legacy interrupt counter after checking INTx sharing.
+	[msaitoh, ticket #1420]
+
+sys/dev/scsipi/cd.c				1.351
+
+	PR 56109: limit the buffer size for a device capabilities requests.
+	[reinoud, ticket #1421]
+
+usr.sbin/sysinst/arch/acorn32/md.c		1.8
+usr.sbin/sysinst/arch/alpha/md.c		1.10
+usr.sbin/sysinst/arch/amiga/md.c		1.7
+usr.sbin/sysinst/arch/arc/md.c			1.14
+usr.sbin/sysinst/arch/atari/md.c		1.8
+usr.sbin/sysinst/arch/bebox/md.c		1.10
+usr.sbin/sysinst/arch/cats/md.c			1.6
+usr.sbin/sysinst/arch/cobalt/md.c		1.15
+usr.sbin/sysinst/arch/dummy/md.c		1.7
+usr.sbin/sysinst/arch/emips/md.c		1.10
+usr.sbin/sysinst/arch/evbarm/md.c		1.22
+usr.sbin/sysinst/arch/evbmips/md.c		1.10
+usr.sbin/sysinst/arch/evbppc/md.c		1.10
+usr.sbin/sysinst/arch/evbsh3/md.c		1.7
+usr.sbin/sysinst/arch/ews4800mips/md.c		1.8
+usr.sbin/sysinst/arch/hp300/md.c		1.12
+usr.sbin/sysinst/arch/hpcarm/md.c		1.11
+usr.sbin/sysinst/arch/hpcmips/md.c		1.10
+usr.sbin/sysinst/arch/hpcsh/md.c		1.11
+usr.sbin/sysinst/arch/hppa/md.c			1.9
+usr.sbin/sysinst/arch/i386/md.c			1.34
+usr.sbin/sysinst/arch/landisk/md.c		1.15
+usr.sbin/sysinst/arch/luna68k/md.c		1.10
+usr.sbin/sysinst/arch/mac68k/md.c		1.11
+usr.sbin/sysinst/arch/macppc/md.c		1.7
+usr.sbin/sysinst/arch/mipsco/md.c		1.9
+usr.sbin/sysinst/arch/mvme68k/md.c		1.12
+usr.sbin/sysinst/arch/news68k/md.c		1.8
+usr.sbin/sysinst/arch/newsmips/md.c		1.7
+usr.sbin/sysinst/arch/ofppc/md.c		1.13
+usr.sbin/sysinst/arch/playstation2/md.c		1.10
+usr.sbin/sysinst/arch/pmax/md.c			1.9
+usr.sbin/sysinst/arch/prep/md.c			1.14
+usr.sbin/sysinst/arch/sandpoint/md.c		1.10
+usr.sbin/sysinst/arch/sgimips/md.c		1.10
+usr.sbin/sysinst/arch/shark/md.c		1.7
+usr.sbin/sysinst/arch/sparc/md.c		1.7
+usr.sbin/sysinst/arch/sparc64/md.c		1.7
+usr.sbin/sysinst/arch/vax/md.c			1.8
+usr.sbin/sysinst/arch/x68k/md.c			1.12
+usr.sbin/sysinst/arch/zaurus/md.c		1.12
+usr.sbin/sysinst/defs.h				1.77-1.79
+usr.sbin/sysinst/gpt.c				1.27-1.28
+usr.sbin/sysinst/install.c			1.22
+usr.sbin/sysinst/main.c				1.28
+usr.sbin/sysinst/target.c			1.16-1.17
+usr.sbin/sysinst/upgrade.c			1.19
+usr.sbin/sysinst/util.c				1.64
+
+	sysinst: on x86 make sure to update the bootloader when upgrading
+	existing installations.
+	Clean up temporary wedges used during extraction/installation.
+	[martin, ticket #1422]
+
+build.sh					1.345
+
+	Add "distsets" alias for "distribution sets".
+	[mrg, ticket #1423]
+
+sys/dev/pci/ixgbe/ix_txrx.c			1.95
+sys/dev/pci/ixgbe/ixgbe.c			1.305 via patch
+sys/dev/pci/ixgbe/ixgbe_mbx.c			1.19
+sys/dev/pci/ixgbe/ixgbe_netbsd.h		1.15-1.16
+sys/dev/pci/ixgbe/ixv.c				1.178 via patch
+
+	Use atomic_{load,store}_relaxed() for event counters.
+	[msaitoh, ticket #1424]
+
+xsrc/external/mit/xterm/dist/graphics_sixel.c	1.2 (via patch)
+
+	Apply upstream fix for CVE-2022-24130.
+	[mrg, ticket #1425]
+
+sys/dev/ata/ata_recovery.c			1.3
+sys/dev/ata/ata_subr.c				1.9
+
+	PR 54790: stop xfer timeouts during recovery, all xfers will be
+	requeued anyway.
+	[jdolecek, ticket #1426]
+
+usr.sbin/sysinst/arch/i386/md.c			1.35
+usr.sbin/sysinst/defs.h				1.80
+usr.sbin/sysinst/target.c			1.18
+
+	sysinst: on x86 fix the copying of UEFI bootloaders which got
+	broken by the fixes in ticket #1422.
+	[martin, ticket #1427]
+
+sys/dev/usb/uhidev.c				1.82
+
+	PR 55019: do not explicitly set the HID Report Protocol upon attach.
+	[jakllsch, ticket #1428]
+
+bin/sh/histedit.c				1.60
+
+	sh(1): fix "fc -e".
+	[kre, ticket #1429]
+
+include/math.h					1.66
+
+	Correct C99 / C++11 feature testing.
+	[gdt, ticket #1430]
+
+sys/fs/udf/udf_strat_sequential.c		1.16
+sys/fs/udf/udf_subr.c				1.160 and 1.161 via patch, 1.167
+sys/fs/udf/udf_allocation.c			1.45
+sys/fs/udf/udf_vfsops.c				1.83
+
+	UDF file system: Fix and enhance interchange with Windows10 on
+	recordable media by being bug compatible.
+	Prevent device lockup on some drives on switching from writing to
+	reading.
+	[reinoud, ticket #1431 and #1432]
+
+usr.bin/man/man.c				1.69,1.70,1.72
+
+	man(1): fix -m option so it works as documented.
+	[gutteridge, ticket #1433]
+
+usr.sbin/puffs/mount_9p/node.c			1.30,1.31
+
+	mount_9p(8): fix writing to a file opened with write-only mode,
+	check returned type from T_READ request.
+	[ozaki-r, ticket #1434]
+
+sys/dev/ata/ata.c				1.167
+
+	PR 56745: avoid an unaccounted extra ATA channel freeze.
+	[perseant, ticket #1435]
+
+distrib/amd64/ramdisks/common/Makefile.ramdisk	1.16
+distrib/amd64/ramdisks/common/list.ramdisk	1.22
+
+	Add missing EFI bootloaders to the install kernel ramdisk.
+	[martin, ticket #1436]
+
+sys/fs/udf/udf_allocation.c			1.46
+
+	Avoid a race introduced with ticket #1431.
+	[reinoud, ticket #1437]
+
+sys/compat/netbsd32/netbsd32.h			1.140
+sys/compat/netbsd32/netbsd32_fs.c		1.95
+sys/fs/udf/udf_subr.c				1.169
+
+	Fix endian issue with UDF extended attribute handling.
+	PR 56801: implement support for mounting UDF in compat32.
+	[reinoud, ticket #1438]
+
+xsrc/external/mit/xinit/dist/startx.cpp		1.9
+
+	Do not attempt to trap SIGKILL.
+	[nia, ticket #1439]
+
+lib/libquota/quota_oldfiles.c			1.10
+sys/ufs/ufs/ufs_quota1.c			1.25
+usr.sbin/quotaon/quotaon.c			1.31
+
+	Fix quota1 user+group quota, quotaoff live lock and quotaon/off
+	verbose output.  Avoids possibly corrupted quota data.
+	[hannken, ticket #1440]
+
+sys/net/if_pppoe.c				1.179
+
+	pppoe(4): fix CVE-2022-29867 - discovery phase local network
+	mbuf corruption.
+	[martin, ticket #1442]
+
+sys/nfs/nfs_vfsops.c				1.243
+
+	nfs: fix file size limit.
+	[gavan, ticket #1441]
+
+sys/arch/x86/x86/pmap.c				1.414
+
+	Xen performance improvement for zeroing pages.
+	[bouyer, ticket #1443]
+
+sys/arch/xen/x86/x86_xpmap.c			1.91
+
+	Xen: in bootstrap, after switching to a new page table make sure that
+	now-unused memory is unmapped.
+	[bouyer, ticket #1444]
+
+sys/dev/pci/ixgbe/ix_txrx.c			1.98
+
+	ixg(4): fix dma memory unmap/free error that could cause
+	kernel panics, like "panic: HYPERVISOR_mmu_update failed"
+	as seen on Xen.
+	[bouyer, ticket #1445]
+
+sys/arch/hppa/hppa/hppa_machdep.c		1.33
+
+	PR 56830: RAS support is slightly incorrect on hppa.
+	[skrll, ticket #1446]
+
+distrib/sets/lists/base/mi			1.1295
+distrib/sets/lists/man/mi			1.1739
+external/mpl/bind/bin/confgen/ddns-confgen/Makefile 1.2
+
+	Provide tsig-keygen(8).
+	[brad, ticket #1447]
+
+sys/arch/hppa/hppa/idle_machdep.c		1.4
+sys/arch/hppa/hppa/machdep.c			1.17
+
+	Add some special NOPs to help qemu.
+	[skrll, ticket #1448]
+
+sbin/bioctl/bioctl.c				1.19
+
+	bioctl(8): Don't print garbage bv_seconds.
+	[msaitoh, ticket #1449]
+
+sys/arch/luna68k/conf/GENERIC			1.131
+sys/arch/luna68k/conf/INSTALL			1.32
+
+	Use "options WS_KERNEL_FG=WSCOL_GREEN" as most ports with color
+	support.
+	[tsutsui, ticket #1450]
+
+common/lib/libc/atomic/atomic_c11_compare_exchange_cas_16.c 1.4 (patch)
+common/lib/libc/atomic/atomic_c11_compare_exchange_cas_32.c 1.4 (patch)
+common/lib/libc/atomic/atomic_c11_compare_exchange_cas_8.c 1.4 (patch)
+
+	PR 56832: fix C implementations of __atomic_compare_exchange*.
+	[skrll, ticket #1451]
+
+external/gpl2/dtc/dist/dtc-lexer.l		1.5
+
+	Satisfy -fno-common
+	[tnn, ticket #1452]
+
+sys/dev/ic/mfi.c				1.63, 1.66-77
+sys/dev/ic/mfireg.h				1.11-1.20 via patch
+sys/dev/pci/mfi_pci.c				1.21
+sys/dev/pci/mfii.c				1.6-1.7, 1.10-1.15
+share/man/man4/mfi.4				1.13
+						
+	Improve mfi(4) and mfii(4):
+	- Set 'ld_sync' to NULL as part of 'again', to prevent use-after-free.  
+	- Add some code for the SKINNY variant to make Dell PERC H310 work.
+	- Print the percentage correctly when the background initialization is
+	  running.
+	- Clear mailbox to not to pass garbage data.
+	- Use union mbox instead of unit8_t xxx[] to avoid unaligned access.
+	- Set stripe size for BIOCVOL to show the size correctly in bioctl.
+	- Add support for iBBU-09 to show BBU voltage, current and temperature  
+	  correctly.
+	- Fix typos in comments.
+	- Sprinkle static.
+	- Improve debug printf()s.
+	- KNF. Remove extra semicolon. Whitespace fixes.
+	[msaitoh, ticket #1454]
+
+libexec/mail.local/mail.local.c			1.29
+
+	fix local privilege escalation due to a race condition
+
+	NetBSD-SA2016-006 included an incomplete fix for CVE-2016-6253,
+	a local privilege escalation vulnerability in mail.local(8).
+
+	Thanks to Jan Schaumann for bringing this to our attention.
+	[kre, ticket #1455]
+
+common/lib/libc/atomic/atomic_c11_compare_exchange_cas_32.c 1.5
+
+	Fix the copy&paste error in ticket #1451.
+	[skrll, ticket #1453]
+
+sys/dev/pci/if_bge.c				1.353
+
+	PR 56848: improve handling of bge(4) chips with ASF/IPMI firmware.
+	[buhrow, ticket #1456]
+
+sys/dev/pci/ixgbe/ixgbe.c			1.270,1.280,1.307-1.311,
+						1.313-1.314 via patch
+sys/dev/pci/ixgbe/ix_txrx.c			1.96-1.97
+sys/dev/pci/ixgbe/ixv.c				1.158,1.179-1.180 via patch
+
+
+	- ixg(4): Print Printed Board Assembly (PBA) number.
+	- ixg(4): Add IFF_RUNNING check in ixgbe_legacy_irq() again. this might
+	  fix small race but it's not so dangerous.
+	- Add value check for {tx,rx}_process_limit sysctl to avoid setting
+	  wrong value.
+	- Add missing num_tx_desc sysctl.
+	- No functional change:
+	  - KNF a bit.
+	  - Simplify setting of EIAC register.
+	  - Move the definition of eicr_mask variable.
+	  - Enclose flow director stuff in ixgbe_intr_admin_common() with
+	    IXGBE_FIR which is not defined in NetBSD.
+	  - Modify comment for consistency.
+	  - Use cached rx_copy_len in ixgbe_rxeof().
+	[msaitoh, ticket #1457]
+
+sys/dev/pci/ixgbe/ixgbe.c			1.315
+sys/dev/pci/ixgbe/ixgbe.h			1.86
+sys/dev/pci/ixgbe/ixv.c				1.181
+
+	PR 56857: fix a bug that the legacy interrupt doesn't work when MSI-X
+	allocation failed.
+	[msaitoh, ticket #1458]
+
+sys/dev/pci/ixgbe/ixgbe.c			1.261,1.265-1.268,1.273,
+						1.275-1.277,1.312,
+						1.316-1.319 via patch
+sys/dev/pci/ixgbe/ixgbe.h			1.85 via patch
+sys/dev/pci/ixgbe/ixgbe_type.h			1.46-1.47
+sys/dev/pci/ixgbe/ixgbe_x550.c			1.26
+sys/dev/pci/ixgbe/ixv.c				1.182
+
+	- Reduce code duplication between ixgbe_msix_admin() and
+	  ixgbe_legacy_irq().
+	  - Add missing code which was not in ixgbe_msix_admin() from
+	    ixgbe_legacy_irq() and vice versa.
+	  - Reorder code.
+	- Disable/enable the OTHER interrupts correctly.
+	- Don't return in the middle of ixgbe_msix_admin() when an flow
+	  director reinit failed. NetBSD currently doesn't support flow
+          director, so this is not a real bug.
+	- Print ECC, PHY and temp error log using with ratecheck().
+	- Correctly re-enable queue interrupt in ixgbe_legacy_irq().
+	- Correctly enter the recovery mode.
+	- No functional change:
+	  - Add some debug printf()s.
+	  - Don't use "more" flag for simplify.
+	  - Fix typos in comment.
+	  - KNF.
+	[msaitoh, ticket #1459]
+
+sys/dev/pci/ixgbe/ixgbe.c			patch
+
+	Fix previous to re-enable legacy interrupt correctly. It's a part of
+	ixgbe.c rev. 1.273.
+	[msaitoh, ticket #1460]
+
+usr.sbin/makemandb/apropos-utils.c		1.46,1.47,1.49
+usr.sbin/makemandb/apropos.1			1.19-1.23
+usr.sbin/makemandb/apropos.c			1.25,1.26
+
+	apropos(1) fixes:
+	- PR 54343: prevent crashes when man pages are missing certain
+	  mandatory fields.
+	- Make pager use functional.
+	- Handle some error cases properly.         
+	- Document the PAGER environment variable.    
+	- Other minor description and formatting adjustments to the man page.
+	[gutteridge, ticket #1461]
+
+sys/arch/atari/atari/stalloc.c			1.17
+
+	PR 56859: restore NULL pointer checks lost in rev 1.16.
+	[tsutsui, ticket #1462]
+
+crypto/external/bsd/openssh/dist/sshkey-xmss.c	patch
+crypto/external/bsd/openssh/dist/version.h	patch
+
+	ssh(1): apply upstream fix for CVE-2019-16905.
+	[martin, ticket #1463]
+
+lib/libc/arch/hppa/sys/ptrace.S			1.8
+
+	PR 56864: preserve register %r19 across calls to __cerror.
+	[skrll, ticket #1464]
+
+usr.sbin/makemandb/makemandb.c			1.63
+
+	PR 56118: fix out of bounds array access.
+	[skrll, ticket #1465]
+
+sys/arch/hppa/hppa/trap.c			1.119
+
+	PR 56118: fix sporadic app crashess on HPPA by handling
+	'NA' (non-access) traps for the lpa and probe instructions.
+	[skrll, ticket #1466]
+
+sys/arch/hppa/hppa/pmap.c			1.117
+sys/arch/hppa/include/pmap.h			1.41
+
+	PR 56849: fix kernel memory accounting on hppa:
+	- Don't include direct mapped memory in pmap statistics
+	- Decrement pmap statistics counts in pmap_kremove
+	[skrll, ticket #1467]
+
+sys/arch/hppa/hppa/trap.c			1.120
+sys/arch/hppa/include/ptrace.h			1.11,1.12 (patch)
+
+	PR 56866: fix confusion between actual breakpoints and
+	single-step breakpoints.
+	Define a PTRACE_ILLEGAL_ASM.
+	Only report the SSBREAKPOINT break instruction as SIGTRAP/TRAP_TRACE.
+	All other break instructions will be reported as SIGTRAP/TRAP_BRKPT.
+	[skrll, ticket #1468]
+
+libexec/ld.elf_so/arch/hppa/hppa_reloc.c	1.49
+libexec/ld.elf_so/arch/hppa/rtld_start.S	1.14
+
+	PR 56118: set DP early so that any binary functions that override
+	others get the right value if they're called before _start.
+	[skrll, ticket #1469]
+
+distrib/notes/alpha/hardware			1.20
+distrib/notes/common/postinstall		1.90 (patch)
+distrib/notes/mvme68k/install			1.24
+distrib/notes/sun3/install			1.17
+
+	Fix the title of the boot tape creation section.
+	Fix some links to HP alpha firmware.
+	Fix link to pkgsrc.tar.gz file.
+	[andvar, ticket #1470]
+
+distrib/notes/common/main			1.569 (patch)
+distrib/notes/sparc/contents			1.27,1.28 (patch)
+distrib/notes/sparc/install			1.59-1.61 (patch)
+
+	Remove floppy installation instructions from sparc documentation.
+	Nroff and typo fixes.
+	[andvar, ticket #1471]
+
+sys/lib/libkern/arch/hppa/Makefile.inc		1.13
+sys/lib/libkern/arch/hppa/milli.S		1.3
+sys/lib/libkern/arch/hppa/milli_extra.S		1.1
+
+	PR 56878: don't need $$sh_func_adrs.
+	Provide a (trivial) __canonicalize_funcptr_for_compare.
+	[skrll, ticket #1472]
+
+sys/lib/libkern/arch/hppa/milli_extra.S		1.2
+
+	Fix wrong register usage in ticket #1472.
+	[skrll, ticket #1473]
+
+sys/arch/hppa/hppa/pmap.c			1.120
+
+	PR 56867: purge the translations from the TLBs in pmap_procwr.
+	[skrll, ticket #1474]
+
+sys/miscfs/procfs/procfs_vnops.c		1.229
+
+	procfs: add missing permission check.
+	[shm, ticket #1475]
+
+usr.sbin/sysinst/label.c			1.39
+
+	PR 56893: fix adding NetBSD partitions to some GPT formatted disks
+	with preexisting other partitions.
+	[martin, ticket #1476]
+
+sys/dev/pci/if_wmreg.h				1.122-1.125
+sys/dev/pci/if_wmvar.h				1.48
+sys/dev/pci/if_wm.c				1.719-1.720,1.722-1.725,
+						1.727-1.740 via patch
+
+	- wm_tick: Add missing splx(s) when not WM_MPSAFE.
+	- Print DMA range info if the system is booting in the verbose mode.
+	- Micro optimization:
+	  - Call m_freem(m) only if m0 == NULL.
+	  - Call wm_xxeof() only when limit > 0.
+	  - Don't set the more flag when there is no packet to process.
+	- No functional changes:
+	  - Call txeof first, then rxeof for the consistency.
+	  - Remove duplicated break.
+	  - Remove stray semicolons from struct declaration.
+	  - Fix value return from void function.
+	  - Use macros.
+	  - Modify comment.
+	  - KNF.
+	[msaitoh, ticket #1477]
+
+xsrc-9/external/mit/xorg-server/dist/xkb/xkb.c		apply patch
+
+	Cherry-pick upstream fixes for
+	 * CVE-2022-2319/ZDI-CAN-16062: X.Org Server ProcXkbSetGeometry
+	   Out-Of-Bounds Access
+	 * CVE-2022-2320/ZDI-CAN-16070: X.Org Server ProcXkbSetDeviceInfo
+	   Out-Of-Bounds Access
+	[mrg, ticket #1478]
+
+sys/kern/subr_pool.c				1.285
+
+	Fix overflow errors for pools larger than 4GB and
+	output for kernel pool pages in "vmstat -s" output.
+	[simonb, ticket #1479]
+
+usr.bin/vmstat/vmstat.c				1.255
+
+	Fix Fixes overflow errors for pools larger than 4GB
+	when operating on core files.
+	[simonb, ticket #1480]
+
+external/mit/ctwm/libexec/ctwm_app_menu		1.5 (patch)
+
+	Avoid generating an invalid ctwmrc when emacs is installed.
+	[nia, ticket #1481]
+
+sys/dev/pci/pcidevs				1.1422,1.1445-1.1460 via patch
+sys/dev/pci/pcidevs.h				regen
+sys/dev/pci/pcidevs_data.h			regen
+sys/arch/x86/pci/amdsmn.c			1.13
+
+	Update pcidevs:
+	- Add Intel Alder Lake devices and Intel 600 Series PCH devices.
+	- Add some Intel Xeon Scalable / Skylake-E devices.
+	- Fix AMD F16_HB from 0x1568 to 0x1538.
+	- Add some devices for AMD and improve some descriptions to clarify.
+	- Add VMware AHCI and NVMe.
+	- Update Intel 700 series Ethernet devices.
+	- Add some Broadcom devices.
+	- Add some Broadcom / LSI RAID cards.
+	- Fix typos and whitespace.
+	[msaitoh, ticket #1482]
+
+sys/dev/usb/uslsa.c				1.32
+
+	uslsa(4): PR 56946: fix baud rate setting on big endian machines
+	[rin, ticket #1483]
+
+include/sched.h					1.13-1.15
+lib/libc/sys/clone.2				1.14,1.15
+
+	clone(2): remove mentions of CLONE_PID and CLONE_STOPPED.
+	sched.h: restrict visibility of clone to GNU_SOURCE.
+	[wiz, ticket #1484]
+
+sys/dev/isa/mcd.c				1.121 (patch)
+sys/dev/pci/if_iwi.c				1.117 (patch)
+sys/dev/raidframe/rf_netbsdkintf.c		1.401 (patch)
+sys/dev/scsipi/ses.c				1.52 (patch)
+
+	sys/dev: memset zero before copyout.
+	[riastradh, ticket #1485]
+
+sys/compat/netbsd32/netbsd32_nfssvc.c		1.7
+
+	compat_netbsd32: copy out 32-bit version in nfssvc32_nsd_out.
+	[riastradh, ticket #1486]
+
+sys/altq/altq_hfsc.c				1.29 (patch)
+sys/altq/altq_priq.c				1.27 (patch)
+
+	sys/altq: memset zero before copyout.
+	[riastradh, ticket #1488]
+
+sys/compat/netbsd32/netbsd32.h			1.137 (patch)
+sys/compat/netbsd32/netbsd32_conv.h		1.45 (patch)
+sys/compat/netbsd32/netbsd32_fs.c		1.92 (patch)
+sys/compat/netbsd32/netbsd32_netbsd.c		1.232 (patch)
+sys/compat/netbsd32/netbsd32_socket.c		1.56 (patch)
+
+	The read/write/send/recv system calls return ssize_t because -1 is
+	returned on error.  Therefore we must restrict the lengths of any
+	buffers to NETBSD32_SSIZE_MAX with compat32 to avoid garbage return
+	values.
+	[riastradh, ticket #1489]
+
+sys/compat/common/ieee80211_20.c		1.7 (patch)
+sys/compat/common/if_media_80.c			1.4 (patch)
+sys/compat/common/kern_info_09.c		1.22 (patch)
+sys/compat/common/kern_info_43.c		1.40 (patch)
+sys/compat/common/kern_resource_43.c		1.23 (patch)
+sys/compat/common/kern_sig_13.c			1.22 (patch)
+sys/compat/common/kern_sig_43.c			1.37 (patch)
+sys/compat/common/kern_time_50.c		1.37 (patch)
+sys/compat/common/vfs_syscalls_12.c		1.38 (patch)
+sys/compat/common/vfs_syscalls_20.c		(apply patch)
+sys/compat/common/vfs_syscalls_30.c		1.43 (patch)
+sys/compat/common/vfs_syscalls_43.c		1.68 (patch)
+sys/compat/freebsd/freebsd_machdep.c		1.5 (patch)
+sys/compat/freebsd/freebsd_misc.c		1.34 (patch)
+sys/compat/freebsd/freebsd_sched.c		1.23 (patch)
+sys/compat/linux/arch/alpha/linux_machdep.c	1.52 (patch)
+sys/compat/linux/arch/alpha/linux_osf1.c	1.5 (patch)
+sys/compat/linux/arch/amd64/linux_machdep.c	1.60 (patch)
+sys/compat/linux/arch/arm/linux_machdep.c	1.34 (patch)
+sys/compat/linux/arch/arm/linux_ptrace.c	1.23 (patch)
+sys/compat/linux/arch/i386/linux_machdep.c	1.168 (patch)
+sys/compat/linux/arch/i386/linux_ptrace.c	1.35 (patch)
+sys/compat/linux/arch/m68k/linux_machdep.c	1.43 (patch)
+sys/compat/linux/arch/mips/linux_machdep.c	1.44 (patch)
+sys/compat/linux/arch/powerpc/linux_exec_powerpc.c 1.25 (patch)
+sys/compat/linux/arch/powerpc/linux_machdep.c	1.51 (patch)
+sys/compat/linux/arch/powerpc/linux_ptrace.c	1.33 (patch)
+sys/compat/linux/common/linux_cdrom.c		1.28 (patch)
+sys/compat/linux/common/linux_fdio.c		1.14 (patch)
+sys/compat/linux/common/linux_file.c		1.119 (patch)
+sys/compat/linux/common/linux_hdio.c		1.19 (patch)
+sys/compat/linux/common/linux_misc.c		1.252 (patch)
+sys/compat/linux/common/linux_mtio.c		1.8 (patch)
+sys/compat/linux/common/linux_oldolduname.c	1.67 (patch)
+sys/compat/linux/common/linux_olduname.c	1.67 (patch)
+sys/compat/linux/common/linux_sched.c		1.79 (patch)
+sys/compat/linux/common/linux_signal.c		1.84 (patch)
+sys/compat/linux/common/linux_socket.c		1.153 (patch)
+sys/compat/linux/common/linux_time.c		1.40 (patch)
+sys/compat/linux32/arch/amd64/linux32_machdep.c	1.46 (patch)
+sys/compat/linux32/common/linux32_exec_elf32.c	1.20 (patch)
+sys/compat/linux32/common/linux32_resource.c	1.12 (patch)
+sys/compat/linux32/common/linux32_signal.c	1.21 (patch)
+sys/compat/linux32/common/linux32_time.c	1.38 (patch)
+sys/compat/netbsd32/netbsd32_compat_12.c	1.36 (patch)
+sys/compat/netbsd32/netbsd32_compat_20.c	1.42 (patch)
+sys/compat/netbsd32/netbsd32_compat_43.c	1.62 (patch)
+sys/compat/netbsd32/netbsd32_compat_50.c	1.52 (patch)
+sys/compat/netbsd32/netbsd32_conv.h		1.46 (patch)
+sys/compat/netbsd32/netbsd32_nfssvc.c		1.8 (patch)
+sys/compat/netbsd32/netbsd32_ptrace.c		1.9 (patch)
+sys/compat/netbsd32/netbsd32_signal.c		1.52 (patch)
+sys/compat/netbsd32/netbsd32_time.c		1.56 (patch)
+sys/compat/netbsd32/netbsd32_wait.c		1.25 (patch)
+sys/compat/ossaudio/ossaudio.c			1.84 (patch)
+sys/compat/sunos/sunos_ioctl.c			1.71 (patch)
+sys/compat/sunos/sunos_misc.c			1.177 (patch)
+sys/compat/sunos32/sunos32_ioctl.c		1.36 (patch)
+sys/compat/sunos32/sunos32_misc.c		1.85 (patch)
+sys/compat/sys/time_types.h			1.6 (patch)
+sys/compat/ultrix/ultrix_ioctl.c		1.39 (patch)
+sys/compat/ultrix/ultrix_misc.c			1.126 (patch)
+
+	sys/compat: memset zero before copyout.
+	[riastradh, ticket #1487]
+
+sys/dev/acpi/thinkpad_acpi.c			1.48
+
+	Fix thinkpad(4) fan sensor.
+	[riastradh, ticket #1490]
+
+sys/external/bsd/drm2/dist/drm/i915/i915_drv.h	(apply patch)
+
+	Fix newlines in i915 console messages.
+	[riastradh, ticket #1491]
+
+sys/dev/usb/ukbd.c				1.154
+
+	ukbd(4): Wait for callouts and blinking to complete in detach.
+	[riastradh, ticket #1492]
+
+sys/dev/usb/ucom.c				1.129
+
+	ucom(4): Fix earlier mistake causing pipes not to be closed.
+	[riastradh, ticket #1493]
+
+external/cddl/osnet/sys/kern/kmem.c		1.3
+
+	Fix stack garbage disclosure in solaris compat
+	(zfs, dtrace).
+	[riastradh, ticket #1494]
+
+share/man/man4/tpm.4				1.7
+sys/dev/acpi/tpm_acpi.c				1.14
+sys/dev/ic/tpm.c				1.17-1.25
+sys/dev/ic/tpmreg.h				1.7-1.11
+sys/dev/ic/tpmvar.h				1.8-1.10
+
+	tpm(4): HWRNG and fixed suspend/resume.
+	[riastradh, ticket #1495]
+
+doc/LAST_MINUTE					(manually edited)
+external/gpl2/groff/tmac/mdoc.local		(manually edited)
+sys/sys/param.h					(manually edited)
+
+	Update version numbers - welcome to NetBSD 9.3!
+	[martin]
 

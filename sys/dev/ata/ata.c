@@ -1,4 +1,4 @@
-/*	$NetBSD: ata.c,v 1.149 2019/05/25 16:30:18 christos Exp $	*/
+/*	$NetBSD: ata.c,v 1.149.2.2 2022/08/30 18:28:42 martin Exp $	*/
 
 /*
  * Copyright (c) 1998, 2001 Manuel Bouyer.  All rights reserved.
@@ -25,7 +25,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: ata.c,v 1.149 2019/05/25 16:30:18 christos Exp $");
+__KERNEL_RCSID(0, "$NetBSD: ata.c,v 1.149.2.2 2022/08/30 18:28:42 martin Exp $");
 
 #include "opt_ata.h"
 
@@ -1584,12 +1584,14 @@ ata_thread_run(struct ata_channel *chp, int flags, int type, int arg)
 			/* NOTREACHED */
 		}
 
-		/*
-		 * Block execution of other commands while reset is scheduled
-		 * to a thread.
-		 */
-		ata_channel_freeze_locked(chp);
-		chp->ch_flags |= type;
+		if (!(chp->ch_flags & type)) {
+			/*
+			 * Block execution of other commands while
+			 * reset is scheduled to a thread.
+			 */
+			ata_channel_freeze_locked(chp);
+			chp->ch_flags |= type;
+		}
 
 		cv_signal(&chp->ch_thr_idle);
 		return;
@@ -2031,9 +2033,7 @@ ata_probe_caps(struct ata_drive_datas *drvp)
 #if NATA_DMA
 	if ((atac->atac_cap & ATAC_CAP_DMA) == 0) {
 		/* don't care about DMA modes */
-		if (*sep != '\0')
-			aprint_verbose("\n");
-		return;
+		goto out;
 	}
 	if (cf_flags & ATA_CONFIG_DMA_SET) {
 		ata_channel_lock(chp);
@@ -2079,13 +2079,10 @@ ata_probe_caps(struct ata_drive_datas *drvp)
 	}
 	ata_channel_unlock(chp);
 
-	if (*sep != '\0')
-		aprint_verbose("\n");
-
 #if NATA_UDMA
 	if ((atac->atac_cap & ATAC_CAP_UDMA) == 0) {
 		/* don't care about UDMA modes */
-		return;
+		goto out;
 	}
 	if (cf_flags & ATA_CONFIG_UDMA_SET) {
 		ata_channel_lock(chp);
@@ -2100,7 +2097,10 @@ ata_probe_caps(struct ata_drive_datas *drvp)
 		ata_channel_unlock(chp);
 	}
 #endif	/* NATA_UDMA */
+out:
 #endif	/* NATA_DMA */
+	if (*sep != '\0')
+		aprint_verbose("\n");
 }
 
 /* management of the /dev/atabus* devices */

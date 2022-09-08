@@ -1,11 +1,9 @@
-/*	$NetBSD: atomic_c11_compare_exchange_cas_16.c,v 1.2.20.1 2022/05/15 12:37:00 martin Exp $	*/
-
 /*-
- * Copyright (c) 2007 The NetBSD Foundation, Inc.
+ * Copyright (c) 2022 The NetBSD Foundation, Inc.
  * All rights reserved.
  *
  * This code is derived from software contributed to The NetBSD Foundation
- * by Martin Husemann.
+ * by Nick Hudson
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,32 +27,16 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "atomic_op_namespace.h"
+#include "machine/asm.h"
 
-#if !defined(_KERNEL) && !defined(_STANDALONE)
-#include <stdbool.h>
-#endif
-#include <sys/atomic.h>
 
-bool __atomic_compare_exchange_2(volatile void *, void *, uint16_t,
-    bool, int, int);
+#define	MILLI_ENTRY(x)					!\
+	.text ! .align 4				!\
+	.export x, millicode ! .label x ! .proc		!\
+	.callinfo no_calls				!\
+	.entry
 
-bool
-__atomic_compare_exchange_2(volatile void *mem,
-    void *expected, uint16_t desired,
-    bool weak, int success, int failure)
-{
-	uint16_t * const ep = expected;
-	const uint16_t old = *ep;
-
-	/*
-	 * Ignore the details (weak, memory model on success and failure)
-	 * and just do the cas. If we get here the compiler couldn't
-	 * do better and it mostly will not matter at all.
-	 */
-	const uint16_t prev = atomic_cas_16(mem, old, desired);
-	if (prev == old)
-		return true;
-	*ep = prev;
-	return false;
-}
+MILLI_ENTRY(__canonicalize_funcptr_for_compare)
+	bv	%r0(%rp)
+	 copy	%arg0, %ret0
+EXIT(__canonicalize_funcptr_for_compare)
