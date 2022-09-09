@@ -1,4 +1,4 @@
-/*	$NetBSD: fpu_compare.c,v 1.6 2022/09/04 13:14:57 rin Exp $ */
+/*	$NetBSD: fpu_compare.c,v 1.8 2022/09/08 15:22:43 rin Exp $ */
 
 /*
  * Copyright (c) 1992, 1993
@@ -48,7 +48,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: fpu_compare.c,v 1.6 2022/09/04 13:14:57 rin Exp $");
+__KERNEL_RCSID(0, "$NetBSD: fpu_compare.c,v 1.8 2022/09/08 15:22:43 rin Exp $");
 
 #include <sys/types.h>
 
@@ -83,7 +83,6 @@ fpu_compare(struct fpemu *fe, int ordered)
 
 	a = &fe->fe_f1;
 	b = &fe->fe_f2;
-	r = &fe->fe_f3;
 
 	if (ISNAN(a) || ISNAN(b)) {
 		/*
@@ -95,7 +94,10 @@ fpu_compare(struct fpemu *fe, int ordered)
 		if (ISSNAN(a) || ISSNAN(b))
 			cc |= FPSCR_VXSNAN;
 		if (ordered) {
-			if (fe->fe_fpscr & FPSCR_VE || ISQNAN(a) || ISQNAN(b))
+#ifdef notyet /* XXXRO */
+			if ((fe->fe_fpscr & FPSCR_VE) == 0 ||
+			    ISQNAN(a) || ISQNAN(b))
+#endif
 				cc |= FPSCR_VXVC;
 		}
 		goto done;
@@ -151,7 +153,7 @@ fpu_compare(struct fpemu *fe, int ordered)
 		cc = FPSCR_FE;
 		goto done;
 	}
-	fpu_sub(fe);
+	r = fpu_sub(fe);
 	if (ISZERO(r))
 		cc = FPSCR_FE;
 	else if (r->fp_sign)
