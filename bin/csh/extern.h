@@ -1,4 +1,4 @@
-/* $NetBSD: extern.h,v 1.32 2020/04/23 07:54:53 simonb Exp $ */
+/* $NetBSD: extern.h,v 1.34 2022/09/15 11:35:06 martin Exp $ */
 
 /*-
  * Copyright (c) 1991, 1993
@@ -291,6 +291,9 @@ void unsetv(Char *);
 void setNS(Char *);
 void shift(Char **, struct command *);
 void plist(struct varent *);
+#ifdef EDIT
+void updateediting(void);
+#endif
 
 /*
  * time.c

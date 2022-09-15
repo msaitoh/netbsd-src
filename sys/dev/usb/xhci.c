@@ -1,4 +1,4 @@
-/*	$NetBSD: xhci.c,v 1.169 2022/09/01 18:09:45 riastradh Exp $	*/
+/*	$NetBSD: xhci.c,v 1.171 2022/09/13 10:33:37 riastradh Exp $	*/
 
 /*
  * Copyright (c) 2013 Jonathan A. Kollasch
@@ -34,7 +34,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: xhci.c,v 1.169 2022/09/01 18:09:45 riastradh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: xhci.c,v 1.171 2022/09/13 10:33:37 riastradh Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_usb.h"
@@ -605,11 +605,13 @@ xhci_childdet(device_t self, device_t child)
 {
 	struct xhci_softc * const sc = device_private(self);
 
+	mutex_enter(&sc->sc_intr_lock);
 	KASSERT((sc->sc_child == child) || (sc->sc_child2 == child));
 	if (child == sc->sc_child2)
 		sc->sc_child2 = NULL;
 	else if (child == sc->sc_child)
 		sc->sc_child = NULL;
+	mutex_exit(&sc->sc_intr_lock);
 }
 
 int
@@ -1103,17 +1105,22 @@ xhci_resume(device_t self, const pmf_qual_t *qual)
 		goto out;
 	}
 
-	/* Resume command issuance.  */
+	/* Success!  */
+	ok = true;
+
+out:	/*
+	 * Resume command issuance.  If the hardware failed to resume,
+	 * well, tough -- deadlocking because everything is held up on
+	 * the suspension, with no opportunity to detach, isn't better
+	 * than timing out waiting for dead hardware.
+	 */
 	mutex_enter(&sc->sc_lock);
 	KASSERT(sc->sc_suspender);
 	sc->sc_suspender = NULL;
 	cv_broadcast(&sc->sc_cmdbusy_cv);
 	mutex_exit(&sc->sc_lock);
 
-	/* Success!  */
-	ok = true;
-
-out:	mutex_exit(&sc->sc_rhlock);
+	mutex_exit(&sc->sc_rhlock);
 	return ok;
 }
 
