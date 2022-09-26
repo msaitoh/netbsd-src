@@ -1,4 +1,4 @@
-/*	$NetBSD: readline.c,v 1.174 2022/04/08 20:11:31 christos Exp $	*/
+/*	$NetBSD: readline.c,v 1.176 2022/09/21 01:33:53 christos Exp $	*/
 
 /*-
  * Copyright (c) 1997 The NetBSD Foundation, Inc.
@@ -31,7 +31,7 @@
 
 #include "config.h"
 #if !defined(lint) && !defined(SCCSID)
-__RCSID("$NetBSD: readline.c,v 1.174 2022/04/08 20:11:31 christos Exp $");
+__RCSID("$NetBSD: readline.c,v 1.176 2022/09/21 01:33:53 christos Exp $");
 #endif /* not lint && not SCCSID */
 
 #include <sys/types.h>
@@ -478,10 +478,14 @@ readline(const char *p)
 	ret = el_gets(e, &count);
 
 	if (ret && count > 0) {
+		int lastidx;
+
 		buf = strdup(ret);
 		if (buf == NULL)
 			goto out;
-		buf[strcspn(buf, "\n")] = '\0';
+		lastidx = count - 1;
+		if (buf[lastidx] == '\n')
+			buf[lastidx] = '\0';
 	} else
 		buf = NULL;
 

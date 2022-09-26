@@ -1,4 +1,4 @@
-.\"	$NetBSD: sh.1,v 1.244 2022/08/19 13:37:03 kre Exp $
+.\"	$NetBSD: sh.1,v 1.250 2022/09/18 06:03:19 kre Exp $
 .\" Copyright (c) 1991, 1993
 .\"	The Regents of the University of California.  All rights reserved.
 .\"
@@ -31,10 +31,11 @@
 .\"
 .\"	@(#)sh.1	8.6 (Berkeley) 5/4/95
 .\"
-.Dd January 7, 2022
+.\" RIP Noi, October 6, 1959 --
+.Dd August 26, 2022
 .Dt SH 1
 .\" everything except c o and s (keep them ordered)
-.ds flags abCEeFfhIiLmnpquVvXx
+.ds flags abCEeFfhIiLlmnpquVvXx
 .Os
 .Sh NAME
 .Nm sh
@@ -119,11 +120,20 @@ option is not present, the shell is considered an interactive shell.
 An interactive shell generally prompts before each command and handles
 programming and command errors differently (as described below).
 When first starting,
+if neither the
+.Fl l
+nor
+.Cm \+l
+options were given on the command line,
 the shell inspects argument 0, and if it begins with a dash
-.Sq - ,
+.Sq \- ,
+or if the
+.Fl l
+option was given,
 the shell is also considered
 a login shell.
-This is normally done automatically by the system
+Beginning argument 0 with a dash is normally done
+automatically by the system
 when the user first logs in.
 A login shell first reads commands
 (as if by using the
@@ -159,7 +169,7 @@ is correct, as desired, use:
 Otherwise if
 .Ev ENV
 appears to contain a command substitution,
-which is not performed here,
+which is never performed here,
 or if there were no expansions to expand, the value of
 .Ev ENV
 is used as the file name.
@@ -258,8 +268,7 @@ The
 .Ic set Fl o
 name is provided next to the single letter option in
 the description below.
-Some options have only a long name, they are described after
-the flag options, they are used with
+Some options have only a long name, and are used with
 .Fl o
 or
 .Cm +o
@@ -270,7 +279,7 @@ Those are listed in the table below after the options
 with a one letter, flag, equivalent.
 .Pp
 Other options described are for the command line only.
-Specifying a dash
+Specifying using a dash (or minus)
 .Dq Cm \-
 turns the option on, while using a plus
 .Dq Cm +
@@ -392,7 +401,7 @@ or
 given at invocation of
 .Nm ) ,
 and standard input and standard error refer to
-terminmal type devices.
+terminal type devices.
 .It Fl L Em local_lineno
 When set, before a function is defined,
 causes the variable
@@ -410,8 +419,26 @@ in this shell.
 For more details see the section
 .Sx LINENO
 below.
+.It Fl l Em login
+When set on the command line, the shell will be considered
+a login shell.
+When reset on the command line
+.Po Cm \&+l
+or
+.Cm Cm \&+o Em login Pc ,
+the shell will not be
+considered a login shell, even if the command name parameter
+.Po Va argv[0] Pc
+begins with a dash
+.Pq Sq \- .
+See
+.Sx Invocation
+for the effects of this.
+Changing the value of this option while the shell is
+running has no effect.
 .It Fl m Em monitor
-Turn on job control (set automatically at shell startup when interactive).
+Turn on job control (set automatically at shell startup,
+if not mentioned on the command line, when interactive).
 .It Fl n Em noexec
 Read and parse commands, but do not execute them.
 This is useful for checking the syntax of shell scripts.
@@ -885,7 +912,8 @@ built-in command.
 Whenever a reserved word (see above) may occur,
 and after checking for reserved words, the shell
 checks the word to see if it matches an alias.
-If it does, it replaces it in the input stream with its value.
+If it does, the alias word is replaced by its value in the input stream,
+as if the value had been entered instead.
 For example, if there is an alias called
 .Dq lf
 with the value
@@ -936,7 +964,8 @@ command is located.
 Any remaining words are considered the arguments of the command.
 If no command name resulted, then the
 .Dq Ar name Ns Li = Ns Ar value
-variable assignments recognized in item 1 affect the current shell.
+variable assignments recognized in item 1 affect the current shell,
+but are not automatically added to the environment (are not exported).
 .It
 Redirections are performed, from first to last, in the order given,
 as described in the next section.
@@ -968,6 +997,11 @@ that refers to a file descriptor.
 If present it must occur unquoted, immediately before the redirection
 operator, with no intervening white space, and becomes a
 part of that operator.
+If not explicitly present,
+.Ar n
+will be 0 (standard input)
+or 1 (standard output)
+depending upon the redicection operator used.
 If file descriptor
 .Ar n
 was open prior to the redirection, its previous use is closed.
@@ -1117,7 +1151,7 @@ are set to the arguments of the shell function.
 The variables which are explicitly placed in the environment of
 the command (by placing assignments to them before the function name) are
 made local to the function and are set to the values given,
-and exported for the benefit of programs executed with the function.
+and exported for the benefit of programs executed within the function.
 Then the command given in the function definition is executed.
 The positional parameters, and local variables, are restored to
 their original values when the command completes.
@@ -1300,9 +1334,10 @@ sends both the standard output and standard error of command1
 to the standard input of command2.
 .Pp
 Note that unlike some other shells, each process in the pipeline is a
-child of the invoking shell (unless it is a shell built-in, in which case
-it executes in the current shell \(em but any effect it has on the
-environment is wiped).
+child of the invoking shell, except in the case where the pipeline
+is a single simple command (no
+.Sq Ic \(ba
+characters appear.)
 .Pp
 A pipeline is a simple case of an AND-OR-list (described below.)
 A
@@ -1742,11 +1777,14 @@ The value of the parameter is listed next to its character.
 .It Dv *
 Expands to the positional parameters, starting from one.
 When the
-expansion occurs within a double-quoted string it expands to a single
+expansion occurs in a situation where field splitting is never
+performed, such as within a double-quoted string, it expands to a single
 field with the value of each parameter separated by the first character of
 the
 .Ev IFS
-variable, or by a
+variable (possibly nothing if
+.EV IFS
+has a null value), or by a
 .Aq space
 if
 .Ev IFS
@@ -1755,6 +1793,13 @@ is unset.
 Expands to the positional parameters, starting from one.
 When the expansion occurs within double quotes, each positional
 parameter expands as a separate argument.
+If the expansion happens in other situations where field splitting
+is not performed, whether double quoted or not, the results are undefined.
+In most shells, including this one,
+.Dv \&$@
+is treated as
+.Dv \&$*
+in such a context, but this is not universally true.
 If there are no positional parameters, the
 expansion of @ generates zero arguments, even when
 .Dv $@
@@ -1780,7 +1825,7 @@ the two arguments:
 Expands to the number of positional parameters.
 .It Dv \&?
 Expands to the exit status of the most recent pipeline.
-.It Dv \- No (hyphen, or minus)
+.It Dv \- No (dash, hyphen, or minus)
 Expands to the current option flags (the single-letter
 option names concatenated into a string) as specified on
 invocation, by the set built-in command, or implicitly
@@ -1831,8 +1876,8 @@ instances of the expansion, or any of the others).
 Unless the
 .Ev IFS
 variable has an empty value,
-Field Splitting is performed on fields
-generated by step (1) except for Tilde Expansion.
+Field Splitting is performed on the text resulting from
+the expansions in step (1) except for Tilde Expansion.
 .It
 Pathname Expansion (unless set
 .Fl f
@@ -3191,7 +3236,7 @@ to set key bindings as defined by
 .Xr editrc 5 .
 .\"
 .Pp
-.It Ic jobid Oo Fl g Ns \&| Ns Fl j Ns \&| Ns Fl p Oc  Op Ar job
+.It Ic jobid Oo Fl g Ns \&| Ns Fl j Ns \&| Ns Fl p Oc Op Ar job
 With no flags, print the process identifiers of the processes in the job.
 If the
 .Ar job
@@ -3573,7 +3618,7 @@ If an unescaped backslash is followed by a newline,
 the backslash and the newline will be deleted,
 and replaced by the contents of the following line,
 which is processed as if it had been part of the original line.
-This includes reading yet more input if necessary, 
+This includes reading yet more input if necessary,
 until a line is read that is not terminated by
 an unescaped backslash immediately before the newline.
 .\"
@@ -4642,6 +4687,144 @@ This environment setting overrides the
 .Ev MAIL
 setting.
 There is a maximum of 10 mailboxes that can be monitored at once.
+.It Ev NBSH_INVOCATION
+When
+.Nm
+starts, after it has processed its arguments,
+and imported variables from the environment,
+this variable is set to a string of one or more
+characters which indicate the way the command line
+was processed.
+This is intended to be used in the startup
+scripts
+.Pq see Sx Invocation
+to allow them to determine what actions are
+appropriate to take.
+.Ev NBSH_INVOCATION
+is marked
+.Dq not to be exported .
+Apart from the way it is initialized,
+and that it overrides any value that may
+have been set in the environment,
+there is nothing special about it.
+It can be unset, or altered,
+with no ramifications,
+other than whatever effect this might have
+on its use in the startup scripts.
+.Pp
+When the value of this variable remains as set at startup by
+.Nm
+the following characters may appear in the value,
+in the circumstances described.
+Any present will always appear in ASCII lexical
+order, as they appear below (to make testing the value easier to code).
+.Pp
+.Bl -compact -tag -width M__ -offset indent
+.It \&!
+Always present when set by
+.Nm ,
+and is always first.
+No specific meaning is attributed to this character.
+.It \&\-
+Set when the first character of
+.Va argv[0]
+as set when the shell was invoked was a dash
+.Pq Sq \&\- .
+.It \&0
+Set when at startup, the special parameter
+.Dv \&$#
+has the value 0.
+That is, no arguments were given to the script
+in the case that there is a script.
+.It \&c
+The
+.Fl c
+option was given on the command line.
+.It \&f
+Neither the
+.Fl c
+nor
+.Fl s
+options were present on the command line,
+but there is at least one non-option argument,
+which will then be interpreted as the name of the
+.Ar command_file
+to process.
+.It \&i
+The shell is interactive.
+At startup this indicates that
+.Sq i
+will appear in the value of the
+special parameter
+.Va \&$\- .
+However, the special parameter will
+alter as the
+.Fl i
+option is manipulated by the
+.Ic set
+built-in command, but
+.Ev NBSH_INVOCATION
+is never subsequently altered by the shell itself
+(unless manipulated by a regular variable operations).
+.It \&l
+The shell is a login shell.
+As with
+.Sq i
+(the same operational conditions apply)
+this character will be present if the
+.Sq l
+is present in
+.Va \&$-
+when the shell is starting.
+Note that if
+.Sq l
+is present, and
+.Sq \&\-
+is not, then the shell was invoked
+with the
+.Fl l
+option on the command line (or the
+equivalent
+.Fl o Em login ) .
+On the other hand, if
+.Sq \&\-
+appears, and
+.Sq l
+does not,
+then the shell was invoked with the
+.Cm +l
+option (or its equivalent) on the command line.
+If both
+.Sq \&\-
+and
+.Sq l
+appear, then the shell is a normal login
+shell, the
+.Fl l
+option might have been given, but had no effect.
+If neither
+.Sq \&\-
+nor
+.Sq l
+appear, then the shell is not a login shell,
+and was never intended to be.
+The
+.Cm +l
+option might have been given, but had no effect.
+.It \&p
+The shell was started as a privileged
+(set user id) process.
+This indicates that the
+.Fl p
+option must have been given on the command
+line, or privileges would have been dropped.
+.It \&s
+The shell will read commands from standard input.
+The
+.Fl s
+option was given, or implied.
+This does not imply that the shell is interactive.
+.El
 .It Ev PATH
 The default search path for executables.
 See the
@@ -4798,7 +4981,6 @@ has not been set or unset.
 The default terminal setting for the shell.
 This is inherited by
 children of the shell, and is used in the history editing modes.
-.\" This is explicitly last, not in sort order - please leave!
 .It Ev ToD
 When referenced, uses the value of
 .Ev ToD_FORMAT
@@ -4834,6 +5016,9 @@ to use when formatting
 .Ev ToD
 and if exported, other utilities that deal with times.
 If unset, the system's local wall clock time zone is used.
+.\"
+.\" ==========================================================
+.\" This is explicitly last, not in sort order - please leave!
 .It Ev NETBSD_SHELL
 Unlike the variables previously mentioned,
 this variable is somewhat strange,
