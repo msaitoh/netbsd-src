@@ -49,8 +49,9 @@ typedef enum {
 	if_omcasts		= 8,	/* packets sent via multicast */
 	if_iqdrops		= 9,	/* dropped on input, this interface */
 	if_noproto		= 10,	/* destined for unsupported protocol */
+	if_oqdrops		= 11,	/* dropped on output, this interface */
 
-	IF_NSTATS		= 11
+	IF_NSTATS		= 12
 } if_stat_t;
 
 #ifdef _KERNEL

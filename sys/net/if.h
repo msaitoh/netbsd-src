@@ -199,6 +199,7 @@ struct if_data {
 	uint64_t ifi_iqdrops;		/* dropped on input, this interface */
 	uint64_t ifi_noproto;		/* destined for unsupported protocol */
 	struct	timespec ifi_lastchange;/* last operational state change */
+	uint64_t ifi_oqdrops;		/* dropped on output, this interface */
 };
 
 /*
