@@ -1,4 +1,4 @@
-/* $NetBSD: locore.S,v 1.25 2022/09/20 07:18:23 skrll Exp $ */
+/* $NetBSD: locore.S,v 1.29 2022/09/30 06:23:59 skrll Exp $ */
 
 /*-
  * Copyright (c) 2014, 2022 The NetBSD Foundation, Inc.
@@ -190,7 +190,7 @@ ENTRY_NP(start)
 
 	call	clear_bss		// zero through kernel_end (inc. stack)
 
-	li	s7, PTE_KERN		// for megapages
+	li	s7, PTE_V		// page table pointer {X,W,R} = {0,0,0}
 
 	// We allocated the kernel first PDE page so let's insert in the
 	// page table.
@@ -222,11 +222,16 @@ ENTRY_NP(start)
 
 	VPRINTX(s3)
 #endif
-#endif
 
 	VPRINTS(": ")
 	VPRINTXNL(t0)
 	VPRINTS("\n\r")
+#endif // _LP64
+
+#if ((VM_MIN_KERNEL_ADDRESS >> SEGSHIFT) & (NPDEPG - 1)) * SZREG
+	li	t1,  ((VM_MIN_KERNEL_ADDRESS >> SEGSHIFT) & (NPDEPG - 1)) * SZREG
+	add	s2, s2, t1
+#endif
 
 #if PGSHIFT < PTE_PPN_SHIFT
 #error Code assumes PGSHIFT is greater than PTE_PPN_SHIFT
@@ -240,7 +245,8 @@ ENTRY_NP(start)
 	// Fill in the PDEs for kernel.
 	//
 	PTR_LA	s0, start
-	srli	s0, s0, (PGSHIFT - PTE_PPN_SHIFT)
+	srli	s0, s0, SEGSHIFT	// round down to NBSEG, and shift in
+	slli	s0, s0, (SEGSHIFT - PGSHIFT + PTE_PPN_SHIFT)	// ... to PPN
 	or	s0, s0, s7
 .Lfill:
 	VPRINTS("kern ")
@@ -363,6 +369,8 @@ vstart:
 	mv	a0, s0			// hartid
 	mv	a1, t0			// vdtb
 	//mv	a1, s1			// dtb (physical)
+
+	li	s0, 0			// zero frame pointer
 	call	_C_LABEL(init_riscv)	// do MD startup
 	tail	_C_LABEL(main)		// and transfer to main
 	/* No return from main */
@@ -400,12 +408,23 @@ ENTRY_NP(uartputc)
 #ifdef EARLYCONS
 	tail	___CONCAT(EARLYCONS, _platform_early_putchar)
 #else
-#define SBI_LEGACY_CONSOLE_PUTCHAR        1
+#define	SBI_LEGACY_CONSOLE_PUTCHAR	1
 	li	a7, SBI_LEGACY_CONSOLE_PUTCHAR
 	ecall
 	ret
 #endif
 END(uartputc)
+
+
+ENTRY_NP(uartgetc)
+#ifdef EARLYCONS
+	li	a0, -1
+#else
+#define	SBI_LEGACY_CONSOLE_GETCHAR	2
+	li	a7, SBI_LEGACY_CONSOLE_GETCHAR
+	ecall
+	ret
+#endif
 
 
 ENTRY_NP(clear_bss)

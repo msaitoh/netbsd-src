@@ -1,4 +1,4 @@
-/* $NetBSD: omrasopsvar.h,v 1.6 2022/09/25 11:28:40 isaki Exp $ */
+/* $NetBSD: omrasopsvar.h,v 1.8 2022/10/03 17:42:35 tsutsui Exp $ */
 /*
  * Copyright (c) 2013 Kenji Aoyama
  *
@@ -34,9 +34,7 @@
 #define OMFB_STRIDE		(2048/8)	/* stride [byte] */
 
 /* TODO: should be improved... */
-#define omfb_planecount hwplanecount
 extern int hwplanemask;
-extern int hwplanecount;
 
 /*
  * ROP function
@@ -52,7 +50,7 @@ extern int hwplanecount;
 
 /* operation		index	the video RAM contents will be */
 #define ROP_ZERO	 0	/* all 0	*/
-#define ROP_AND1	 1	/* D & M	*/ 
+#define ROP_AND1	 1	/* D & M	*/
 #define ROP_AND2	 2	/* ~D & M	*/
 /* Not used on LUNA	 3			*/
 #define ROP_AND3	 4	/* D & ~M	*/

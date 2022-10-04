@@ -1,4 +1,4 @@
-/*	$NetBSD: var.c,v 1.1032 2022/08/24 22:09:40 rillig Exp $	*/
+/*	$NetBSD: var.c,v 1.1035 2022/10/01 09:27:45 rillig Exp $	*/
 
 /*
  * Copyright (c) 1988, 1989, 1990, 1993
@@ -139,7 +139,7 @@
 #include "metachar.h"
 
 /*	"@(#)var.c	8.3 (Berkeley) 3/19/94" */
-MAKE_RCSID("$NetBSD: var.c,v 1.1032 2022/08/24 22:09:40 rillig Exp $");
+MAKE_RCSID("$NetBSD: var.c,v 1.1035 2022/10/01 09:27:45 rillig Exp $");
 
 /*
  * Variables are defined using one of the VAR=value assignments.  Their
@@ -198,9 +198,9 @@ typedef struct Var {
 	bool readOnly:1;
 
 	/*
-	* The variable's value is currently being used by Var_Parse or
-	* Var_Subst.  This marker is used to avoid endless recursion.
-	*/
+	 * The variable is currently being accessed by Var_Parse or Var_Subst.
+	 * This temporary marker is used to avoid endless recursion.
+	 */
 	bool inUse:1;
 
 	/*
@@ -1555,7 +1555,7 @@ static void
 RegexReplaceBackref(char ref, SepBuf *buf, const char *wp,
 		    const regmatch_t *m, size_t nsub)
 {
-	unsigned int n = ref - '0';
+	unsigned int n = (unsigned)ref - '0';
 
 	if (n >= nsub)
 		Error("No subexpression \\%u", n);
@@ -2926,11 +2926,8 @@ ApplyModifier_Regex(const char **pp, ModChain *ch)
 	oneBigWord = ch->oneBigWord;
 	ParsePatternFlags(pp, &args.pflags, &oneBigWord);
 
-	if (!ModChain_ShouldEval(ch)) {
-		LazyBuf_Done(&replaceBuf);
-		FStr_Done(&re);
-		return AMR_OK;
-	}
+	if (!ModChain_ShouldEval(ch))
+		goto done;
 
 	error = regcomp(&args.re, re.str, REG_EXTENDED);
 	if (error != 0) {
@@ -2947,6 +2944,7 @@ ApplyModifier_Regex(const char **pp, ModChain *ch)
 	ModifyWords(ch, ModifyWord_SubstRegex, &args, oneBigWord);
 
 	regfree(&args.re);
+done:
 	LazyBuf_Done(&replaceBuf);
 	FStr_Done(&re);
 	return AMR_OK;
@@ -4799,7 +4797,7 @@ Var_Dump(GNode *scope)
 
 	for (i = 0; i < vec.len; i++) {
 		const char *varname = varnames[i];
-		Var *var = HashTable_FindValue(&scope->vars, varname);
+		const Var *var = HashTable_FindValue(&scope->vars, varname);
 		debug_printf("%-16s = %s%s\n", varname,
 		    var->val.data, ValueDescription(var->val.data));
 	}

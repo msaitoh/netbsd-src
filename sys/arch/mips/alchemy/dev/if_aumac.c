@@ -1,4 +1,4 @@
-/* $NetBSD: if_aumac.c,v 1.50 2022/09/18 11:25:33 thorpej Exp $ */
+/* $NetBSD: if_aumac.c,v 1.52 2022/09/29 07:00:46 skrll Exp $ */
 
 /*
  * Copyright (c) 2001 Wasabi Systems, Inc.
@@ -46,7 +46,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_aumac.c,v 1.50 2022/09/18 11:25:33 thorpej Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_aumac.c,v 1.52 2022/09/29 07:00:46 skrll Exp $");
 
 
 
@@ -60,7 +60,6 @@ __KERNEL_RCSID(0, "$NetBSD: if_aumac.c,v 1.50 2022/09/18 11:25:33 thorpej Exp $"
 #include <sys/ioctl.h>
 #include <sys/kernel.h>
 #include <sys/mbuf.h>
-#include <sys/malloc.h>
 #include <sys/socket.h>
 
 #include <uvm/uvm.h>		/* for PAGE_SIZE */
@@ -635,7 +634,7 @@ aumac_rxintr(struct aumac_softc *sc)
 	 * Missed frames are a semi-frequent occurrence with this hardware,
 	 * and reporting of them just makes everything run slower and fills
 	 * the system log.  Be silent.
-	 * 
+	 *
 	 * Additionally, this missed bit indicates an error with the previous
 	 * packet, and not with this one!  So PRINTERR is definitely wrong
 	 * here.

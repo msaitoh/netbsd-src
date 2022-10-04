@@ -1,4 +1,4 @@
-/*	$NetBSD: tree.c,v 1.480 2022/08/28 19:09:12 rillig Exp $	*/
+/*	$NetBSD: tree.c,v 1.483 2022/10/01 10:07:55 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -37,7 +37,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID)
-__RCSID("$NetBSD: tree.c,v 1.480 2022/08/28 19:09:12 rillig Exp $");
+__RCSID("$NetBSD: tree.c,v 1.483 2022/10/01 10:07:55 rillig Exp $");
 #endif
 
 #include <float.h>
@@ -3346,7 +3346,7 @@ build_colon(bool sys, tnode_t *ln, tnode_t *rn)
 		/*
 		 * XXX For now we simply take the left type. This is
 		 * probably wrong, if one type contains a function prototype
-		 * and the other one, at the same place, only an old style
+		 * and the other one, at the same place, only an old-style
 		 * declaration.
 		 */
 		tp = merge_qualifiers(ln->tn_type, rn->tn_type);
@@ -3357,6 +3357,7 @@ build_colon(bool sys, tnode_t *ln, tnode_t *rn)
 	return ntn;
 }
 
+/* TODO: check for varargs */
 static bool
 is_cast_redundant(const tnode_t *tn)
 {
@@ -4048,8 +4049,6 @@ invalid_cast:
 tnode_t *
 build_function_argument(tnode_t *args, tnode_t *arg)
 {
-	tnode_t	*ntn;
-
 	/*
 	 * If there was a serious error in the expression for the argument,
 	 * create a dummy argument so the positions of the remaining arguments
@@ -4058,9 +4057,7 @@ build_function_argument(tnode_t *args, tnode_t *arg)
 	if (arg == NULL)
 		arg = build_integer_constant(INT, 0);
 
-	ntn = new_tnode(PUSH, arg->tn_sys, arg->tn_type, arg, args);
-
-	return ntn;
+	return new_tnode(PUSH, arg->tn_sys, arg->tn_type, arg, args);
 }
 
 /*

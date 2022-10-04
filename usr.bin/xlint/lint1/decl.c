@@ -1,4 +1,4 @@
-/* $NetBSD: decl.c,v 1.299 2022/08/28 19:09:12 rillig Exp $ */
+/* $NetBSD: decl.c,v 1.302 2022/10/01 10:04:06 rillig Exp $ */
 
 /*
  * Copyright (c) 1996 Christopher G. Demetriou.  All Rights Reserved.
@@ -38,7 +38,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID)
-__RCSID("$NetBSD: decl.c,v 1.299 2022/08/28 19:09:12 rillig Exp $");
+__RCSID("$NetBSD: decl.c,v 1.302 2022/10/01 10:04:06 rillig Exp $");
 #endif
 
 #include <sys/param.h>
@@ -48,7 +48,7 @@ __RCSID("$NetBSD: decl.c,v 1.299 2022/08/28 19:09:12 rillig Exp $");
 
 #include "lint1.h"
 
-const	char *unnamed = "<unnamed>";
+const char unnamed[] = "<unnamed>";
 
 /* shared type structures for arithmetic types and void */
 static	type_t	typetab[NTSPEC];
@@ -252,8 +252,8 @@ dcs_add_storage_class(scl_t sc)
  * dcs_end_type to build the type used for all declarators in this
  * declaration.
  *
- * If tp->t_typedef is 1, the type comes from a previously defined typename.
- * Otherwise it comes from a type specifier (int, long, ...) or a
+ * If tp->t_typedef is true, the type comes from a previously defined
+ * typename. Otherwise, it comes from a type specifier (int, long, ...) or a
  * struct/union/enum tag.
  */
 void
@@ -596,6 +596,7 @@ end_declaration_level(void)
 	lint_assert(dcs->d_enclosing != NULL);
 	di = dcs;
 	dcs = di->d_enclosing;
+
 	switch (di->d_kind) {
 	case DK_MOS:
 	case DK_MOU:
@@ -611,10 +612,10 @@ end_declaration_level(void)
 		break;
 	case DK_OLD_STYLE_ARG:
 		/*
-		 * All symbols in dcs->d_dlsyms are introduced in old style
+		 * All symbols in dcs->d_dlsyms are introduced in old-style
 		 * argument declarations (it's not clean, but possible).
 		 * They are appended to the list of symbols declared in
-		 * an old style argument identifier list or a new style
+		 * an old-style argument identifier list or a new style
 		 * parameter type list.
 		 */
 		if (di->d_dlsyms != NULL) {
@@ -642,7 +643,7 @@ end_declaration_level(void)
 		rmsyms(di->d_dlsyms);
 		break;
 	case DK_EXTERN:
-		/* there is nothing after external declarations */
+		/* there is nothing around an external declarations */
 		/* FALLTHROUGH */
 	default:
 		lint_assert(/*CONSTCOND*/false);
@@ -946,7 +947,7 @@ check_type(sym_t *sym)
 	while ((tp = *tpp) != NULL) {
 		t = tp->t_tspec;
 		/*
-		 * If this is the type of an old style function definition,
+		 * If this is the type of an old-style function definition,
 		 * a better warning is printed in funcdef().
 		 */
 		if (t == FUNC && !tp->t_proto &&
@@ -1486,7 +1487,7 @@ new_style_function(sym_t *args)
 }
 
 /*
- * Called for old style function declarations.
+ * Called for old-style function declarations.
  */
 static void
 old_style_function(sym_t *decl, sym_t *args)
@@ -1633,7 +1634,7 @@ declarator_name(sym_t *sym)
 }
 
 /*
- * Process a name in the list of formal parameters in an old style function
+ * Process a name in the list of formal parameters in an old-style function
  * definition.
  */
 sym_t *
@@ -1862,11 +1863,11 @@ complete_tag_struct_or_union(type_t *tp, sym_t *fmem)
 }
 
 type_t *
-complete_tag_enum(type_t *tp, sym_t *fmem)
+complete_tag_enum(type_t *tp, sym_t *first_enumerator)
 {
 
 	tp->t_enum->en_incomplete = false;
-	tp->t_enum->en_first_enumerator = fmem;
+	tp->t_enum->en_first_enumerator = first_enumerator;
 	return tp;
 }
 
@@ -1975,7 +1976,7 @@ declare_extern(sym_t *dsym, bool initflg, sbuf_t *renaming)
 	if ((rdsym = dcs->d_redeclared_symbol) != NULL) {
 
 		/*
-		 * If the old symbol stems from an old style function
+		 * If the old symbol stems from an old-style function
 		 * definition, we have remembered the params in
 		 * rdsym->s_old_style_args and compare them with the params
 		 * of the prototype.
@@ -2287,7 +2288,7 @@ matches_no_arg_function(const type_t *tp, bool *dowarn)
 
 /*
  * Compares a prototype declaration with the remembered arguments of
- * a previous old style function definition.
+ * a previous old-style function definition.
  */
 static bool
 check_old_style_definition(sym_t *rdsym, sym_t *dsym)
@@ -2327,7 +2328,7 @@ check_old_style_definition(sym_t *rdsym, sym_t *dsym)
 		if (!types_compatible(arg->s_type, parg->s_type,
 		    true, true, &dowarn) ||
 		    dowarn) {
-			/* prototype does not match old style ... */
+			/* prototype does not match old-style ... */
 			error(299, n);
 			msg = true;
 		}
@@ -2338,7 +2339,7 @@ check_old_style_definition(sym_t *rdsym, sym_t *dsym)
 
 end:
 	if (msg && rflag) {
-		/* old style definition */
+		/* old-style definition */
 		message_at(300, &rdsym->s_def_pos);
 	}
 
@@ -2523,8 +2524,8 @@ check_func_lint_directives(void)
 }
 
 /*
- * Warn about arguments in old style function definitions that default to int.
- * Check that an old style function definition is compatible to a previous
+ * Warn about arguments in old-style function definitions that default to int.
+ * Check that an old-style function definition is compatible to a previous
  * prototype.
  */
 void
@@ -2538,7 +2539,7 @@ check_func_old_style_arguments(void)
 	pargs = funcsym->s_type->t_args;
 
 	/*
-	 * print a warning for each argument of an old style function
+	 * print a warning for each argument of an old-style function
 	 * definition which defaults to int
 	 */
 	for (arg = args; arg != NULL; arg = arg->s_next) {
@@ -2551,7 +2552,7 @@ check_func_old_style_arguments(void)
 	}
 
 	/*
-	 * If this is an old style function definition and a prototype
+	 * If this is an old-style function definition and a prototype
 	 * exists, compare the types of arguments.
 	 */
 	if (funcsym->s_osdef && funcsym->s_type->t_proto) {
@@ -2590,7 +2591,7 @@ check_func_old_style_arguments(void)
 }
 
 /*
- * Checks compatibility of an old style function definition with a previous
+ * Checks compatibility of an old-style function definition with a previous
  * prototype declaration.
  * Returns true if the position of the previous declaration should be reported.
  */
@@ -2974,11 +2975,11 @@ mark_as_used(sym_t *sym, bool fcall, bool szof)
 		UNIQUE_CURR_POS(sym->s_use_pos);
 	}
 	/*
-	 * for function calls another record is written
+	 * For function calls, another record is written.
 	 *
-	 * XXX Should symbols used in sizeof() be treated as used or not?
-	 * Probably not, because there is no sense to declare an
-	 * external variable only to get their size.
+	 * XXX: Should symbols used in sizeof() be treated as used or not?
+	 * Probably not, because there is no point in declaring an external
+	 * variable only to get its size.
 	 */
 	if (!fcall && !szof && sym->s_kind == FVFT && sym->s_scl == EXTERN)
 		outusg(sym);
