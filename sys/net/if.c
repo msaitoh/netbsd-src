@@ -3465,6 +3465,12 @@ doifioctl(struct socket *so, u_long cmd, void *data, struct lwp *l)
 		    enosys(), error);
 		if (error != ENOSYS)
 			return error;
+		MODULE_HOOK_CALL(uipc_syscalls_90_hook, (l, cmd, data),
+		    enosys(), error);
+		if (error != ENOSYS) {
+			printf("%s: _90 returns %d\n", __func__, error);
+			return error;
+		}
 		error = 0;
 		break;
 	}

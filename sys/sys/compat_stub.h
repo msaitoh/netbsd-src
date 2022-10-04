@@ -241,6 +241,11 @@ MODULE_HOOK(uipc_socket_50_sbts_hook, int, (int, struct mbuf ***));
 MODULE_HOOK(uipc_syscalls_50_hook, int, (struct lwp *, u_long, void *));
 
 /*
+ * uipc_syscalls_90 compatibility
+ */
+MODULE_HOOK(uipc_syscalls_90_hook, int, (struct lwp *, u_long, void *));
+
+/*
  * rtsock 14 compatibility
  */
 struct ifnet;

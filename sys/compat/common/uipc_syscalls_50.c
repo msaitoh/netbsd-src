@@ -66,8 +66,8 @@ compat_ifdatareq(struct lwp *l, u_long cmd, void *data)
 
 	/* Validate arguments. */
 	switch (cmd) {
-	case OSIOCGIFDATA:
-	case OSIOCZIFDATA:
+	case SIOCGIFDATA_50:
+	case SIOCZIFDATA_50:
 		break;
 	default:
 		return ENOSYS;
@@ -79,12 +79,12 @@ compat_ifdatareq(struct lwp *l, u_long cmd, void *data)
 
 	/* Do work. */
 	switch (cmd) {
-	case OSIOCGIFDATA:
+	case SIOCGIFDATA_50:
 		if_export_if_data(ifp, &ifi, false);
-		ifdatan2o(&ifdr->ifdr_data, &ifi);
+		ifdata80_to_50(&ifdr->ifdr_data, &ifi);
 		return 0;
 
-	case OSIOCZIFDATA:
+	case SIOCZIFDATA_50:
 		if (l != NULL) {
 			error = kauth_authorize_network(l->l_cred,
 			    KAUTH_NETWORK_INTERFACE,
@@ -94,7 +94,7 @@ compat_ifdatareq(struct lwp *l, u_long cmd, void *data)
 				return error;
 		}
 		if_export_if_data(ifp, &ifi, true);
-		ifdatan2o(&ifdr->ifdr_data, &ifi);
+		ifdata80_to_50(&ifdr->ifdr_data, &ifi);
 		/* XXX if_lastchange? */
 		return 0;
 

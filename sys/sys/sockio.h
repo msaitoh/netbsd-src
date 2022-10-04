@@ -106,8 +106,8 @@
 #define	SIOCSIFMTU	 _IOW('i', 127, struct ifreq)	/* set ifnet mtu */
 #define	SIOCGIFMTU	_IOWR('i', 126, struct ifreq)	/* get ifnet mtu */
 
-/* 128 was SIOCGIFDATA */
-/* 129 was SIOCZIFDATA */
+/* 128 was SIOCGIFDATA_50 */
+/* 129 was SIOCZIFDATA_50 */
 
 /* 125 was SIOCSIFASYNCMAP */
 /* 124 was SIOCGIFASYNCMAP */

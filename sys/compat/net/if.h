@@ -172,6 +172,35 @@ struct ifdatareq_50 {
 	struct	if_data_50 ifdr_data;
 };
 
+struct if_data_90 {
+	/* generic interface information */
+	u_char	ifi_type;		/* ethernet, tokenring, etc. */
+	u_char	ifi_addrlen;		/* media address length */
+	u_char	ifi_hdrlen;		/* media header length */
+	int	ifi_link_state;		/* current link state */
+	uint64_t ifi_mtu;		/* maximum transmission unit */
+	uint64_t ifi_metric;		/* routing metric (external only) */
+	uint64_t ifi_baudrate;		/* linespeed */
+	/* volatile statistics */
+	uint64_t ifi_ipackets;		/* packets received on interface */
+	uint64_t ifi_ierrors;		/* input errors on interface */
+	uint64_t ifi_opackets;		/* packets sent on interface */
+	uint64_t ifi_oerrors;		/* output errors on interface */
+	uint64_t ifi_collisions;	/* collisions on csma interfaces */
+	uint64_t ifi_ibytes;		/* total number of octets received */
+	uint64_t ifi_obytes;		/* total number of octets sent */
+	uint64_t ifi_imcasts;		/* packets received via multicast */
+	uint64_t ifi_omcasts;		/* packets sent via multicast */
+	uint64_t ifi_iqdrops;		/* dropped on input, this interface */
+	uint64_t ifi_noproto;		/* destined for unsupported protocol */
+	struct	timespec ifi_lastchange;/* last operational state change */
+};
+
+struct ifdatareq_90 {
+	char	ifdr_name[IFNAMSIZ];		/* if name, e.g. "en0" */
+	struct	if_data_90 ifdr_data;
+};
+
 /*
  * Message format for use in obtaining information about interfaces
  * from sysctl and the routing socket.

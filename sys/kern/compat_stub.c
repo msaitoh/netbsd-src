@@ -178,6 +178,11 @@ struct uipc_socket_50_sbts_hook_t uipc_socket_50_sbts_hook;
 struct uipc_syscalls_50_hook_t uipc_syscalls_50_hook;
 
 /*
+ * uipc_syscalls_90 compatibility
+ */
+struct uipc_syscalls_90_hook_t uipc_syscalls_90_hook;
+
+/*
  * rtsock 14 compatibility
  */
 struct rtsock_oifmsg_14_hook_t rtsock_oifmsg_14_hook;

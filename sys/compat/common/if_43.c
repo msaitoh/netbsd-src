@@ -131,9 +131,9 @@ compat_cvtcmd(u_long cmd)
 		return SIOCSIFMEDIA_80;
 	case OSIOCGIFMTU:
 		return SIOCGIFMTU;
-	case OSIOCGIFDATA:
+	case SIOCGIFDATA_50:
 		return SIOCGIFDATA;
-	case OSIOCZIFDATA:
+	case SIOCZIFDATA_50:
 		return SIOCZIFDATA;
 	case OBIOCGETIF:
 		return BIOCGETIF;

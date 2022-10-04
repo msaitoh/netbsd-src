@@ -37,6 +37,8 @@ int compat_90_init(void);
 int compat_90_fini(void);
 int vfs_syscalls_90_init(void);
 int vfs_syscalls_90_fini(void);
+void uipc_syscalls_90_init(void);
+void uipc_syscalls_90_fini(void);
 #endif
 
 #ifdef COMPAT_80

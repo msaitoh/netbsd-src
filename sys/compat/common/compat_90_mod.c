@@ -49,15 +49,27 @@ __KERNEL_RCSID(0, "$NetBSD: compat_90_mod.c,v 1.3 2020/01/04 02:40:22 pgoyette E
 int
 compat_90_init(void)
 {
+	int rv;
 
-	return vfs_syscalls_90_init();
+	rv = vfs_syscalls_90_init();
+	if (rv != 0)
+		return rv;
+	uipc_syscalls_90_init();
+
+	return 0;
 }
 
 int
 compat_90_fini(void)
 {
+	int rv;
 
-	return vfs_syscalls_90_fini();
+	rv = vfs_syscalls_90_fini();
+	if (rv != 0)
+		return rv;
+	uipc_syscalls_90_fini();
+
+	return 0;
 }
 
 MODULE(MODULE_CLASS_EXEC, compat_90, NULL);

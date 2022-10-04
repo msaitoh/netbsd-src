@@ -109,6 +109,7 @@ file	compat/common/if_media_80.c		compat_80
 # Compatibility code for NetBSD 9.0
 file	compat/common/compat_90_mod.c		compat_90
 file	compat/common/vfs_syscalls_90.c		compat_90
+file	compat/common/uipc_syscalls_90.c	compat_90
 
 #
 # Sources for sysv ipc compatibility across the versions.

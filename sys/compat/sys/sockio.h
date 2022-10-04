@@ -53,8 +53,11 @@
 #define	SIOCSIFMEDIA_80	 _IOWR('i', 53, struct ifreq)	/* set net media */
 #define	SIOCGIFMEDIA_80	 _IOWR('i', 54, struct ifmediareq) /* set net media */
 #define	OSIOCGIFMTU	 _IOWR('i', 126, struct oifreq)	/* get ifnet mtu */
-#define	OSIOCGIFDATA	 _IOWR('i', 128, struct ifdatareq_50) /* get if_data */
-#define	OSIOCZIFDATA	 _IOWR('i', 129, struct ifdatareq_50) /* get if_data
+#define	SIOCGIFDATA_50	 _IOWR('i', 128, struct ifdatareq_50) /* get if_data */
+#define	SIOCGIFDATA_90	 _IOWR('i', 133, struct ifdatareq_90) /* get if_data */
+#define	SIOCZIFDATA_50	 _IOWR('i', 129, struct ifdatareq_50) /* get if_data
+							      then zero ctrs */
+#define	SIOCZIFDATA_90	 _IOWR('i', 134, struct ifdatareq_90) /* get if_data
 							      then zero ctrs */
 
 #define	OBIOCGETIF	 _IOR('B', 107, struct oifreq)
@@ -77,7 +80,7 @@
 		    sizeof((oi)->ifr_ifru));			\
 	} while (/*CONSTCOND*/0)
 
-#define ifdatan2o(oi, ni)					\
+#define ifdata80_to_50(oi, ni)					\
 	do {							\
 		(void)memcpy((oi), (ni),  sizeof(*(oi)));	\
 		(oi)->ifi_lastchange.tv_sec =			\
@@ -86,7 +89,24 @@
 		    (ni)->ifi_lastchange.tv_nsec / 1000;	\
 	} while (/*CONSTCOND*/0)
 
-#define ifdatao2n(oi, ni)						   \
+#define ifdata50_to_80(oi, ni)						   \
+	do {								   \
+		(void)memcpy((ni), (oi),  sizeof(*(oi)));		   \
+		(ni)->ifi_lastchange.tv_sec = (oi)->ifi_lastchange.tv_sec; \
+		(ni)->ifi_lastchange.tv_nsec =				   \
+		    (oi)->ifi_lastchange.tv_usec * 1000;		   \
+	} while (/*CONSTCOND*/0)
+
+#define ifdatan2o_80(oi, ni)					\
+	do {							\
+		(void)memcpy((oi), (ni),  sizeof(*(oi)));	\
+		(oi)->ifi_lastchange.tv_sec =			\
+		    (int32_t)(ni)->ifi_lastchange.tv_sec;	\
+		(oi)->ifi_lastchange.tv_usec =			\
+		    (ni)->ifi_lastchange.tv_nsec / 1000;	\
+	} while (/*CONSTCOND*/0)
+
+#define ifdatao2n_80(oi, ni)						   \
 	do {								   \
 		(void)memcpy((ni), (oi),  sizeof(*(oi)));		   \
 		(ni)->ifi_lastchange.tv_sec = (oi)->ifi_lastchange.tv_sec; \
