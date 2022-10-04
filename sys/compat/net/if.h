@@ -139,7 +139,7 @@ int compat_14_iflist(struct ifnet *, struct rt_walkarg *, struct rt_addrinfo *,
  * Structure defining statistics and other data kept regarding a network
  * interface.
  */
-struct if_data50 {
+struct if_data_50 {
 	/* generic interface information */
 	u_char	ifi_type;		/* ethernet, tokenring, etc. */
 	u_char	ifi_addrlen;		/* media address length */
@@ -167,9 +167,9 @@ struct if_data50 {
  * Structure defining statistics and other data kept regarding a network
  * interface.
  */
-struct ifdatareq50 {
+struct ifdatareq_50 {
 	char	ifdr_name[OIFNAMSIZ];		/* if name, e.g. "en0" */
-	struct	if_data50 ifdr_data;
+	struct	if_data_50 ifdr_data;
 };
 
 /*
@@ -183,7 +183,7 @@ struct if_msghdr50 {
 	int	ifm_addrs;	/* like rtm_addrs */
 	int	ifm_flags;	/* value of if_flags */
 	u_short	ifm_index;	/* index for associated ifp */
-	struct	if_data50 ifm_data;/* statistics and other data about if */
+	struct	if_data_50 ifm_data;/* statistics and other data about if */
 };
 
 void compat_50_rt_oifmsg(struct ifnet *);

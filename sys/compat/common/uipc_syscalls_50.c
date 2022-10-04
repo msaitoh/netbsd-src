@@ -60,7 +60,7 @@ static int
 compat_ifdatareq(struct lwp *l, u_long cmd, void *data)
 {
 	struct if_data ifi;
-	struct ifdatareq50 *ifdr = data;
+	struct ifdatareq_50 *ifdr = data;
 	struct ifnet *ifp;
 	int error;
 

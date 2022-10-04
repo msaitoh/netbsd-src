@@ -53,9 +53,9 @@
 #define	SIOCSIFMEDIA_80	 _IOWR('i', 53, struct ifreq)	/* set net media */
 #define	SIOCGIFMEDIA_80	 _IOWR('i', 54, struct ifmediareq) /* set net media */
 #define	OSIOCGIFMTU	 _IOWR('i', 126, struct oifreq)	/* get ifnet mtu */
-#define	OSIOCGIFDATA	 _IOWR('i', 128, struct ifdatareq50) /* get if_data */
-#define	OSIOCZIFDATA	 _IOWR('i', 129, struct ifdatareq50) /* get if_data then
-							     zero ctrs*/
+#define	OSIOCGIFDATA	 _IOWR('i', 128, struct ifdatareq_50) /* get if_data */
+#define	OSIOCZIFDATA	 _IOWR('i', 129, struct ifdatareq_50) /* get if_data
+							      then zero ctrs */
 
 #define	OBIOCGETIF	 _IOR('B', 107, struct oifreq)
 #define	OBIOCSETIF	 _IOW('B', 108, struct oifreq)
