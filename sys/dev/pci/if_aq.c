@@ -1,4 +1,4 @@
-/*	$NetBSD: if_aq.c,v 1.35 2022/09/22 06:04:26 skrll Exp $	*/
+/*	$NetBSD: if_aq.c,v 1.37 2022/10/17 10:39:27 riastradh Exp $	*/
 
 /**
  * aQuantia Corporation Network Driver
@@ -62,7 +62,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_aq.c,v 1.35 2022/09/22 06:04:26 skrll Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_aq.c,v 1.37 2022/10/17 10:39:27 riastradh Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_if_aq.h"
@@ -1507,7 +1507,8 @@ aq_attach(device_t parent, device_t self, void *aux)
 	ether_set_ifflags_cb(&sc->sc_ethercom, aq_ifflags_cb);
 	if_register(ifp);
 
-	aq_enable_intr(sc, true, false);	/* only intr about link */
+	/* only intr about link */
+	aq_enable_intr(sc, /*link*/true, /*txrx*/false);
 
 	/* update media */
 	aq_ifmedia_change(ifp);
@@ -4691,7 +4692,7 @@ aq_init_locked(struct ifnet *ifp)
 	ifp->if_flags |= IFF_RUNNING;
 
 	/* start TX and RX */
-	aq_enable_intr(sc, true, true);
+	aq_enable_intr(sc, /*link*/true, /*txrx*/true);
 	AQ_WRITE_REG_BIT(sc, TPB_TX_BUF_REG, TPB_TX_BUF_EN, 1);
 	AQ_WRITE_REG_BIT(sc, RPB_RPF_RX_REG, RPB_RPF_RX_BUF_EN, 1);
 
@@ -4880,7 +4881,7 @@ aq_stop_locked(struct ifnet *ifp, bool disable)
 		goto already_stopped;
 
 	/* disable tx/rx interrupts */
-	aq_enable_intr(sc, true, false);
+	aq_enable_intr(sc, /*link*/true, /*txrx*/false);
 
 	AQ_WRITE_REG_BIT(sc, TPB_TX_BUF_REG, TPB_TX_BUF_EN, 0);
 	for (i = 0; i < sc->sc_nqueues; i++) {
@@ -4898,11 +4899,8 @@ aq_stop_locked(struct ifnet *ifp, bool disable)
 	    RX_DMA_DESC_CACHE_INIT_REG, RX_DMA_DESC_CACHE_INIT) ^ 1);
 
  already_stopped:
-	if (!disable) {
-		/* when pmf stop, disable link status intr and callout */
-		aq_enable_intr(sc, false, false);
-		callout_halt(&sc->sc_tick_ch, &sc->sc_mutex);
-	}
+	aq_enable_intr(sc, /*link*/false, /*txrx*/false);
+	callout_halt(&sc->sc_tick_ch, &sc->sc_mutex);
 
 	ifp->if_flags &= ~IFF_RUNNING;
 	sc->sc_if_flags = ifp->if_flags;

@@ -1,4 +1,4 @@
-/*	$NetBSD: copyinstr.c,v 1.18 2022/10/03 23:41:28 rin Exp $	*/
+/*	$NetBSD: copyinstr.c,v 1.24 2022/10/05 08:18:00 rin Exp $	*/
 
 /*
  * Copyright 2001 Wasabi Systems, Inc.
@@ -36,7 +36,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: copyinstr.c,v 1.18 2022/10/03 23:41:28 rin Exp $");
+__KERNEL_RCSID(0, "$NetBSD: copyinstr.c,v 1.24 2022/10/05 08:18:00 rin Exp $");
 
 #include <sys/param.h>
 #include <uvm/uvm_extern.h>
@@ -48,7 +48,7 @@ copyinstr(const void *uaddr, void *kaddr, size_t len, size_t *done)
 {
 	struct pmap *pm = curproc->p_vmspace->vm_map.pmap;
 	size_t resid;
-	int rv, msr, pid, data, ctx;
+	int rv, msr, pid, tmp, ctx;
 	struct faultbuf env;
 
 	if (__predict_false(len == 0)) {
@@ -71,41 +71,34 @@ copyinstr(const void *uaddr, void *kaddr, size_t len, size_t *done)
 	}
 
 	resid = len;
-	__asm volatile(
-		"mtctr %[resid];"		/* Set up counter */
-
-		"mfmsr %[msr];"			/* Save MSR */
-
-		"li %[pid],0x20;"		/* Disable IMMU */
-		"andc %[pid],%[msr],%[pid];"
-		"mtmsr %[pid];"
+	__asm volatile (
+		"mtctr	%[resid];"		/* Set up counter */
+		"mfmsr	%[msr];"		/* Save MSR */
+		"li	%[tmp],0x20;"		/* Disable IMMU */
+		"andc	%[tmp],%[msr],%[tmp];"
+		"mtmsr	%[tmp];"
 		"isync;"
-
 		MFPID(%[pid])			/* Save old PID */
 
 	"1:"	MTPID(%[ctx])			/* Load user ctx */
 		"isync;"
-		"lbz %[data],0(%[uaddr]);"	/* Load byte */
-		"addi %[uaddr],%[uaddr],1;"
+		"lbz	%[tmp],0(%[uaddr]);"	/* Load byte */
+		"addi	%[uaddr],%[uaddr],1;"
 		"sync;"
 
 		MTPID(%[pid])
 		"isync;"
-		"stb %[data],0(%[kaddr]);"	/* Store kernel byte */
-		"dcbst 0,%[kaddr];"
-		"addi %[kaddr],%[kaddr],1;"
-		"or. %[data],%[data],%[data];"
+		"stb	%[tmp],0(%[kaddr]);"	/* Store kernel byte */
+		"addi	%[kaddr],%[kaddr],1;"
+		"or.	%[tmp],%[tmp],%[tmp];"
 		"sync;"
+		"bdnzf	eq,1b;"			/* while(ctr-- && !zero) */
 
-		"bdnzf eq,1b;"			/* while(ctr-- && !zero) */
-
-		MTPID(%[pid])			/* Restore PID, MSR */
-		"mtmsr %[msr];"
+		"mtmsr	%[msr];"		/* Restore MSR */
 		"isync;"
+		"mfctr	%[resid];"		/* Restore resid */
 
-		"mfctr %[resid];"		/* Restore resid */
-
-		: [msr] "=&r" (msr), [pid] "=&r" (pid), [data] "=&r" (data),
+		: [msr] "=&r" (msr), [pid] "=&r" (pid), [tmp] "=&r" (tmp),
 		  [resid] "+r" (resid)
 		: [ctx] "r" (ctx), [uaddr] "b" (uaddr), [kaddr] "b" (kaddr)
 		: "cr0", "ctr");
@@ -113,7 +106,7 @@ copyinstr(const void *uaddr, void *kaddr, size_t len, size_t *done)
 	curpcb->pcb_onfault = NULL;
 	if (done)
 		*done = len - resid;
-	if (resid == 0 && (char)data != '\0')
+	if (resid == 0 && (char)tmp != '\0')
 		return ENAMETOOLONG;
 	else
 		return 0;

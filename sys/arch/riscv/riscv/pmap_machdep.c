@@ -1,4 +1,4 @@
-/* $NetBSD: pmap_machdep.c,v 1.11 2022/09/20 07:18:23 skrll Exp $ */
+/* $NetBSD: pmap_machdep.c,v 1.13 2022/10/16 08:43:44 skrll Exp $ */
 
 /*
  * Copyright (c) 2014, 2019, 2021 The NetBSD Foundation, Inc.
@@ -32,10 +32,10 @@
 
 #include "opt_riscv_debug.h"
 
-#define __PMAP_PRIVATE
+#define	__PMAP_PRIVATE
 
 #include <sys/cdefs.h>
-__RCSID("$NetBSD: pmap_machdep.c,v 1.11 2022/09/20 07:18:23 skrll Exp $");
+__RCSID("$NetBSD: pmap_machdep.c,v 1.13 2022/10/16 08:43:44 skrll Exp $");
 
 #include <sys/param.h>
 #include <sys/buf.h>
@@ -46,9 +46,9 @@ __RCSID("$NetBSD: pmap_machdep.c,v 1.11 2022/09/20 07:18:23 skrll Exp $");
 #include <riscv/sysreg.h>
 
 #ifdef VERBOSE_INIT_RISCV
-#define VPRINTF(...)	printf(__VA_ARGS__)
+#define	VPRINTF(...)	printf(__VA_ARGS__)
 #else
-#define VPRINTF(...)	__nothing
+#define	VPRINTF(...)	__nothing
 #endif
 
 int riscv_poolpage_vmfreelist = VM_FREELIST_DEFAULT;
@@ -289,6 +289,7 @@ tlb_set_asid(tlb_asid_t asid, struct pmap *pm)
 void    tlb_invalidate_all(void);
 void    tlb_invalidate_globals(void);
 #endif
+
 void
 tlb_invalidate_asids(tlb_asid_t lo, tlb_asid_t hi)
 {
@@ -318,11 +319,17 @@ tlb_invalidate_addr(vaddr_t va, tlb_asid_t asid)
 bool
 tlb_update_addr(vaddr_t va, tlb_asid_t asid, pt_entry_t pte, bool insert_p)
 {
-	KASSERT(asid != KERNEL_PID);
-	__asm __volatile("sfence.vma %[va], %[asid]"
-	    : /* output operands */
-	    : [va] "r" (va), [asid] "r" (asid)
-	    : "memory");
+	if (asid == KERNEL_PID) {
+		__asm __volatile("sfence.vma %[va]"
+		    : /* output operands */
+		    : [va] "r" (va)
+		    : "memory");
+	} else {
+		__asm __volatile("sfence.vma %[va], %[asid]"
+		    : /* output operands */
+		    : [va] "r" (va), [asid] "r" (asid)
+		    : "memory");
+	}
 	return false;
 }
 
