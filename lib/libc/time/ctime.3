@@ -1,8 +1,8 @@
-.\" $NetBSD: ctime.3,v 1.63 2022/08/16 11:07:40 christos Exp $
+.\" $NetBSD: ctime.3,v 1.67 2022/10/21 12:28:43 uwe Exp $
 .\"
 .\" XXX: License missing?
 .\"
-.Dd August 16, 2022
+.Dd October 22, 2022
 .Dt CTIME 3
 .Os
 .Sh NAME
@@ -253,8 +253,19 @@ and
 .Fa tm_yday
 components of the structure are ignored,
 and the original values of the other components are not restricted
-to their normal ranges.
-(A positive or zero value for
+to their normal ranges and will be normalized,
+if need be.
+For example,
+October 40 is changed into November 9, a
+.Fa tm_hour
+of \-1 means 1 hour before midnight,
+.Fa tm_mday
+of 0 means the day preceding the current month, and
+.Fa tm_mon
+of \-2 means 2 months before January of
+.Fa tm_year .
+.It
+A positive or zero value for
 .Fa tm_isdst
 causes
 .Fn mktime
@@ -288,7 +299,7 @@ are determined.
 .Pp
 The function returns the specified calendar time;
 if the calendar time cannot be represented, it returns
-.Va "(time_t)-1" .
+.Va "(time_t)\-1" .
 This can happen either because the resulting conversion would not fit
 in a
 .Vt time_t
@@ -444,7 +455,7 @@ function returns string containing the name of the timezone given in
 local timezone file
 .It Pa /usr/share/zoneinfo
 timezone information directory
-.It Pa usr/share/zoneinfo/localtime
+.It Pa /usr/share/zoneinfo/localtime
 local timezone file
 .It Pa /usr/share/zoneinfo/posixrules
 used with POSIX-style TZ's

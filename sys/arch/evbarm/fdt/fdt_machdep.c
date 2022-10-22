@@ -1,4 +1,4 @@
-/* $NetBSD: fdt_machdep.c,v 1.95 2022/09/30 06:39:54 skrll Exp $ */
+/* $NetBSD: fdt_machdep.c,v 1.98 2022/10/21 05:51:08 skrll Exp $ */
 
 /*-
  * Copyright (c) 2015-2017 Jared McNeill <jmcneill@invisible.ca>
@@ -27,7 +27,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: fdt_machdep.c,v 1.95 2022/09/30 06:39:54 skrll Exp $");
+__KERNEL_RCSID(0, "$NetBSD: fdt_machdep.c,v 1.98 2022/10/21 05:51:08 skrll Exp $");
 
 #include "opt_arm_debug.h"
 #include "opt_bootconfig.h"
@@ -239,8 +239,6 @@ fdt_build_bootconfig(uint64_t mem_start, uint64_t mem_end)
 
 	uint64_t addr, size;
 	int index;
-
-	fdt_memory_remove_reserved(mem_start, mem_end);
 
 	const uint64_t initrd_size =
 	    round_page(initrd_end) - trunc_page(initrd_start);
@@ -611,6 +609,8 @@ initarm(void *arg)
 	fdt_probe_rndseed(&rndseed_start, &rndseed_end);
 	fdt_probe_efirng(&efirng_start, &efirng_end);
 
+	fdt_memory_remove_reserved(memory_start, memory_end);
+
 	/*
 	 * Populate bootconfig structure for the benefit of dodumpsys
 	 */
@@ -662,7 +662,6 @@ initarm(void *arg)
 		    "loading in freelist %d\n", spa, epa, VM_FREELIST_DEFAULT);
 
 		uvm_page_physload(spg, epg, spg, epg, VM_FREELIST_DEFAULT);
-
 	}
 
 	return sp;
