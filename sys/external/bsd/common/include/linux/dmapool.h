@@ -1,11 +1,8 @@
-/*	$NetBSD: suspend.h,v 1.4 2022/10/25 23:37:24 riastradh Exp $	*/
+/*	$NetBSD: dmapool.h,v 1.1 2022/10/25 23:32:37 riastradh Exp $	*/
 
 /*-
- * Copyright (c) 2013 The NetBSD Foundation, Inc.
+ * Copyright (c) 2022 The NetBSD Foundation, Inc.
  * All rights reserved.
- *
- * This code is derived from software contributed to The NetBSD Foundation
- * by Taylor R. Campbell.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,14 +26,29 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef _LINUX_SUSPEND_H_
-#define _LINUX_SUSPEND_H_
+#ifndef	_LINUX_DMAPOOL_H_
+#define	_LINUX_DMAPOOL_H_
 
-#include <sys/cdefs.h>
+#include <sys/types.h>
 
-#define	ksys_sync_helper()	__nothing
+#include <sys/bus.h>
 
-#define	register_pm_notifier(n)		__nothing
-#define	unregister_pm_notifier(n)	__nothing
+#include <linux/gfp.h>
+#include <linux/types.h>
 
-#endif  /* _LINUX_SUSPEND_H_ */
+/* namespace */
+#define	dma_pool_create		linux_dma_pool_create
+#define	dma_pool_destroy	linux_dma_pool_destroy
+#define	dma_pool_free		linux_dma_pool_free
+#define	dma_pool_zalloc		linux_dma_pool_zalloc
+
+struct dma_pool;
+
+struct dma_pool *dma_pool_create(const char *, bus_dma_tag_t, size_t, size_t,
+    size_t);
+void dma_pool_destroy(struct dma_pool *);
+
+void *dma_pool_zalloc(struct dma_pool *, gfp_t, dma_addr_t *);
+void dma_pool_free(struct dma_pool *, void *, dma_addr_t);
+
+#endif	/* _LINUX_DMAPOOL_H_ */

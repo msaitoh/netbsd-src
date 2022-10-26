@@ -1,11 +1,8 @@
-/*	$NetBSD: mem_encrypt.h,v 1.1 2021/12/19 00:28:55 riastradh Exp $	*/
+/*	$NetBSD: vmware.h,v 1.1 2022/10/25 23:39:01 riastradh Exp $	*/
 
 /*-
- * Copyright (c) 2018 The NetBSD Foundation, Inc.
+ * Copyright (c) 2022 The NetBSD Foundation, Inc.
  * All rights reserved.
- *
- * This code is derived from software contributed to The NetBSD Foundation
- * by Taylor R. Campbell.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,7 +26,32 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef	_LINUX_MEM_ENCRYPT_H_
-#define	_LINUX_MEM_ENCRYPT_H_
+#ifndef _ASM_VMWARE_H_
+#define _ASM_VMWARE_H_
 
-#endif	/* _LINUX_MEM_ENCRYPT_H_ */
+#include <sys/cdefs.h>
+
+#if defined __i386__ || defined __x86_64__
+
+#define	VMWARE_HYPERVISOR_PORT		0x5658
+#define	VMWARE_HYPERVISOR_PORT_HB	0x5659
+
+#define	VMWARE_HYPERVISOR_HB		__BIT(0)
+#define	VMWARE_HYPERVISOR_OUT		__BIT(1)
+
+/* XXX support vmcall/vmmcall */
+#define	VMWARE_HYPERCALL						      \
+	"movw $"__STRING(VMWARE_HYPERVISOR_PORT)",%%dx;"		      \
+	"inl (%%dx),%%eax;"
+
+#define	VMWARE_HYPERCALL_HB_OUT						      \
+	"movw $"__STRING(VMWARE_HYPERVISOR_PORT_HB)",%%dx;"		      \
+	"rep outsb;"
+
+#define	VMWARE_HYPERCALL_HB_IN						      \
+	"movw $"__STRING(VMWARE_HYPERVISOR_PORT_HB)",%%dx;"		      \
+	"rep insb;"
+
+#endif
+
+#endif  /* _ASM_BARRIER_H_ */

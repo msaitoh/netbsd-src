@@ -1,11 +1,8 @@
-/*	$NetBSD: suspend.h,v 1.4 2022/10/25 23:37:24 riastradh Exp $	*/
+/*	$NetBSD: mem_encrypt.h,v 1.1 2022/10/25 23:38:33 riastradh Exp $	*/
 
 /*-
- * Copyright (c) 2013 The NetBSD Foundation, Inc.
+ * Copyright (c) 2022 The NetBSD Foundation, Inc.
  * All rights reserved.
- *
- * This code is derived from software contributed to The NetBSD Foundation
- * by Taylor R. Campbell.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -29,14 +26,9 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef _LINUX_SUSPEND_H_
-#define _LINUX_SUSPEND_H_
+#ifndef	_LINUX_MEM_ENCRYPT_H_
+#define	_LINUX_MEM_ENCRYPT_H_
 
-#include <sys/cdefs.h>
+#define	mem_encrypt_active()	0
 
-#define	ksys_sync_helper()	__nothing
-
-#define	register_pm_notifier(n)		__nothing
-#define	unregister_pm_notifier(n)	__nothing
-
-#endif  /* _LINUX_SUSPEND_H_ */
+#endif	/* _LINUX_MEM_ENCRYPT_H_ */
