@@ -1,5 +1,5 @@
 #
-#	$NetBSD: GENERIC,v 1.109 2022/10/25 22:27:49 jmcneill Exp $
+#	$NetBSD: GENERIC,v 1.113 2022/10/31 22:45:38 jmcneill Exp $
 #
 #	GENERIC ARM (aarch32) kernel
 #
@@ -29,7 +29,6 @@ options 	SOC_SUN8I_H3
 options 	SOC_SUN8I_V3S
 options 	SOC_SUN9I_A80
 options 	SOC_TEGRA124
-options 	SOC_VIRT
 options 	SOC_ZYNQ7000
 
 options 	MULTIPROCESSOR
@@ -185,7 +184,6 @@ sunxisramc* 	at fdt? pass 4		# SRAM controller
 imxocotp0 	at fdt? pass 2		# On-Chip OTP Controller
 syscon*		at fdt? pass 1		# Generic System Controller
 tisysc*		at fdt? pass 2		# TI sysc interconnect
-#zynqslcr* 	at fdt? pass 1		# Zynq 7000 system Controller
 
 # Timer
 a9ptmr* 	at fdt? pass 2		# ARM Cortex A5/A9 Private Timer
@@ -270,6 +268,7 @@ sunxigpio* 	at fdt? pass 3		# Allwinner GPIO
 rkgpio*		at rkiomux?		# Rockchip GPIO
 tegragpio* 	at fdt? pass 2		# NVIDIA Tegra GPIO
 tigpio* 	at fdt? pass 2		# TI GPIO
+zynqgpio*	at fdt? pass 2		# Xilinx Zynq GPIO
 gpio* 		at gpiobus?
 
 # IOMUX / MPIO / Pinmux
@@ -328,6 +327,7 @@ inphy* 		at mii? phy ?		# Intel 82555 PHYs
 iophy* 		at mii? phy ?		# Intel 82553 PHYs
 lxtphy* 	at mii? phy ?		# Level One LXT-970 PHYs
 makphy* 	at mii? phy ?		# Marvell Semiconductor 88E1000 PHYs
+micphy*		at mii? phy ?		# Micrel KSZ[89]xxx PHYs
 nsphy* 		at mii? phy ?		# NS83840 PHYs
 nsphyter* 	at mii? phy ?		# NS83843 PHYs
 pnaphy* 	at mii? phy ?		# generic HomePNA PHYs

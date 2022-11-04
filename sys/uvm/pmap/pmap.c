@@ -1,4 +1,4 @@
-/*	$NetBSD: pmap.c,v 1.69 2022/10/26 07:35:20 skrll Exp $	*/
+/*	$NetBSD: pmap.c,v 1.74 2022/11/03 09:04:57 skrll Exp $	*/
 
 /*-
  * Copyright (c) 1998, 2001 The NetBSD Foundation, Inc.
@@ -67,7 +67,7 @@
 
 #include <sys/cdefs.h>
 
-__KERNEL_RCSID(0, "$NetBSD: pmap.c,v 1.69 2022/10/26 07:35:20 skrll Exp $");
+__KERNEL_RCSID(0, "$NetBSD: pmap.c,v 1.74 2022/11/03 09:04:57 skrll Exp $");
 
 /*
  *	Manages physical address maps.
@@ -96,6 +96,7 @@ __KERNEL_RCSID(0, "$NetBSD: pmap.c,v 1.69 2022/10/26 07:35:20 skrll Exp $");
  */
 
 #include "opt_ddb.h"
+#include "opt_efi.h"
 #include "opt_modular.h"
 #include "opt_multiprocessor.h"
 #include "opt_sysv.h"
@@ -157,6 +158,7 @@ PMAP_COUNTER(kernel_mappings_changed, "kernel mapping changed");
 PMAP_COUNTER(uncached_mappings, "uncached pages mapped");
 PMAP_COUNTER(unmanaged_mappings, "unmanaged pages mapped");
 PMAP_COUNTER(pvtracked_mappings, "pv-tracked unmanaged pages mapped");
+PMAP_COUNTER(efirt_mappings, "EFI RT pages mapped");
 PMAP_COUNTER(managed_mappings, "managed pages mapped");
 PMAP_COUNTER(mappings, "pages mapped");
 PMAP_COUNTER(remappings, "pages remapped");
@@ -223,7 +225,7 @@ pmap_segtab_t	pmap_kern_segtab PMAP_SEGTAB_ALIGN = { /* top level segtab for ker
 
 struct pmap_kernel kernel_pmap_store = {
 	.kernel_pmap = {
-		.pm_count = 1,
+		.pm_refcnt = 1,
 #ifdef PMAP_HWPAGEWALKER
 		.pm_pdetab = PMAP_INVALID_PDETAB_ADDRESS,
 #endif
@@ -236,6 +238,22 @@ struct pmap_kernel kernel_pmap_store = {
 };
 
 struct pmap * const kernel_pmap_ptr = &kernel_pmap_store.kernel_pmap;
+
+#if defined(EFI_RUNTIME)
+static struct pmap efirt_pmap;
+
+pmap_t
+pmap_efirt(void)
+{
+	return &efirt_pmap;
+}
+#else
+static inline pt_entry_t
+pte_make_enter_efirt(paddr_t pa, vm_prot_t prot, u_int flags)
+{
+	panic("not supported");
+}
+#endif
 
 /* The current top of kernel VM - gets updated by pmap_growkernel */
 vaddr_t pmap_curmaxkvaddr;
@@ -640,6 +658,33 @@ pmap_bootstrap_common(void)
 	TAILQ_INIT(&pm->pm_segtab_list);
 #endif
 
+#if defined(EFI_RUNTIME)
+
+	const pmap_t efipm = pmap_efirt();
+	struct pmap_asid_info * const efipai = PMAP_PAI(efipm, cpu_tlb_info(ci));
+
+	rw_init(&efipm->pm_obj_lock);
+	uvm_obj_init(&efipm->pm_uobject, &pmap_pager, false, 1);
+	uvm_obj_setlock(&efipm->pm_uobject, &efipm->pm_obj_lock);
+
+	efipai->pai_asid = KERNEL_PID;
+
+	TAILQ_INIT(&efipm->pm_ppg_list);
+
+#if defined(PMAP_HWPAGEWALKER)
+	TAILQ_INIT(&efipm->pm_pdetab_list);
+#endif
+#if !defined(PMAP_HWPAGEWALKER) || !defined(PMAP_MAP_PDETABPAGE)
+	TAILQ_INIT(&efipm->pm_segtab_list);
+#endif
+
+#endif
+
+	/*
+	 * Initialize the segtab lock.
+	 */
+	mutex_init(&pmap_segtab_lock, MUTEX_DEFAULT, IPL_HIGH);
+
 	pmap_tlb_miss_lock_init();
 }
 
@@ -653,11 +698,6 @@ pmap_init(void)
 {
 	UVMHIST_FUNC(__func__);
 	UVMHIST_CALLED(pmaphist);
-
-	/*
-	 * Initialize the segtab lock.
-	 */
-	mutex_init(&pmap_segtab_lock, MUTEX_DEFAULT, IPL_HIGH);
 
 	/*
 	 * Set a low water mark on the pv_entry pool, so that we are
@@ -707,7 +747,7 @@ pmap_create(void)
 
 	KASSERT(pmap->pm_pai[0].pai_link.le_prev == NULL);
 
-	pmap->pm_count = 1;
+	pmap->pm_refcnt = 1;
 	pmap->pm_minaddr = VM_MIN_ADDRESS;
 	pmap->pm_maxaddr = VM_MAXUSER_ADDRESS;
 
@@ -751,7 +791,7 @@ pmap_destroy(pmap_t pmap)
 	UVMHIST_CALLARGS(pmapxtabhist, "(pmap=%#jx)", (uintptr_t)pmap, 0, 0, 0);
 
 	membar_release();
-	if (atomic_dec_uint_nv(&pmap->pm_count) > 0) {
+	if (atomic_dec_uint_nv(&pmap->pm_refcnt) > 0) {
 		PMAP_COUNT(dereference);
 		UVMHIST_LOG(pmaphist, " <-- done (deref)", 0, 0, 0, 0);
 		UVMHIST_LOG(pmapxtabhist, " <-- done (deref)", 0, 0, 0, 0);
@@ -760,12 +800,12 @@ pmap_destroy(pmap_t pmap)
 	membar_acquire();
 
 	PMAP_COUNT(destroy);
-	KASSERT(pmap->pm_count == 0);
+	KASSERT(pmap->pm_refcnt == 0);
 	kpreempt_disable();
 	pmap_tlb_miss_lock_enter();
 	pmap_tlb_asid_release_all(pmap);
-	pmap_segtab_destroy(pmap, NULL, 0);
 	pmap_tlb_miss_lock_exit();
+	pmap_segtab_destroy(pmap, NULL, 0);
 
 	KASSERT(TAILQ_EMPTY(&pmap->pm_ppg_list));
 
@@ -807,7 +847,7 @@ pmap_reference(pmap_t pmap)
 	PMAP_COUNT(reference);
 
 	if (pmap != NULL) {
-		atomic_inc_uint(&pmap->pm_count);
+		atomic_inc_uint(&pmap->pm_refcnt);
 	}
 
 	UVMHIST_LOG(pmaphist, " <-- done", 0, 0, 0, 0);
@@ -862,7 +902,7 @@ pmap_page_remove(struct vm_page_md *mdpg)
 	}
 
 #ifdef PMAP_VIRTUAL_CACHE_ALIASES
-	pmap_page_clear_attributes(mdpg, VM_PAGEMD_EXECPAGE|VM_PAGEMD_UNCACHED);
+	pmap_page_clear_attributes(mdpg, VM_PAGEMD_EXECPAGE | VM_PAGEMD_UNCACHED);
 #else
 	pmap_page_clear_attributes(mdpg, VM_PAGEMD_EXECPAGE);
 #endif
@@ -1148,13 +1188,13 @@ pmap_page_protect(struct vm_page *pg, vm_prot_t prot)
 	PMAP_COUNT(page_protect);
 
 	switch (prot) {
-	case VM_PROT_READ|VM_PROT_WRITE:
+	case VM_PROT_READ | VM_PROT_WRITE:
 	case VM_PROT_ALL:
 		break;
 
 	/* copy_on_write */
 	case VM_PROT_READ:
-	case VM_PROT_READ|VM_PROT_EXECUTE:
+	case VM_PROT_READ | VM_PROT_EXECUTE:
 		pv = &mdpg->mdpg_first;
 		kpreempt_disable();
 		VM_PAGEMD_PVLIST_READLOCK(mdpg);
@@ -1354,6 +1394,11 @@ pmap_enter(pmap_t pmap, vaddr_t va, paddr_t pa, vm_prot_t prot, u_int flags)
 {
 	const bool wired = (flags & PMAP_WIRED) != 0;
 	const bool is_kernel_pmap_p = (pmap == pmap_kernel());
+#if defined(EFI_RUNTIME)
+	const bool is_efirt_pmap_p = (pmap == pmap_efirt());
+#else
+	const bool is_efirt_pmap_p = false;
+#endif
 	u_int update_flags = (flags & VM_PROT_ALL) != 0 ? PMAP_TLB_INSERT : 0;
 #ifdef UVMHIST
 	struct kern_history * const histp =
@@ -1392,7 +1437,7 @@ pmap_enter(pmap_t pmap, vaddr_t va, paddr_t pa, vm_prot_t prot, u_int flags)
 	if (mdpg) {
 		/* Set page referenced/modified status based on flags */
 		if (flags & VM_PROT_WRITE) {
-			pmap_page_set_attributes(mdpg, VM_PAGEMD_MODIFIED|VM_PAGEMD_REFERENCED);
+			pmap_page_set_attributes(mdpg, VM_PAGEMD_MODIFIED | VM_PAGEMD_REFERENCED);
 		} else if (flags & VM_PROT_ALL) {
 			pmap_page_set_attributes(mdpg, VM_PAGEMD_REFERENCED);
 		}
@@ -1411,6 +1456,8 @@ pmap_enter(pmap_t pmap, vaddr_t va, paddr_t pa, vm_prot_t prot, u_int flags)
 
 		PMAP_COUNT(pvtracked_mappings);
 #endif
+	} else if (is_efirt_pmap_p) {
+		PMAP_COUNT(efirt_mappings);
 	} else {
 		/*
 		 * Assumption: if it is not part of our managed memory
@@ -1421,11 +1468,14 @@ pmap_enter(pmap_t pmap, vaddr_t va, paddr_t pa, vm_prot_t prot, u_int flags)
 		PMAP_COUNT(unmanaged_mappings);
 	}
 
-	KASSERTMSG(mdpg == NULL || mdpp == NULL, "mdpg %p mdpp %p", mdpg, mdpp);
+	KASSERTMSG(mdpg == NULL || mdpp == NULL || is_efirt_pmap_p,
+	    "mdpg %p mdpp %p efirt %s", mdpg, mdpp,
+	    is_efirt_pmap_p ? "true" : "false");
 
 	struct vm_page_md *md = (mdpg != NULL) ? mdpg : mdpp;
-	pt_entry_t npte = pte_make_enter(pa, md, prot, flags,
-	    is_kernel_pmap_p);
+	pt_entry_t npte = is_efirt_pmap_p ?
+	    pte_make_enter_efirt(pa, prot, flags) :
+	    pte_make_enter(pa, md, prot, flags, is_kernel_pmap_p);
 
 	kpreempt_disable();
 
@@ -1913,7 +1963,7 @@ pmap_set_modified(paddr_t pa)
 {
 	struct vm_page * const pg = PHYS_TO_VM_PAGE(pa);
 	struct vm_page_md * const mdpg = VM_PAGE_TO_MD(pg);
-	pmap_page_set_attributes(mdpg, VM_PAGEMD_MODIFIED|VM_PAGEMD_REFERENCED);
+	pmap_page_set_attributes(mdpg, VM_PAGEMD_MODIFIED | VM_PAGEMD_REFERENCED);
 }
 
 /******************** pv_entry management ********************/

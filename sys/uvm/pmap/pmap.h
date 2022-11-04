@@ -1,4 +1,4 @@
-/*	$NetBSD: pmap.h,v 1.22 2022/10/26 07:35:20 skrll Exp $	*/
+/*	$NetBSD: pmap.h,v 1.26 2022/11/03 18:55:07 skrll Exp $	*/
 
 /*
  * Copyright (c) 1992, 1993
@@ -70,6 +70,10 @@
  *
  *	@(#)pmap.h	8.1 (Berkeley) 6/10/93
  */
+
+#ifdef _KERNEL_OPT
+#include "opt_efi.h"
+#endif
 
 #ifndef	_UVM_PMAP_PMAP_H_
 #define	_UVM_PMAP_PMAP_H_
@@ -189,7 +193,7 @@ extern kmutex_t pmap_segtab_lock;
  */
 struct pmap {
 	struct uvm_object	pm_uobject;
-#define pm_count		pm_uobject.uo_refs /* pmap reference count */
+#define pm_refcnt		pm_uobject.uo_refs /* pmap reference count */
 #define pm_pvp_list		pm_uobject.memq
 
 	krwlock_t		pm_obj_lock;	/* lock for pm_uobject */
@@ -225,6 +229,8 @@ struct pmap {
 	struct pmap_asid_info	pm_pai[1];
 };
 
+
+#ifdef	_KERNEL
 static inline void
 pmap_lock(struct pmap *pm)
 {
@@ -239,7 +245,6 @@ pmap_unlock(struct pmap *pm)
 	rw_exit(pm->pm_lock);
 }
 
-#ifdef	_KERNEL
 struct pmap_kernel {
 	struct pmap kernel_pmap;
 #if defined(MULTIPROCESSOR) && PMAP_TLB_MAX > 1

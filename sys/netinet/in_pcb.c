@@ -1,4 +1,4 @@
-/*	$NetBSD: in_pcb.c,v 1.191 2022/10/14 19:39:32 ryo Exp $	*/
+/*	$NetBSD: in_pcb.c,v 1.194 2022/10/29 02:56:29 ozaki-r Exp $	*/
 
 /*
  * Copyright (C) 1995, 1996, 1997, and 1998 WIDE Project.
@@ -93,7 +93,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: in_pcb.c,v 1.191 2022/10/14 19:39:32 ryo Exp $");
+__KERNEL_RCSID(0, "$NetBSD: in_pcb.c,v 1.194 2022/10/29 02:56:29 ozaki-r Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_inet.h"
@@ -156,14 +156,21 @@ int	anonportmax = IPPORT_ANONMAX;
 int	lowportmin  = IPPORT_RESERVEDMIN;
 int	lowportmax  = IPPORT_RESERVEDMAX;
 
-static struct pool inpcb_pool;
+static struct pool in4pcb_pool;
+#ifdef INET6
+static struct pool in6pcb_pool;
+#endif
 
 static int
 inpcb_poolinit(void)
 {
 
-	pool_init(&inpcb_pool, sizeof(struct inpcb), 0, 0, 0, "inpcbpl", NULL,
+	pool_init(&in4pcb_pool, sizeof(struct in4pcb), 0, 0, 0, "in4pcbpl", NULL,
 	    IPL_NET);
+#ifdef INET6
+	pool_init(&in6pcb_pool, sizeof(struct in6pcb), 0, 0, 0, "in6pcbpl", NULL,
+	    IPL_NET);
+#endif
 	return 0;
 }
 
@@ -192,36 +199,61 @@ in_pcballoc(struct socket *so, void *v)
 	struct inpcb *inp;
 	int s;
 
-	KASSERT(so->so_proto->pr_domain->dom_family == AF_INET);
+#ifdef INET6
+	KASSERT(soaf(so) == AF_INET || soaf(so) == AF_INET6);
 
-	inp = pool_get(&inpcb_pool, PR_NOWAIT);
+	if (soaf(so) == AF_INET)
+		inp = pool_get(&in4pcb_pool, PR_NOWAIT|PR_ZERO);
+	else
+		inp = pool_get(&in6pcb_pool, PR_NOWAIT|PR_ZERO);
+#else
+	KASSERT(soaf(so) == AF_INET);
+	inp = pool_get(&in4pcb_pool, PR_NOWAIT|PR_ZERO);
+#endif
 	if (inp == NULL)
 		return (ENOBUFS);
-	memset(inp, 0, sizeof(*inp));
-	inp->inp_af = AF_INET;
+	inp->inp_af = soaf(so);
 	inp->inp_table = table;
 	inp->inp_socket = so;
-	inp->inp_errormtu = -1;
 	inp->inp_portalgo = PORTALGO_DEFAULT;
 	inp->inp_bindportonsend = false;
-	inp->inp_prefsrcip.s_addr = INADDR_ANY;
 	inp->inp_overudp_cb = NULL;
 	inp->inp_overudp_arg = NULL;
+
+	if (inp->inp_af == AF_INET) {
+		in4p_errormtu(inp) = -1;
+		in4p_prefsrcip(inp).s_addr = INADDR_ANY;
+	}
+#ifdef INET6
+	else {
+		in6p_hops6(inp) = -1;	/* use kernel default */
+		if (ip6_v6only)
+			inp->inp_flags |= IN6P_IPV6_V6ONLY;
+	}
+#endif
 #if defined(IPSEC)
 	if (ipsec_enabled) {
 		int error = ipsec_init_pcbpolicy(so, &inp->inp_sp);
 		if (error != 0) {
-			pool_put(&inpcb_pool, inp);
+#ifdef INET6
+			if (inp->inp_af == AF_INET)
+				pool_put(&in4pcb_pool, inp);
+			else
+				pool_put(&in6pcb_pool, inp);
+#else
+			KASSERT(inp->inp_af == AF_INET);
+			pool_put(&in4pcb_pool, inp);
+#endif
 			return error;
 		}
-		inp->inp_sp->sp_inph = (struct inpcb_hdr *)inp;
+		inp->inp_sp->sp_inp = inp;
 	}
 #endif
 	so->so_pcb = inp;
 	s = splsoftnet();
-	TAILQ_INSERT_HEAD(&table->inpt_queue, &inp->inp_head, inph_queue);
-	LIST_INSERT_HEAD(INPCBHASH_PORT(table, inp->inp_lport), &inp->inp_head,
-	    inph_lhash);
+	TAILQ_INSERT_HEAD(&table->inpt_queue, inp, inp_queue);
+	LIST_INSERT_HEAD(INPCBHASH_PORT(table, inp->inp_lport), inp,
+	    inp_lhash);
 	in_pcbstate(inp, INP_ATTACHED);
 	splx(s);
 	return (0);
@@ -260,7 +292,7 @@ in_pcbsetport(struct sockaddr_in *sin, struct inpcb *inp, kauth_cred_t cred)
        /*
         * Use RFC6056 randomized port selection
         */
-	error = portalgo_randport(&lport, &inp->inp_head, cred);
+	error = portalgo_randport(&lport, inp, cred);
 	if (error)
 		return error;
 
@@ -319,7 +351,7 @@ in_pcbbind_addr(struct inpcb *inp, struct sockaddr_in *sin, kauth_cred_t cred)
 
 	error = in_pcbbindableaddr(inp, sin, cred);
 	if (error == 0)
-		inp->inp_laddr = sin->sin_addr;
+		in4p_laddr(inp) = sin->sin_addr;
 	return error;
 }
 
@@ -351,7 +383,7 @@ in_pcbbind_port(struct inpcb *inp, struct sockaddr_in *sin, kauth_cred_t cred)
 		struct inpcb *t;
 		vestigial_inpcb_t vestige;
 #ifdef INET6
-		struct in6pcb *t6;
+		struct inpcb *t6;
 		struct in6_addr mapped;
 #endif
 		enum kauth_network_req req;
@@ -374,7 +406,7 @@ in_pcbbind_port(struct inpcb *inp, struct sockaddr_in *sin, kauth_cred_t cred)
 #ifdef INET6
 		in6_in_2_v4mapin6(&sin->sin_addr, &mapped);
 		t6 = in6_pcblookup_port(table, &mapped, sin->sin_port, wild, &vestige);
-		if (t6 && (reuseport & t6->in6p_socket->so_options) == 0)
+		if (t6 && (reuseport & t6->inp_socket->so_options) == 0)
 			return (EADDRINUSE);
 		if (!t6 && vestige.valid) {
 		    if (!!reuseport != !!vestige.reuse_port) {
@@ -393,7 +425,7 @@ in_pcbbind_port(struct inpcb *inp, struct sockaddr_in *sin, kauth_cred_t cred)
 			 */
 			if (t &&
 			    (!in_nullhost(sin->sin_addr) ||
-			     !in_nullhost(t->inp_laddr) ||
+			     !in_nullhost(in4p_laddr(t)) ||
 			     (t->inp_socket->so_options & SO_REUSEPORT) == 0)
 			    && (so->so_uidinfo->ui_uid != t->inp_socket->so_uidinfo->ui_uid)) {
 				return (EADDRINUSE);
@@ -419,9 +451,9 @@ in_pcbbind_port(struct inpcb *inp, struct sockaddr_in *sin, kauth_cred_t cred)
 		in_pcbstate(inp, INP_BOUND);
 	}
 
-	LIST_REMOVE(&inp->inp_head, inph_lhash);
-	LIST_INSERT_HEAD(INPCBHASH_PORT(table, inp->inp_lport), &inp->inp_head,
-	    inph_lhash);
+	LIST_REMOVE(inp, inp_lhash);
+	LIST_INSERT_HEAD(INPCBHASH_PORT(table, inp->inp_lport), inp,
+	    inp_lhash);
 
 	return (0);
 }
@@ -436,7 +468,7 @@ in_pcbbind(void *v, struct sockaddr_in *sin, struct lwp *l)
 	if (inp->inp_af != AF_INET)
 		return (EINVAL);
 
-	if (inp->inp_lport || !in_nullhost(inp->inp_laddr))
+	if (inp->inp_lport || !in_nullhost(in4p_laddr(inp)))
 		return (EINVAL);
 
 	if (NULL != sin) {
@@ -456,7 +488,7 @@ in_pcbbind(void *v, struct sockaddr_in *sin, struct lwp *l)
 	/* Bind port. */
 	error = in_pcbbind_port(inp, sin, l->l_cred);
 	if (error) {
-		inp->inp_laddr.s_addr = INADDR_ANY;
+		in4p_laddr(inp).s_addr = INADDR_ANY;
 
 		return (error);
 	}
@@ -530,7 +562,7 @@ in_pcbconnect(void *v, struct sockaddr_in *sin, struct lwp *l)
 	 * chose a port number once, even if sending to multiple
 	 * destinations.
 	 */
-	if (in_nullhost(inp->inp_laddr)) {
+	if (in_nullhost(in4p_laddr(inp))) {
 		int xerror;
 		struct in_ifaddr *ia, *_ia;
 		int s;
@@ -560,13 +592,13 @@ in_pcbconnect(void *v, struct sockaddr_in *sin, struct lwp *l)
 		ia4_release(ia, &psref);
 		curlwp_bindx(bound);
 	} else
-		laddr = inp->inp_laddr;
+		laddr = in4p_laddr(inp);
 	if (in_pcblookup_connect(inp->inp_table, sin->sin_addr, sin->sin_port,
 	                         laddr, inp->inp_lport, &vestige) != NULL ||
 	    vestige.valid) {
 		return (EADDRINUSE);
 	}
-	if (in_nullhost(inp->inp_laddr)) {
+	if (in_nullhost(in4p_laddr(inp))) {
 		if (inp->inp_lport == 0) {
 			error = in_pcbbind(inp, NULL, l);
 			/*
@@ -578,16 +610,16 @@ in_pcbconnect(void *v, struct sockaddr_in *sin, struct lwp *l)
 			if (error != 0)
 				return (error);
 		}
-		inp->inp_laddr = laddr;
+		in4p_laddr(inp) = laddr;
 	}
-	inp->inp_faddr = sin->sin_addr;
+	in4p_faddr(inp) = sin->sin_addr;
 	inp->inp_fport = sin->sin_port;
 
         /* Late bind, if needed */
 	if (inp->inp_bindportonsend) {
                struct sockaddr_in lsin = *((const struct sockaddr_in *)
 		    inp->inp_socket->so_proto->pr_domain->dom_sa_any);
-		lsin.sin_addr = inp->inp_laddr;
+		lsin.sin_addr = in4p_laddr(inp);
 		lsin.sin_port = 0;
 
 		if ((error = in_pcbbind_port(inp, &lsin, l->l_cred)) != 0)
@@ -610,7 +642,7 @@ in_pcbdisconnect(void *v)
 	if (inp->inp_af != AF_INET)
 		return;
 
-	inp->inp_faddr = zeroin_addr;
+	in4p_faddr(inp) = zeroin_addr;
 	inp->inp_fport = 0;
 	in_pcbstate(inp, INP_BOUND);
 #if defined(IPSEC)
@@ -628,8 +660,7 @@ in_pcbdetach(void *v)
 	struct socket *so = inp->inp_socket;
 	int s;
 
-	if (inp->inp_af != AF_INET)
-		return;
+	KASSERT(inp->inp_af == AF_INET || inp->inp_af == AF_INET6);
 
 #if defined(IPSEC)
 	if (ipsec_enabled)
@@ -639,8 +670,8 @@ in_pcbdetach(void *v)
 
 	s = splsoftnet();
 	in_pcbstate(inp, INP_ATTACHED);
-	LIST_REMOVE(&inp->inp_head, inph_lhash);
-	TAILQ_REMOVE(&inp->inp_table->inpt_queue, &inp->inp_head, inph_queue);
+	LIST_REMOVE(inp, inp_lhash);
+	TAILQ_REMOVE(&inp->inp_table->inpt_queue, inp, inp_queue);
 	splx(s);
 
 	if (inp->inp_options) {
@@ -648,9 +679,26 @@ in_pcbdetach(void *v)
 	}
 	rtcache_free(&inp->inp_route);
 	ip_freemoptions(inp->inp_moptions);
+#ifdef INET6
+	if (inp->inp_af == AF_INET6) {
+		if (in6p_outputopts(inp) != NULL) {
+			ip6_clearpktopts(in6p_outputopts(inp), -1);
+			free(in6p_outputopts(inp), M_IP6OPT);
+		}
+		ip6_freemoptions(in6p_moptions(inp));
+	}
+#endif
 	sofree(so);			/* drops the socket's lock */
 
-	pool_put(&inpcb_pool, inp);
+#ifdef INET6
+	if (inp->inp_af == AF_INET)
+		pool_put(&in4pcb_pool, inp);
+	else
+		pool_put(&in6pcb_pool, inp);
+#else
+	KASSERT(inp->inp_af == AF_INET);
+	pool_put(&in4pcb_pool, inp);
+#endif
 	mutex_enter(softnet_lock);	/* reacquire the softnet_lock */
 }
 
@@ -661,7 +709,7 @@ in_setsockaddr(struct inpcb *inp, struct sockaddr_in *sin)
 	if (inp->inp_af != AF_INET)
 		return;
 
-	sockaddr_in_init(sin, &inp->inp_laddr, inp->inp_lport);
+	sockaddr_in_init(sin, &in4p_laddr(inp), inp->inp_lport);
 }
 
 void
@@ -671,7 +719,7 @@ in_setpeeraddr(struct inpcb *inp, struct sockaddr_in *sin)
 	if (inp->inp_af != AF_INET)
 		return;
 
-	sockaddr_in_init(sin, &inp->inp_faddr, inp->inp_fport);
+	sockaddr_in_init(sin, &in4p_faddr(inp), inp->inp_fport);
 }
 
 /*
@@ -691,7 +739,6 @@ in_pcbnotify(struct inpcbtable *table, struct in_addr faddr, u_int fport_arg,
     void (*notify)(struct inpcb *, int))
 {
 	struct inpcbhead *head;
-	struct inpcb_hdr *inph;
 	struct inpcb *inp;
 	u_int16_t fport = fport_arg, lport = lport_arg;
 	int nmatch;
@@ -701,15 +748,14 @@ in_pcbnotify(struct inpcbtable *table, struct in_addr faddr, u_int fport_arg,
 
 	nmatch = 0;
 	head = INPCBHASH_CONNECT(table, faddr, fport, laddr, lport);
-	LIST_FOREACH(inph, head, inph_hash) {
-		inp = (struct inpcb *)inph;
+	LIST_FOREACH(inp, head, inp_hash) {
 		if (inp->inp_af != AF_INET)
 			continue;
 
-		if (in_hosteq(inp->inp_faddr, faddr) &&
+		if (in_hosteq(in4p_faddr(inp), faddr) &&
 		    inp->inp_fport == fport &&
 		    inp->inp_lport == lport &&
-		    in_hosteq(inp->inp_laddr, laddr)) {
+		    in_hosteq(in4p_laddr(inp), laddr)) {
 			(*notify)(inp, errno);
 			nmatch++;
 		}
@@ -721,16 +767,15 @@ void
 in_pcbnotifyall(struct inpcbtable *table, struct in_addr faddr, int errno,
     void (*notify)(struct inpcb *, int))
 {
-	struct inpcb_hdr *inph;
+	struct inpcb *inp;
 
 	if (in_nullhost(faddr) || notify == 0)
 		return;
 
-	TAILQ_FOREACH(inph, &table->inpt_queue, inph_queue) {
-		struct inpcb *inp = (struct inpcb *)inph;
+	TAILQ_FOREACH(inp, &table->inpt_queue, inp_queue) {
 		if (inp->inp_af != AF_INET)
 			continue;
-		if (in_hosteq(inp->inp_faddr, faddr))
+		if (in_hosteq(in4p_faddr(inp), faddr))
 			(*notify)(inp, errno);
 	}
 }
@@ -770,10 +815,9 @@ in_purgeifmcast(struct ip_moptions *imo, struct ifnet *ifp)
 void
 in_pcbpurgeif0(struct inpcbtable *table, struct ifnet *ifp)
 {
-	struct inpcb_hdr *inph;
+	struct inpcb *inp;
 
-	TAILQ_FOREACH(inph, &table->inpt_queue, inph_queue) {
-		struct inpcb *inp = (struct inpcb *)inph;
+	TAILQ_FOREACH(inp, &table->inpt_queue, inp_queue) {
 		bool need_unlock = false;
 
 		if (inp->inp_af != AF_INET)
@@ -796,10 +840,9 @@ void
 in_pcbpurgeif(struct inpcbtable *table, struct ifnet *ifp)
 {
 	struct rtentry *rt;
-	struct inpcb_hdr *inph;
+	struct inpcb *inp;
 
-	TAILQ_FOREACH(inph, &table->inpt_queue, inph_queue) {
-		struct inpcb *inp = (struct inpcb *)inph;
+	TAILQ_FOREACH(inp, &table->inpt_queue, inp_queue) {
 		if (inp->inp_af != AF_INET)
 			continue;
 		if ((rt = rtcache_validate(&inp->inp_route)) != NULL &&
@@ -875,7 +918,7 @@ in_pcblookup_port(struct inpcbtable *table, struct in_addr laddr,
 		  u_int lport_arg, int lookup_wildcard, vestigial_inpcb_t *vp)
 {
 	struct inpcbhead *head;
-	struct inpcb_hdr *inph;
+	struct inpcb *inp;
 	struct inpcb *match = NULL;
 	int matchwild = 3;
 	int wildcard;
@@ -885,9 +928,7 @@ in_pcblookup_port(struct inpcbtable *table, struct in_addr laddr,
 		vp->valid = 0;
 
 	head = INPCBHASH_PORT(table, lport);
-	LIST_FOREACH(inph, head, inph_lhash) {
-		struct inpcb * const inp = (struct inpcb *)inph;
-
+	LIST_FOREACH(inp, head, inp_lhash) {
 		if (inp->inp_af != AF_INET)
 			continue;
 		if (inp->inp_lport != lport)
@@ -904,16 +945,16 @@ in_pcblookup_port(struct inpcbtable *table, struct in_addr laddr,
 		 *	A	A	match
 		 */
 		wildcard = 0;
-		if (!in_nullhost(inp->inp_faddr))
+		if (!in_nullhost(in4p_faddr(inp)))
 			wildcard++;
-		if (in_nullhost(inp->inp_laddr)) {
+		if (in_nullhost(in4p_laddr(inp))) {
 			if (!in_nullhost(laddr))
 				wildcard++;
 		} else {
 			if (in_nullhost(laddr))
 				wildcard++;
 			else {
-				if (!in_hosteq(inp->inp_laddr, laddr))
+				if (!in_hosteq(in4p_laddr(inp), laddr))
 					continue;
 			}
 		}
@@ -988,7 +1029,6 @@ in_pcblookup_connect(struct inpcbtable *table,
     vestigial_inpcb_t *vp)
 {
 	struct inpcbhead *head;
-	struct inpcb_hdr *inph;
 	struct inpcb *inp;
 	u_int16_t fport = fport_arg, lport = lport_arg;
 
@@ -996,15 +1036,14 @@ in_pcblookup_connect(struct inpcbtable *table,
 		vp->valid = 0;
 
 	head = INPCBHASH_CONNECT(table, faddr, fport, laddr, lport);
-	LIST_FOREACH(inph, head, inph_hash) {
-		inp = (struct inpcb *)inph;
+	LIST_FOREACH(inp, head, inp_hash) {
 		if (inp->inp_af != AF_INET)
 			continue;
 
-		if (in_hosteq(inp->inp_faddr, faddr) &&
+		if (in_hosteq(in4p_faddr(inp), faddr) &&
 		    inp->inp_fport == fport &&
 		    inp->inp_lport == lport &&
-		    in_hosteq(inp->inp_laddr, laddr))
+		    in_hosteq(in4p_laddr(inp), laddr))
 			goto out;
 	}
 	if (vp && table->vestige) {
@@ -1024,10 +1063,9 @@ in_pcblookup_connect(struct inpcbtable *table,
 
 out:
 	/* Move this PCB to the head of hash chain. */
-	inph = &inp->inp_head;
-	if (inph != LIST_FIRST(head)) {
-		LIST_REMOVE(inph, inph_hash);
-		LIST_INSERT_HEAD(head, inph, inph_hash);
+	if (inp != LIST_FIRST(head)) {
+		LIST_REMOVE(inp, inp_hash);
+		LIST_INSERT_HEAD(head, inp, inp_hash);
 	}
 	return (inp);
 }
@@ -1037,28 +1075,25 @@ in_pcblookup_bind(struct inpcbtable *table,
     struct in_addr laddr, u_int lport_arg)
 {
 	struct inpcbhead *head;
-	struct inpcb_hdr *inph;
 	struct inpcb *inp;
 	u_int16_t lport = lport_arg;
 
 	head = INPCBHASH_BIND(table, laddr, lport);
-	LIST_FOREACH(inph, head, inph_hash) {
-		inp = (struct inpcb *)inph;
+	LIST_FOREACH(inp, head, inp_hash) {
 		if (inp->inp_af != AF_INET)
 			continue;
 
 		if (inp->inp_lport == lport &&
-		    in_hosteq(inp->inp_laddr, laddr))
+		    in_hosteq(in4p_laddr(inp), laddr))
 			goto out;
 	}
 	head = INPCBHASH_BIND(table, zeroin_addr, lport);
-	LIST_FOREACH(inph, head, inph_hash) {
-		inp = (struct inpcb *)inph;
+	LIST_FOREACH(inp, head, inp_hash) {
 		if (inp->inp_af != AF_INET)
 			continue;
 
 		if (inp->inp_lport == lport &&
-		    in_hosteq(inp->inp_laddr, zeroin_addr))
+		    in_hosteq(in4p_laddr(inp), zeroin_addr))
 			goto out;
 	}
 #ifdef DIAGNOSTIC
@@ -1071,10 +1106,9 @@ in_pcblookup_bind(struct inpcbtable *table,
 
 out:
 	/* Move this PCB to the head of hash chain. */
-	inph = &inp->inp_head;
-	if (inph != LIST_FIRST(head)) {
-		LIST_REMOVE(inph, inph_hash);
-		LIST_INSERT_HEAD(head, inph, inph_hash);
+	if (inp != LIST_FIRST(head)) {
+		LIST_REMOVE(inp, inp_hash);
+		LIST_INSERT_HEAD(head, inp, inp_hash);
 	}
 	return (inp);
 }
@@ -1083,23 +1117,30 @@ void
 in_pcbstate(struct inpcb *inp, int state)
 {
 
+#ifdef INET6
+	if (inp->inp_af == AF_INET6) {
+		in6_pcbstate(inp, state);
+		return;
+	}
+#else
 	if (inp->inp_af != AF_INET)
 		return;
+#endif
 
 	if (inp->inp_state > INP_ATTACHED)
-		LIST_REMOVE(&inp->inp_head, inph_hash);
+		LIST_REMOVE(inp, inp_hash);
 
 	switch (state) {
 	case INP_BOUND:
 		LIST_INSERT_HEAD(INPCBHASH_BIND(inp->inp_table,
-		    inp->inp_laddr, inp->inp_lport), &inp->inp_head,
-		    inph_hash);
+		    in4p_laddr(inp), inp->inp_lport), inp,
+		    inp_hash);
 		break;
 	case INP_CONNECTED:
 		LIST_INSERT_HEAD(INPCBHASH_CONNECT(inp->inp_table,
-		    inp->inp_faddr, inp->inp_fport,
-		    inp->inp_laddr, inp->inp_lport), &inp->inp_head,
-		    inph_hash);
+		    in4p_faddr(inp), inp->inp_fport,
+		    in4p_laddr(inp), inp->inp_lport), inp,
+		    inp_hash);
 		break;
 	}
 
@@ -1115,12 +1156,16 @@ in_pcbrtentry(struct inpcb *inp)
 		struct sockaddr_in	dst4;
 	} u;
 
+#ifdef INET6
+	if (inp->inp_af == AF_INET6)
+		return in6_pcbrtentry(inp);
+#endif
 	if (inp->inp_af != AF_INET)
 		return (NULL);
 
 	ro = &inp->inp_route;
 
-	sockaddr_in_init(&u.dst4, &inp->inp_faddr, 0);
+	sockaddr_in_init(&u.dst4, &in4p_faddr(inp), 0);
 	return rtcache_lookup(ro, &u.dst);
 }
 

@@ -1,4 +1,4 @@
-/*	$NetBSD: subr_prf.c,v 1.194 2022/10/25 23:21:13 riastradh Exp $	*/
+/*	$NetBSD: subr_prf.c,v 1.196 2022/10/31 09:14:18 simonb Exp $	*/
 
 /*-
  * Copyright (c) 1986, 1988, 1991, 1993
@@ -37,7 +37,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: subr_prf.c,v 1.194 2022/10/25 23:21:13 riastradh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: subr_prf.c,v 1.196 2022/10/31 09:14:18 simonb Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_ddb.h"
@@ -103,7 +103,6 @@ static void	 kprintf_internal(const char *, int, void *, char *, ...);
  * globals
  */
 
-extern	int log_open;	/* subr_log: is /dev/klog open? */
 const	char *panicstr; /* arg to first call to panic (used as a flag
 			   to indicate that panic has already been called). */
 struct cpu_info *paniccpu;	/* cpu that first panicked */
@@ -402,6 +401,8 @@ putone(int c, int flags, struct tty *tp)
 {
 	struct tty *ctp;
 	int s;
+
+	ctp = NULL;	/* XXX gcc i386 -Os */
 
 	/*
 	 * Ensure whatever constty points to can't go away while we're

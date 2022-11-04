@@ -1,4 +1,4 @@
-/*	$NetBSD: raw_ip.c,v 1.181 2022/06/13 09:23:23 knakahara Exp $	*/
+/*	$NetBSD: raw_ip.c,v 1.183 2022/10/28 05:25:36 ozaki-r Exp $	*/
 
 /*
  * Copyright (C) 1995, 1996, 1997, and 1998 WIDE Project.
@@ -65,7 +65,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: raw_ip.c,v 1.181 2022/06/13 09:23:23 knakahara Exp $");
+__KERNEL_RCSID(0, "$NetBSD: raw_ip.c,v 1.183 2022/10/28 05:25:36 ozaki-r Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_inet.h"
@@ -165,7 +165,6 @@ void
 rip_input(struct mbuf *m, int off, int proto)
 {
 	struct ip *ip = mtod(m, struct ip *);
-	struct inpcb_hdr *inph;
 	struct inpcb *inp;
 	struct inpcb *last = NULL;
 	struct mbuf *n;
@@ -183,17 +182,16 @@ rip_input(struct mbuf *m, int off, int proto)
 	ip->ip_len = ntohs(ip->ip_len) - hlen;
 	NTOHS(ip->ip_off);
 
-	TAILQ_FOREACH(inph, &rawcbtable.inpt_queue, inph_queue) {
-		inp = (struct inpcb *)inph;
+	TAILQ_FOREACH(inp, &rawcbtable.inpt_queue, inp_queue) {
 		if (inp->inp_af != AF_INET)
 			continue;
-		if (inp->inp_ip.ip_p && inp->inp_ip.ip_p != proto)
+		if (in4p_ip(inp).ip_p && in4p_ip(inp).ip_p != proto)
 			continue;
-		if (!in_nullhost(inp->inp_laddr) &&
-		    !in_hosteq(inp->inp_laddr, ip->ip_dst))
+		if (!in_nullhost(in4p_laddr(inp)) &&
+		    !in_hosteq(in4p_laddr(inp), ip->ip_dst))
 			continue;
-		if (!in_nullhost(inp->inp_faddr) &&
-		    !in_hosteq(inp->inp_faddr, ip->ip_src))
+		if (!in_nullhost(in4p_faddr(inp)) &&
+		    !in_hosteq(in4p_faddr(inp), ip->ip_src))
 			continue;
 
 		if (last == NULL) {
@@ -241,18 +239,17 @@ rip_pcbnotify(struct inpcbtable *table,
     struct in_addr faddr, struct in_addr laddr, int proto, int errno,
     void (*notify)(struct inpcb *, int))
 {
-	struct inpcb_hdr *inph;
+	struct inpcb *inp;
 	int nmatch;
 
 	nmatch = 0;
-	TAILQ_FOREACH(inph, &table->inpt_queue, inph_queue) {
-		struct inpcb *inp = (struct inpcb *)inph;
+	TAILQ_FOREACH(inp, &table->inpt_queue, inp_queue) {
 		if (inp->inp_af != AF_INET)
 			continue;
-		if (inp->inp_ip.ip_p && inp->inp_ip.ip_p != proto)
+		if (in4p_ip(inp).ip_p && in4p_ip(inp).ip_p != proto)
 			continue;
-		if (in_hosteq(inp->inp_faddr, faddr) &&
-		    in_hosteq(inp->inp_laddr, laddr)) {
+		if (in_hosteq(in4p_faddr(inp), faddr) &&
+		    in_hosteq(in4p_laddr(inp), laddr)) {
 			(*notify)(inp, errno);
 			nmatch++;
 		}
@@ -338,10 +335,10 @@ rip_output(struct mbuf *m, struct inpcb *inp, struct mbuf *control,
 		ip = mtod(m, struct ip *);
 		ip->ip_tos = 0;
 		ip->ip_off = htons(0);
-		ip->ip_p = inp->inp_ip.ip_p;
+		ip->ip_p = in4p_ip(inp).ip_p;
 		ip->ip_len = htons(m->m_pkthdr.len);
 		ip->ip_src = pktopts.ippo_laddr.sin_addr;
-		ip->ip_dst = inp->inp_faddr;
+		ip->ip_dst = in4p_faddr(inp);
 		ip->ip_ttl = MAXTTL;
 		opts = inp->inp_options;
 	} else {
@@ -501,7 +498,7 @@ rip_connect_pcb(struct inpcb *inp, struct sockaddr_in *addr)
 		return (EAFNOSUPPORT);
 	if (addr->sin_len != sizeof(*addr))
 		return EINVAL;
-	inp->inp_faddr = addr->sin_addr;
+	in4p_faddr(inp) = addr->sin_addr;
 	return (0);
 }
 
@@ -509,7 +506,7 @@ static void
 rip_disconnect1(struct inpcb *inp)
 {
 
-	inp->inp_faddr = zeroin_addr;
+	in4p_faddr(inp) = zeroin_addr;
 }
 
 static int
@@ -533,7 +530,7 @@ rip_attach(struct socket *so, int proto)
 		return error;
 	}
 	inp = sotoinpcb(so);
-	inp->inp_ip.ip_p = proto;
+	in4p_ip(inp).ip_p = proto;
 	KASSERT(solocked(so));
 
 	return 0;
@@ -608,7 +605,7 @@ rip_bind(struct socket *so, struct sockaddr *nam, struct lwp *l)
 	}
 	pserialize_read_exit(ss);
 
-	inp->inp_laddr = addr->sin_addr;
+	in4p_laddr(inp) = addr->sin_addr;
 
 release:
 	splx(s);
