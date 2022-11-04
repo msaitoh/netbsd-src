@@ -154,6 +154,16 @@ link_control(struct socket *so, unsigned long cmd, void *data,
 
 		asdl = satocsdl(sstocsa(&iflr->addr));
 
+		if (cmd == SIOCALIFADDR)
+			printf("lctl: AL: ");
+		else if (cmd == SIOCDLIFADDR)
+			printf("lctl: DL: ");
+		else if (cmd == SIOCGLIFADDR)
+			printf("lctl: GL: ");
+		printf("%s(%hhu): sdl_len = %hhu, "
+		    "dl_alen = %hhu\n",
+		    ifp->if_xname, asdl->sdl_nlen, asdl->sdl_len,
+		    asdl->sdl_alen);
 		if (asdl->sdl_alen != ifp->if_addrlen)
 			return EINVAL;
 
