@@ -1,4 +1,4 @@
-#	$NetBSD: 3RDPARTY,v 1.1899 2022/11/05 18:38:08 wiz Exp $
+#	$NetBSD: 3RDPARTY,v 1.1901 2022/11/17 23:54:44 wiz Exp $
 #
 # This file contains a list of the software that has been integrated into
 # NetBSD where we are not the primary maintainer.
@@ -1515,7 +1515,7 @@ Notes:
 
 Package:	xz
 Version:	5.2.4
-Current Vers:	5.2.7
+Current Vers:	5.2.8
 Maintainer:	Lasse Collin <lasse.collin@tukanni.org>
 Archive Site:	http://tukaani.org/xz/
 Home Page:	http://tukaani.org/xz/
@@ -2172,7 +2172,7 @@ Old versions are available from Purdue (ftp.cs.purdue.edu:/pub/RCS).
 
 Package:	texinfo
 Version:	4.8a (Last GPLv2+ version)
-Current Vers:	6.5
+Current Vers:	7.0
 Maintainer:	FSF
 Archive Site:	ftp://ftp.gnu.org/gnu/texinfo/
 Home Page:	http://www.gnu.org/software/texinfo/
