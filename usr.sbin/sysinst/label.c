@@ -1,4 +1,4 @@
-/*	$NetBSD: label.c,v 1.43 2022/11/30 15:53:35 martin Exp $	*/
+/*	$NetBSD: label.c,v 1.48 2023/01/06 18:19:27 martin Exp $	*/
 
 /*
  * Copyright 1997 Jonathan Stone
@@ -36,7 +36,7 @@
 
 #include <sys/cdefs.h>
 #if defined(LIBC_SCCS) && !defined(lint)
-__RCSID("$NetBSD: label.c,v 1.43 2022/11/30 15:53:35 martin Exp $");
+__RCSID("$NetBSD: label.c,v 1.48 2023/01/06 18:19:27 martin Exp $");
 #endif
 
 #include <sys/types.h>
@@ -74,9 +74,7 @@ boringpart(const struct disk_part_info *info)
 
 	if (info->size == 0)
 		return true;
-	if (info->flags &
-	     (PTI_PSCHEME_INTERNAL|PTI_WHOLE_DISK|PTI_SEC_CONTAINER|
-	     PTI_RAW_PART))
+	if (info->flags & PTI_SPECIAL_PARTS)
 		return true;
 
 	return false;
@@ -513,6 +511,9 @@ renumber_partitions(struct partition_usage_set *pset)
 				continue;
 			if (pset->infos[i].cur_flags != info.flags)
 				continue;
+			if ((info.flags & PTI_SPECIAL_PARTS) !=
+			    (pset->infos[i].flags & PTI_SPECIAL_PARTS))
+				continue;
 			if ((info.fs_type != FS_UNUSED &&
 			    info.fs_type == pset->infos[i].fs_type) ||
 			    (pset->infos[i].type ==
@@ -795,7 +796,7 @@ edit_fs_type(menudesc *menu, void *arg)
 	if (opts == NULL)
 		return 0;
 
-	/* special case entry 0 and 1: three FFS entries */
+	/* special case entry 0 - 2: three FFS entries */
 	for (i = 0; i < __arraycount(edit_fs_common_types); i++) {
 		opts[i+2].opt_name = getfslabelname(edit_fs_common_types[i], 0);
 		opts[i+2].opt_action = set_fstype;
@@ -992,7 +993,7 @@ edit_ptn(menudesc *menu, void *arg)
 		edit.info.last_mounted = edit.wanted->mount;
 		if (is_new_part) {
 			edit.wanted->parts = pset->parts;
-			if (!can_newfs_fstype(edit.wanted->fs_type))
+			if (!can_newfs_fstype(edit.info.fs_type))
 				edit.wanted->instflags &= ~PUIINST_NEWFS;
 			edit.wanted->cur_part_id = pset->parts->pscheme->
 			    add_partition(pset->parts, &edit.info, &err);
@@ -1008,6 +1009,7 @@ edit_ptn(menudesc *menu, void *arg)
 				    edit.info.nat_type->generic_ptype;
 				edit.wanted->fs_type = edit.info.fs_type;
 				edit.wanted->fs_version = edit.info.fs_sub_type;
+				edit.wanted->cur_flags = edit.info.flags;
 				/* things have changed, re-sort */
 				renumber_partitions(pset);
 			}
@@ -1190,16 +1192,17 @@ draw_edit_ptn_line(menudesc *m, int opt, void *arg)
 	if (opt < 4) {
 		switch (opt) {
 		case 0:
-			if (edit->info.fs_type == FS_BSDFFS)
+			if (edit->info.fs_type == FS_BSDFFS) {
 				if (edit->info.fs_sub_type == 3)
 					c = msg_string(MSG_fs_type_ffsv2ea);
 				else if (edit->info.fs_sub_type == 2)
 					c = msg_string(MSG_fs_type_ffsv2);
 				else
 					c = msg_string(MSG_fs_type_ffs);
-			else
+			} else {
 				c = getfslabelname(edit->info.fs_type,
 				    edit->info.fs_sub_type);
+			}
 			wprintw(m->mw, "%*s : %s", col_width, ptn_type, c);
 			return;
 		case 1:
@@ -1515,7 +1518,8 @@ fmt_fspart_row(menudesc *m, int ptn, void *arg)
 	*fp = 0;
 	if (pset->parts->pscheme->get_part_attr_str != NULL)
 		pset->parts->pscheme->get_part_attr_str(pset->parts,
-		    pset->infos[ptn].cur_part_id, fp, sizeof(flag_str)-1);
+		    pset->infos[ptn].cur_part_id, fp,
+		    sizeof(flag_str)-1-(fp-flag_str));
 
 	/* if the fstype description does not fit, check if we can overrun */
 	if (strlen(desc) > (size_t)fstype_width &&

@@ -1,4 +1,4 @@
-/*	$NetBSD: disklabel.c,v 1.49 2022/06/24 22:28:11 tsutsui Exp $	*/
+/*	$NetBSD: disklabel.c,v 1.51 2023/01/06 15:05:52 martin Exp $	*/
 
 /*
  * Copyright 2018 The NetBSD Foundation, Inc.
@@ -435,7 +435,7 @@ disklabel_write_to_disk(struct disk_partitions *arg)
 		scripting_fprintf(f, "\t:p%c#%" PRIu32 ":o%c#%" PRIu32
 		    ":t%c=%s:", 'a'+i, (uint32_t)lp[i].p_size,
 		    'a'+i, (uint32_t)lp[i].p_offset, 'a'+i,
-		    getfslabelname(lp[i].p_fstype, 0));
+		    fstypenames[lp[i].p_fstype]);
 		if (lp[i].p_fstype == FS_BSDLFS ||
 		    lp[i].p_fstype == FS_BSDFFS)
 			scripting_fprintf (f, "b%c#%" PRIu32 ":f%c#%" PRIu32
@@ -1130,6 +1130,10 @@ disklabel_add_partition(struct disk_partitions *arg,
 #endif
 		if (parts->l.d_partitions[i].p_size > 0)
 			continue;
+#ifdef	MD_DISKLABEL_PART_INDEX_CHECK
+		if (!MD_DISKLABEL_PART_INDEX_CHECK(&parts->l, i, info))
+			continue;
+#endif
 		part = i;
 		break;
 	}

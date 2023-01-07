@@ -1,4 +1,4 @@
-#	$NetBSD: bsd.sys.mk,v 1.309 2021/12/14 16:22:07 christos Exp $
+#	$NetBSD: bsd.sys.mk,v 1.311 2023/01/06 15:48:29 christos Exp $
 #
 # Build definitions used for NetBSD source tree builds.
 

@@ -1,4 +1,4 @@
-/*	$NetBSD: if.c,v 1.107 2022/11/19 14:42:35 taca Exp $	*/
+/*	$NetBSD: if.c,v 1.109 2022/12/28 18:34:33 mrg Exp $	*/
 
 /*
  * Copyright (c) 1983, 1988, 1993
@@ -34,7 +34,7 @@
 #if 0
 static char sccsid[] = "from: @(#)if.c	8.2 (Berkeley) 2/21/94";
 #else
-__RCSID("$NetBSD: if.c,v 1.107 2022/11/19 14:42:35 taca Exp $");
+__RCSID("$NetBSD: if.c,v 1.109 2022/12/28 18:34:33 mrg Exp $");
 #endif
 #endif /* not lint */
 
@@ -182,9 +182,8 @@ if_data_ext_get(const char *ifname, struct if_data_ext *dext)
 	snprintf(namebuf, sizeof(namebuf),
 	    "net.interfaces.%s.sndq.drops", ifname);
 	len = sizeof(drops);
-	if (sysctlbyname(namebuf, &drops, &len, NULL, 0)
-	    == -1) {
-		warnx("'%s' not found", namebuf);
+	if (sysctlbyname(namebuf, &drops, &len, NULL, 0) == -1) {
+		warn("%s", namebuf);
 		dext->ifi_oqdrops = 0;
 		return -1;
 	} else
@@ -1172,7 +1171,11 @@ fetchifs(void)
 
 			if_data_ext_get(name, &dext);
 
-			if (interface != NULL && !strcmp(name, interface)) {
+			if ((interface != NULL && !strcmp(name, interface)) ||
+			    (interface == NULL &&
+			    ((ip_cur.ift_ib + ip_cur.ift_ob) == 0 ||
+			     (ip_cur.ift_ib + ip_cur.ift_ob <
+			     ifd->ifi_ibytes + ifd->ifi_obytes)))) {
 				strlcpy(ip_cur.ift_name, name,
 				    sizeof(ip_cur.ift_name));
 				ip_cur.ift_ip = ifd->ifi_ipackets;
@@ -1198,17 +1201,11 @@ fetchifs(void)
 			break;
 		}
 	}
-	if (interface == NULL) {
-		strlcpy(ip_cur.ift_name, name,
-		    sizeof(ip_cur.ift_name));
-		ip_cur.ift_ip = ifd->ifi_ipackets;
-		ip_cur.ift_ib = ifd->ifi_ibytes;
-		ip_cur.ift_ie = ifd->ifi_ierrors;
-		ip_cur.ift_op = ifd->ifi_opackets;
-		ip_cur.ift_ob = ifd->ifi_obytes;
-		ip_cur.ift_oe = ifd->ifi_oerrors;
-		ip_cur.ift_co = ifd->ifi_collisions;
-		ip_cur.ift_iq = ifd->ifi_iqdrops;
-		ip_cur.ift_oq = dext.ifi_oqdrops;
-	}
+
+	/*
+	 * If we picked an interface, be sure to keep using it for the rest
+	 * of this instance.
+	 */
+	if (interface == NULL)
+		interface = ip_cur.ift_name;
 }

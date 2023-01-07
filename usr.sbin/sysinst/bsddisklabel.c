@@ -1,4 +1,4 @@
-/*	$NetBSD: bsddisklabel.c,v 1.66 2022/11/30 15:57:54 martin Exp $	*/
+/*	$NetBSD: bsddisklabel.c,v 1.72 2023/01/06 18:19:27 martin Exp $	*/
 
 /*
  * Copyright 1997 Piermont Information Systems Inc.
@@ -653,18 +653,23 @@ set_ptn_size(menudesc *m, void *arg)
 				}
 			}
 			/* Remove space for /usr from / */
-			if (root < pset->num && pset->infos[i].cur_part_id ==
-			    NO_PART) {
-			    	pset->infos[root].size -= p->def_size;
+			if (root < pset->num &&
+			     pset->infos[root].cur_part_id == NO_PART &&
+			     pset->infos[root].size ==
+					pset->infos[root].def_size) {
+				/*
+				 * root partition does not yet exist and
+				 * has default size
+				 */
+				pset->infos[root].size -= p->def_size;
 				pset->cur_free_space += p->def_size;
 			}
-			/* hack to add free space to default sized /usr */
-			if (strcmp(answer, dflt) == 0) {
-				size = p->def_size;
-				pset->infos[root].flags &= ~PUIFLAG_EXTEND;
-				p->flags |= PUIFLAG_EXTEND;
-				goto adjust_free;
-			}
+			/*
+			 * hack to add free space to /usr if
+			 * previously / got it
+			 */
+			if (pset->infos[root].flags & PUIFLAG_EXTEND)
+				extend = true;
 		}
 		if (new_size_val < 0)
 			continue;
@@ -687,7 +692,6 @@ set_ptn_size(menudesc *m, void *arg)
 	}
 	if (p->limit != 0 && size > p->limit)
 		size = p->limit;
-    adjust_free:
 	if ((p->flags & (PUIFLG_IS_OUTER|PUIFLG_JUST_MOUNTPOINT)) == 0)
 		pset->cur_free_space += p->size - size;
 	p->size = is_percent ? -size : size;
@@ -775,6 +779,13 @@ set_use_default_sizes(menudesc *m, void *arg)
 	return 0;
 }
 
+static int
+set_use_empty_parts(menudesc *m, void *arg)
+{
+	((arg_rep_int*)arg)->rv = LY_USENONE;
+	return 0;
+}
+
 /*
  * Check if there is a reasonable pre-existing partition for
  * NetBSD.
@@ -809,7 +820,7 @@ ask_layout(struct disk_partitions *parts, bool have_existing)
 	const char *args[2];
 	int menu;
 	size_t num_opts;
-	menu_ent options[4], *opt;
+	menu_ent options[5], *opt;
 
 	args[0] = msg_string(parts->pscheme->name);
 	args[1] = msg_string(parts->pscheme->short_name);
@@ -837,6 +848,12 @@ ask_layout(struct disk_partitions *parts, bool have_existing)
 	opt->opt_name = MSG_Use_Default_Parts;
 	opt->opt_flags = OPT_EXIT;
 	opt->opt_action = set_use_default_sizes;
+	opt++;
+	num_opts++;
+
+	opt->opt_name = MSG_Use_Empty_Parts;
+	opt->opt_flags = OPT_EXIT;
+	opt->opt_action = set_use_empty_parts;
 	opt++;
 	num_opts++;
 
@@ -1206,6 +1223,7 @@ fill_defaults(struct partition_usage_set *wanted, struct disk_partitions *parts,
 			    wanted->infos[root].limit;
 		}
 	}
+	wanted->infos[root].def_size = wanted->infos[root].size;
 }
 
 /*
@@ -1416,7 +1434,8 @@ apply_settings_to_partitions(struct disk_partitions *parts,
 	 * but check size limits.
 	 */
 	if (exp_ndx < wanted->num) {
-		daddr_t free_space = parts->free_space - planned_space;
+		daddr_t free_space = parts->free_space - planned_space -
+		    wanted->reserved_space;
 		daddr_t new_size = wanted->infos[exp_ndx].size;
 		if (free_space > 0)
 			new_size += roundup(free_space,align);
@@ -1684,6 +1703,8 @@ apply_settings_to_partitions(struct disk_partitions *parts,
 
 		if (!parts->pscheme->get_part_info(parts, pno, &t))
 			continue;
+		if (t.flags & PTI_SPECIAL_PARTS)
+			continue;
 
 		for (i = 0; i < wanted->num; i++) {
 			if (wanted->infos[i].cur_part_id != NO_PART)
@@ -1828,6 +1849,19 @@ make_bsd_partitions(struct install_partition_desc *install)
 	if (layoutkind == LY_OTHERSCHEME) {
 		parts->pscheme->destroy_part_scheme(parts);
 		return -1;
+	} else if (layoutkind == LY_USENONE) {
+		struct disk_part_free_space space;
+		size_t cnt;
+
+		empty_usage_set_from_parts(&wanted, parts);
+		cnt = parts->pscheme->get_free_spaces(parts, &space, 1,
+		0, parts->pscheme->get_part_alignment(parts), 0, -1);
+		p_start = p_size = 0;
+		if (cnt == 1) {
+			p_start = space.start;
+			p_size = space.size;
+			wanted.cur_free_space = space.size;
+		}
 	} else if (layoutkind == LY_USEDEFAULT) {
 		replace_by_default(parts, p_start, p_size,
 		    &wanted);
