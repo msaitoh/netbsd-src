@@ -1,4 +1,4 @@
-/* $NetBSD: nextdisplay.c,v 1.27 2023/02/03 23:21:17 tsutsui Exp $ */
+/* $NetBSD: nextdisplay.c,v 1.30 2023/02/11 02:34:15 tsutsui Exp $ */
 
 /*
  * Copyright (c) 1998 Matt DeBergalis
@@ -31,7 +31,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: nextdisplay.c,v 1.27 2023/02/03 23:21:17 tsutsui Exp $");
+__KERNEL_RCSID(0, "$NetBSD: nextdisplay.c,v 1.30 2023/02/11 02:34:15 tsutsui Exp $");
 
 #include <sys/cdefs.h>			/* RCS ID & Copyright macro defns */
 
@@ -147,7 +147,8 @@ nextdisplay_match(device_t parent, cfdata_t match, void *aux)
 	    rom_machine_type == NeXT_X15 ||
 	    rom_machine_type == NeXT_WARP9C ||
 	    rom_machine_type == NeXT_TURBO_MONO ||
-	    rom_machine_type == NeXT_TURBO_COLOR)
+	    rom_machine_type == NeXT_TURBO_COLOR ||
+	    rom_machine_type == NeXT_CUBE_TURBO)
 		return 1;
 	else
 		return 0;
@@ -162,15 +163,9 @@ nextdisplay_init(struct nextdisplay_config *dc, int color)
 
 	/* printf("in nextdisplay_init\n"); */
 
-	if (color) {
-		dc->dc_vaddr = colorbase;
-		dc->dc_paddr = COLORBASE;
-		dc->dc_size = NEXT_P_C16_VIDEOSIZE;
-	} else {
-		dc->dc_vaddr = monobase;
-		dc->dc_paddr = MONOBASE;
-		dc->dc_size = NEXT_P_VIDEOSIZE;
-	}
+	dc->dc_vaddr = fbbase;
+	dc->dc_paddr = fbbasepa;
+	dc->dc_size = color ? NEXT_P_C16_VIDEOSIZE : NEXT_P_VIDEOSIZE;
 
 	dc->dc_wid = 1120;
 	dc->dc_ht = 832;
@@ -182,8 +177,8 @@ nextdisplay_init(struct nextdisplay_config *dc, int color)
 #if 0
 	printf("intiobase at: %08x\n", intiobase);
 	printf("intiolimit at: %08x\n", intiolimit);
-	printf("videobase at: %08x\n", color ? colorbase : monobase);
-	printf("videolimit at: %08x\n", color ? colorlimit : monolimit);
+	printf("videobase at: %08x\n", fbbase);
+	printf("videolimit at: %08x\n", fblimit);
 
 	printf("virtual fb at: %08x\n", dc->dc_vaddr);
 	printf("physical fb at: %08x\n", dc->dc_paddr);
@@ -231,19 +226,11 @@ nextdisplay_attach(device_t parent, device_t self, void *aux)
 	struct nextdisplay_softc *sc = device_private(self);
 	struct wsemuldisplaydev_attach_args waa;
 	int isconsole;
-	int iscolor;
-	paddr_t addr;
+	vaddr_t addr;
 
 	sc->sc_dev = self;
 
-	if (rom_machine_type == NeXT_WARP9C ||
-	    rom_machine_type == NeXT_TURBO_COLOR) {
-		iscolor = 1;
-		addr = colorbase;
-	} else {
-		iscolor = 0;
-		addr = monobase;
-	}
+	addr = fbbase;
 
 	isconsole = nextdisplay_is_console(addr);
 
@@ -259,7 +246,7 @@ nextdisplay_attach(device_t parent, device_t self, void *aux)
 	printf(": %d x %d, %dbpp\n", sc->sc_dc->dc_wid, sc->sc_dc->dc_ht,
 	    sc->sc_dc->dc_depth);
 
-	if (iscolor) {
+	if (iscolor && !turbo) {
 #if 0
 		uint8_t x;
 
@@ -400,13 +387,6 @@ nextdisplay_cnattach(void)
 {
 	struct nextdisplay_config *dc = &nextdisplay_console_dc;
 	long defattr;
-	int iscolor;
-
-	if (rom_machine_type == NeXT_WARP9C ||
-	    rom_machine_type == NeXT_TURBO_COLOR)
-		iscolor = 1;
-	else
-		iscolor = 0;
 
 	/* set up the display */
 	nextdisplay_init(&nextdisplay_console_dc, iscolor);
