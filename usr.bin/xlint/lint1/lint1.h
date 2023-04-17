@@ -1,4 +1,4 @@
-/* $NetBSD: lint1.h,v 1.161 2023/01/21 13:07:22 rillig Exp $ */
+/* $NetBSD: lint1.h,v 1.163 2023/02/21 19:30:51 rillig Exp $ */
 
 /*
  * Copyright (c) 1996 Christopher G. Demetriou.  All Rights Reserved.
@@ -458,9 +458,6 @@ typedef struct {
 
 #include "externs1.h"
 
-#define INTERNAL_ERROR(fmt, args...) \
-	internal_error(__FILE__, __LINE__, fmt, ##args)
-
 #define lint_assert(cond)						\
 	do {								\
 		if (!(cond))						\
@@ -471,7 +468,7 @@ typedef struct {
 #  include "err-msgs.h"
 
 /* ARGSUSED */
-static inline void __attribute__((format(printf, 1, 2)))
+static inline void __printflike(1, 2)
 check_printf(const char *fmt, ...)
 {
 }

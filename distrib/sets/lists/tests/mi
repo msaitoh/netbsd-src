@@ -1,4 +1,4 @@
-# $NetBSD: mi,v 1.1252 2023/02/05 13:01:28 rillig Exp $
+# $NetBSD: mi,v 1.1256 2023/03/28 20:04:51 rillig Exp $
 #
 # Note: don't delete entries from here - mark them as "obsolete" instead.
 #
@@ -5785,6 +5785,7 @@
 ./usr/tests/usr.bin/make/unit-tests/make-exported.mk				tests-usr.bin-tests	compattestfile,atf
 ./usr/tests/usr.bin/make/unit-tests/meta-cmd-cmp.exp				tests-usr.bin-tests	compattestfile,atf
 ./usr/tests/usr.bin/make/unit-tests/meta-cmd-cmp.mk				tests-usr.bin-tests	compattestfile,atf
+./usr/tests/usr.bin/make/unit-tests/meta-ignore.inc				tests-usr.bin-tests	compattestfile,atf
 ./usr/tests/usr.bin/make/unit-tests/misc.exp					tests-obsolete		obsolete
 ./usr/tests/usr.bin/make/unit-tests/misc.mk					tests-obsolete		obsolete
 ./usr/tests/usr.bin/make/unit-tests/moderrs.exp					tests-usr.bin-tests	compattestfile,atf
@@ -7340,6 +7341,8 @@
 ./usr/tests/usr.bin/xlint/lint1/msg_349.c			tests-usr.bin-tests	compattestfile,atf
 ./usr/tests/usr.bin/xlint/lint1/msg_349.exp			tests-obsolete		obsolete,atf
 ./usr/tests/usr.bin/xlint/lint1/msg_350.c			tests-usr.bin-tests	compattestfile,atf
+./usr/tests/usr.bin/xlint/lint1/msg_351.c			tests-usr.bin-tests	compattestfile,atf
+./usr/tests/usr.bin/xlint/lint1/msg_352.c			tests-usr.bin-tests	compattestfile,atf
 ./usr/tests/usr.bin/xlint/lint1/op_colon.c			tests-usr.bin-tests	compattestfile,atf
 ./usr/tests/usr.bin/xlint/lint1/op_colon.exp			tests-obsolete		obsolete,atf
 ./usr/tests/usr.bin/xlint/lint1/op_shl_lp64.c			tests-usr.bin-tests	compattestfile,atf
@@ -7354,6 +7357,8 @@
 ./usr/tests/usr.bin/xlint/lint1/parse_type_name.exp		tests-obsolete		obsolete,atf
 ./usr/tests/usr.bin/xlint/lint1/platform_ilp32.c		tests-usr.bin-tests	compattestfile,atf
 ./usr/tests/usr.bin/xlint/lint1/platform_ilp32.exp		tests-obsolete		obsolete,atf
+./usr/tests/usr.bin/xlint/lint1/platform_ilp32_int.c		tests-usr.bin-tests	compattestfile,atf
+./usr/tests/usr.bin/xlint/lint1/platform_ilp32_long.c		tests-usr.bin-tests	compattestfile,atf
 ./usr/tests/usr.bin/xlint/lint1/platform_int.c			tests-usr.bin-tests	compattestfile,atf
 ./usr/tests/usr.bin/xlint/lint1/platform_int.exp		tests-obsolete		obsolete,atf
 ./usr/tests/usr.bin/xlint/lint1/platform_ldbl128.c		tests-usr.bin-tests	compattestfile,atf

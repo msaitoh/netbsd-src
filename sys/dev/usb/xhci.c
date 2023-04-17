@@ -1,4 +1,4 @@
-/*	$NetBSD: xhci.c,v 1.175 2022/10/11 11:01:17 msaitoh Exp $	*/
+/*	$NetBSD: xhci.c,v 1.177 2023/04/09 20:41:28 riastradh Exp $	*/
 
 /*
  * Copyright (c) 2013 Jonathan A. Kollasch
@@ -34,7 +34,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: xhci.c,v 1.175 2022/10/11 11:01:17 msaitoh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: xhci.c,v 1.177 2023/04/09 20:41:28 riastradh Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_usb.h"
@@ -700,6 +700,7 @@ xhci_suspend(device_t self, const pmf_qual_t *qual)
 	 */
 	mutex_enter(&sc->sc_lock);
 	KASSERT(sc->sc_suspender == NULL);
+	KASSERT(!sc->sc_suspendresume_failed);
 	sc->sc_suspender = curlwp;
 	while (sc->sc_command_addr != 0)
 		cv_wait(&sc->sc_cmdbusy_cv, &sc->sc_lock);
@@ -895,11 +896,13 @@ xhci_suspend(device_t self, const pmf_qual_t *qual)
 out:	mutex_exit(&sc->sc_rhlock);
 	if (!ok) {
 		/*
-		 * If suspend failed, resume command issuance.
+		 * If suspend failed, stop holding up command issuance
+		 * and make it fail instead.
 		 */
 		mutex_enter(&sc->sc_lock);
 		KASSERT(sc->sc_suspender == curlwp);
 		sc->sc_suspender = NULL;
+		sc->sc_suspendresume_failed = true;
 		cv_broadcast(&sc->sc_cmdbusy_cv);
 		mutex_exit(&sc->sc_lock);
 	}
@@ -917,7 +920,18 @@ xhci_resume(device_t self, const pmf_qual_t *qual)
 
 	XHCIHIST_FUNC(); XHCIHIST_CALLED();
 
+	/*
+	 * If resume had previously failed, just try again.  Can't make
+	 * things worse, probably.
+	 */
+	mutex_enter(&sc->sc_lock);
+	if (sc->sc_suspendresume_failed) {
+		KASSERT(sc->sc_suspender == NULL);
+		sc->sc_suspender = curlwp;
+		sc->sc_suspendresume_failed = false;
+	}
 	KASSERT(sc->sc_suspender);
+	mutex_exit(&sc->sc_lock);
 
 	/*
 	 * Block roothub xfers which might touch portsc registers until
@@ -1111,6 +1125,7 @@ out:	/*
 	mutex_enter(&sc->sc_lock);
 	KASSERT(sc->sc_suspender);
 	sc->sc_suspender = NULL;
+	sc->sc_suspendresume_failed = !ok;
 	cv_broadcast(&sc->sc_cmdbusy_cv);
 	mutex_exit(&sc->sc_lock);
 
@@ -2351,11 +2366,15 @@ xhci_rhpsc(struct xhci_softc * const sc, u_int ctlrport)
 	KASSERT(xfer->ux_status == USBD_IN_PROGRESS);
 
 	uint8_t *p = xfer->ux_buf;
-	memset(p, 0, xfer->ux_length);
+	if (!xhci_polling_p(sc) || !sc->sc_intrxfer_deferred[bn])
+		memset(p, 0, xfer->ux_length);
 	p[rhp / NBBY] |= 1 << (rhp % NBBY);
 	xfer->ux_actlen = xfer->ux_length;
 	xfer->ux_status = USBD_NORMAL_COMPLETION;
-	usb_transfer_complete(xfer);
+	if (xhci_polling_p(sc))
+		sc->sc_intrxfer_deferred[bn] = true;
+	else
+		usb_transfer_complete(xfer);
 }
 
 /* Process Transfer Events */
@@ -2619,7 +2638,7 @@ xhci_softintr(void *v)
 	struct xhci_softc * const sc = XHCI_BUS2SC(bus);
 	struct xhci_ring * const er = sc->sc_er;
 	struct xhci_trb *trb;
-	int i, j, k;
+	int i, j, k, bn;
 
 	XHCIHIST_FUNC();
 
@@ -2629,6 +2648,20 @@ xhci_softintr(void *v)
 	j = er->xr_cs;
 
 	XHCIHIST_CALLARGS("er: xr_ep %jd xr_cs %jd", i, j, 0, 0);
+
+	/*
+	 * Handle deferred root intr xfer, in case we just switched off
+	 * polling.  It's not safe to complete root intr xfers while
+	 * polling -- too much kernel machinery gets involved.
+	 */
+	if (!xhci_polling_p(sc)) {
+		for (bn = 0; bn < 2; bn++) {
+			if (__predict_false(sc->sc_intrxfer_deferred[bn])) {
+				sc->sc_intrxfer_deferred[bn] = false;
+				usb_transfer_complete(sc->sc_intrxfer[bn]);
+			}
+		}
+	}
 
 	while (1) {
 		usb_syncmem(&er->xr_dma, XHCI_TRB_SIZE * i, XHCI_TRB_SIZE,
@@ -3199,6 +3232,8 @@ xhci_do_command_locked(struct xhci_softc * const sc,
 	while (sc->sc_command_addr != 0 ||
 	    (sc->sc_suspender != NULL && sc->sc_suspender != curlwp))
 		cv_wait(&sc->sc_cmdbusy_cv, &sc->sc_lock);
+	if (sc->sc_suspendresume_failed)
+		return USBD_IOERROR;
 
 	/*
 	 * If enqueue pointer points at last of ring, it's Link TRB,

@@ -1,4 +1,4 @@
-/*	$NetBSD: lex_floating.c,v 1.2 2022/01/15 14:22:03 rillig Exp $	*/
+/*	$NetBSD: lex_floating.c,v 1.4 2023/03/28 14:44:34 rillig Exp $	*/
 # 3 "lex_floating.c"
 
 /*
@@ -6,6 +6,8 @@
  *
  * C99 6.4.4.2 "Floating constants"
  */
+
+/* lint1-extra-flags: -X 351 */
 
 void sinkf(float);
 void sinkd(double);
@@ -33,4 +35,10 @@ void
 test_long_double(void)
 {
 	sinkl(2.2250738585072012e-308L);
+}
+
+void
+test_hex(void)
+{
+	sinkd(0x1.cp4);
 }

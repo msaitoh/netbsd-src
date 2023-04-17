@@ -1,4 +1,4 @@
-/* $NetBSD: debug.c,v 1.25 2023/01/21 13:07:22 rillig Exp $ */
+/* $NetBSD: debug.c,v 1.28 2023/04/11 17:52:11 rillig Exp $ */
 
 /*-
  * Copyright (c) 2021 The NetBSD Foundation, Inc.
@@ -35,7 +35,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID)
-__RCSID("$NetBSD: debug.c,v 1.25 2023/01/21 13:07:22 rillig Exp $");
+__RCSID("$NetBSD: debug.c,v 1.28 2023/04/11 17:52:11 rillig Exp $");
 #endif
 
 #include <stdlib.h>
@@ -81,7 +81,7 @@ debug_indent_dec(void)
 }
 
 void
-(debug_enter)(const char *func)
+debug_enter_func(const char *func)
 {
 
 	printf("%*s+ %s\n", 2 * debug_indentation++, "", func);
@@ -100,7 +100,7 @@ debug_step(const char *fmt, ...)
 }
 
 void
-(debug_leave)(const char *func)
+debug_leave_func(const char *func)
 {
 
 	printf("%*s- %s\n", 2 * --debug_indentation, "", func);
@@ -171,18 +171,21 @@ debug_node(const tnode_t *tn) // NOLINT(misc-no-recursion)
 		break;
 	case CON:
 		if (is_floating(tn->tn_type->t_tspec))
-			debug_printf(", value %Lg\n", tn->tn_val->v_ldbl);
+			debug_printf(", value %Lg", tn->tn_val->v_ldbl);
 		else if (is_uinteger(tn->tn_type->t_tspec))
-			debug_printf(", value %llu\n",
+			debug_printf(", value %llu",
 			    (unsigned long long)tn->tn_val->v_quad);
 		else if (is_integer(tn->tn_type->t_tspec))
-			debug_printf(", value %lld\n",
+			debug_printf(", value %lld",
 			    (long long)tn->tn_val->v_quad);
-		else if (tn->tn_type->t_tspec == BOOL)
-			debug_printf(", value %s\n",
+		else {
+			lint_assert(tn->tn_type->t_tspec == BOOL);
+			debug_printf(", value %s",
 			    tn->tn_val->v_quad != 0 ? "true" : "false");
-		else
-			debug_printf(", unknown value\n");
+		}
+		if (tn->tn_val->v_unsigned_since_c90)
+			debug_printf(", unsigned_since_c90");
+		debug_printf("\n");
 		break;
 	case STRING:
 		if (tn->tn_string->st_char)
@@ -393,30 +396,18 @@ debug_dinfo(const dinfo_t *d) // NOLINT(misc-no-recursion)
 	if (d->d_sou_align_in_bits != 0)
 		debug_printf(" align=%u", (unsigned)d->d_sou_align_in_bits);
 
-	if (d->d_const)
-		debug_printf(" const");
-	if (d->d_volatile)
-		debug_printf(" volatile");
-	if (d->d_inline)
-		debug_printf(" inline");
-	if (d->d_multiple_storage_classes)
-		debug_printf(" multiple_storage_classes");
-	if (d->d_invalid_type_combination)
-		debug_printf(" invalid_type_combination");
-	if (d->d_nonempty_decl)
-		debug_printf(" nonempty_decl");
-	if (d->d_vararg)
-		debug_printf(" vararg");
-	if (d->d_proto)
-		debug_printf(" prototype");
-	if (d->d_notyp)
-		debug_printf(" no_type_specifier");
-	if (d->d_asm)
-		debug_printf(" asm");
-	if (d->d_packed)
-		debug_printf(" packed");
-	if (d->d_used)
-		debug_printf(" used");
+	debug_word(d->d_const, "const");
+	debug_word(d->d_volatile, "volatile");
+	debug_word(d->d_inline, "inline");
+	debug_word(d->d_multiple_storage_classes, "multiple_storage_classes");
+	debug_word(d->d_invalid_type_combination, "invalid_type_combination");
+	debug_word(d->d_nonempty_decl, "nonempty_decl");
+	debug_word(d->d_vararg, "vararg");
+	debug_word(d->d_proto, "prototype");
+	debug_word(d->d_notyp, "no_type_specifier");
+	debug_word(d->d_asm, "asm");
+	debug_word(d->d_packed, "packed");
+	debug_word(d->d_used, "used");
 
 	if (d->d_tagtyp != NULL)
 		debug_printf(" tagtyp='%s'", type_name(d->d_tagtyp));

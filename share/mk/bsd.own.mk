@@ -1,4 +1,4 @@
-#	$NetBSD: bsd.own.mk,v 1.1306 2023/02/05 14:53:38 christos Exp $
+#	$NetBSD: bsd.own.mk,v 1.1309 2023/04/02 15:06:06 christos Exp $
 
 # This needs to be before bsd.init.mk
 .if defined(BSD_MK_COMPAT_FILE)
@@ -84,9 +84,9 @@ MKGCCCMDS?=	no
 # We import the old gcc as "gcc.old" when upgrading.  EXTERNAL_GCC_SUBDIR is
 # set to the relevant subdirectory in src/external/gpl3 for his HAVE_GCC.
 #
-.if ${HAVE_GCC} == 9
+.if ${HAVE_GCC} == 10
 EXTERNAL_GCC_SUBDIR?=	gcc.old
-.elif ${HAVE_GCC} == 10
+.elif ${HAVE_GCC} == 11
 EXTERNAL_GCC_SUBDIR?=	gcc
 .else
 EXTERNAL_GCC_SUBDIR?=	/does/not/exist
@@ -98,7 +98,11 @@ MKGCCCMDS?=	no
 #
 # What binutils is used?
 #
+.if ${MACHINE_ARCH} != "mips64el"
 HAVE_BINUTILS?=	239
+.else
+HAVE_BINUTILS?=	234
+.endif
 
 .if ${HAVE_BINUTILS} == 239
 EXTERNAL_BINUTILS_SUBDIR=	binutils
@@ -113,9 +117,9 @@ EXTERNAL_BINUTILS_SUBDIR=	/does/not/exist
 #
 HAVE_GDB?=	1100
 
-.if ${HAVE_GDB} == 1100
+.if ${HAVE_GDB} == 1310
 EXTERNAL_GDB_SUBDIR=		gdb
-.elif ${HAVE_GDB} == 830
+.elif ${HAVE_GDB} == 1100
 EXTERNAL_GDB_SUBDIR=		gdb.old
 .else
 EXTERNAL_GDB_SUBDIR=		/does/not/exist

@@ -1,4 +1,4 @@
-/*	$NetBSD: externs1.h,v 1.173 2023/02/06 21:01:55 rillig Exp $	*/
+/*	$NetBSD: externs1.h,v 1.176 2023/04/11 17:52:11 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -31,8 +31,10 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <signal.h>
+
 /*
- * main.c
+ * main1.c
  */
 extern	int	aflag;
 extern	bool	bflag;
@@ -55,6 +57,8 @@ extern	bool	allow_c90;
 extern	bool	allow_c99;
 extern	bool	allow_c11;
 extern	bool	allow_gcc;
+
+extern sig_atomic_t fpe;
 
 extern	void	norecover(void);
 
@@ -127,11 +131,11 @@ void	debug_printf(const char *fmt, ...) __printflike(1, 2);
 void	debug_print_indent(void);
 void	debug_indent_inc(void);
 void	debug_indent_dec(void);
-void	debug_enter(const char *);
+void	debug_enter_func(const char *);
 void	debug_step(const char *fmt, ...) __printflike(1, 2);
-void	debug_leave(const char *);
-#define	debug_enter()		(debug_enter)(__func__)
-#define	debug_leave()		(debug_leave)(__func__)
+void	debug_leave_func(const char *);
+#define	debug_enter()		debug_enter_func(__func__)
+#define	debug_leave()		debug_leave_func(__func__)
 #else
 #define	debug_noop()		do { } while (false)
 #define	debug_dinfo(d)		debug_noop()
@@ -164,8 +168,6 @@ extern	void	warning(int, ...);
 extern	bool	gnuism(int, ...);
 extern	void	c99ism(int, ...);
 extern	void	c11ism(int, ...);
-extern	void	internal_error(const char *, int, const char *, ...)
-     __attribute__((__noreturn__,__format__(__printf__, 3, 4)));
 extern	void	assert_failed(const char *, int, const char *, const char *)
 		__attribute__((__noreturn__));
 extern	void	update_location(const char *, int, bool, bool);

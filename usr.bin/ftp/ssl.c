@@ -1,9 +1,10 @@
-/*	$NetBSD: ssl.c,v 1.12 2022/09/12 15:10:31 christos Exp $	*/
+/*	$NetBSD: ssl.c,v 1.14 2023/04/09 06:10:03 lukem Exp $	*/
 
 /*-
  * Copyright (c) 1998-2004 Dag-Erling Coïdan Smørgrav
  * Copyright (c) 2008, 2010 Joerg Sonnenberger <joerg@NetBSD.org>
  * Copyright (c) 2015 Thomas Klausner <wiz@NetBSD.org>
+ * Copyright (c) 2023 Michael van Elst <mlelstv@NetBSD.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -34,7 +35,7 @@
 
 #include <sys/cdefs.h>
 #ifndef lint
-__RCSID("$NetBSD: ssl.c,v 1.12 2022/09/12 15:10:31 christos Exp $");
+__RCSID("$NetBSD: ssl.c,v 1.14 2023/04/09 06:10:03 lukem Exp $");
 #endif
 
 #include <errno.h>
@@ -62,6 +63,7 @@ __RCSID("$NetBSD: ssl.c,v 1.12 2022/09/12 15:10:31 christos Exp $");
 #endif
 
 #include "ssl.h"
+#include "ftp_var.h"
 
 extern int quit_time, verbose, ftp_debug;
 extern FILE *ttyout;
@@ -589,7 +591,7 @@ fetch_start_ssl(int sock, const char *servername)
 	SSL_CTX *ctx;
 	X509_VERIFY_PARAM *param;
 	int ret, ssl_err;
-	int verify = 0;	// getenv("NO_CERT_VERIFY") == NULL;
+	int verify = !ftp_truthy("sslnoverify", getoptionvalue("sslnoverify"), 0);
 
 	/* Init the SSL library and context */
 	if (!SSL_library_init()){
@@ -618,6 +620,8 @@ fetch_start_ssl(int sock, const char *servername)
 		if (!X509_VERIFY_PARAM_set1_host(param, servername,
 		    strlen(servername))) {
 			fprintf(ttyout, "SSL verification setup failed\n");
+			SSL_free(ssl);
+			SSL_CTX_free(ctx);
 			return NULL;
 		}
 
@@ -628,6 +632,7 @@ fetch_start_ssl(int sock, const char *servername)
 	SSL_set_fd(ssl, sock);
 	if (!SSL_set_tlsext_host_name(ssl, __UNCONST(servername))) {
 		fprintf(ttyout, "SSL hostname setting failed\n");
+		SSL_free(ssl);
 		SSL_CTX_free(ctx);
 		return NULL;
 	}
@@ -637,6 +642,7 @@ fetch_start_ssl(int sock, const char *servername)
 		    ssl_err != SSL_ERROR_WANT_WRITE) {
 			ERR_print_errors_fp(ttyout);
 			SSL_free(ssl);
+			SSL_CTX_free(ctx);
 			return NULL;
 		}
 	}

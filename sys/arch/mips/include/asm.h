@@ -1,4 +1,4 @@
-/*	$NetBSD: asm.h,v 1.72 2023/02/13 12:00:18 riastradh Exp $	*/
+/*	$NetBSD: asm.h,v 1.74 2023/02/23 14:56:00 riastradh Exp $	*/
 
 /*
  * Copyright (c) 1992, 1993
@@ -59,6 +59,7 @@
 
 #if defined(_KERNEL_OPT)
 #include "opt_gprof.h"
+#include "opt_multiprocessor.h"
 #endif
 
 #ifdef __ASSEMBLER__
@@ -573,7 +574,7 @@ _C_LABEL(x):
 #endif
 
 /* compiler define */
-#if defined(__OCTEON__)
+#if defined(MULTIPROCESSOR) && defined(__OCTEON__)
 /*
  * See common/lib/libc/arch/mips/atomic/membar_ops.S for notes on
  * Octeon memory ordering guarantees and barriers.
@@ -614,7 +615,7 @@ _C_LABEL(x):
 #define	SYNC_REL	sync 4
 #define	BDSYNC_PLUNGER	sync 4
 #define	SYNC_PLUNGER	sync 4
-#elif __mips >= 3 || !defined(__mips_o32)
+#elif defined(MULTIPROCESSOR) && (__mips >= 3 || !defined(__mips_o32))
 #define	LLSCSYNC	/* nothing */
 #define	BDSYNC		sync
 #define	BDSYNC_ACQ	sync
@@ -631,6 +632,28 @@ _C_LABEL(x):
 #define	BDSYNC_PLUNGER	nop
 #define	SYNC_PLUNGER	/* nothing */
 #endif
+
+/*
+ * Store-before-load barrier.  Do not use this unless you know what
+ * you're doing.
+ */
+#ifdef MULTIPROCESSOR
+#define	SYNC_DEKKER	sync
+#else
+#define	SYNC_DEKKER	/* nothing */
+#endif
+
+/*
+ * Store-before-store and load-before-load barriers.  These could be
+ * made weaker than release (load/store-before-store) and acquire
+ * (load-before-load/store) barriers, and newer MIPS does have
+ * instruction encodings for finer-grained barriers like this, but I
+ * dunno how to appropriately conditionalize their use or get the
+ * assembler to be happy with them, so we'll use these definitions for
+ * now.
+ */
+#define	SYNC_PRODUCER	SYNC_REL
+#define	SYNC_CONSUMER	SYNC_ACQ
 
 /* CPU dependent hook for cp0 load delays */
 #if defined(MIPS1) || defined(MIPS2) || defined(MIPS3)

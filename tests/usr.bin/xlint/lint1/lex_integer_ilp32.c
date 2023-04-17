@@ -1,4 +1,4 @@
-/*	$NetBSD: lex_integer_ilp32.c,v 1.6 2023/02/05 12:25:11 rillig Exp $	*/
+/*	$NetBSD: lex_integer_ilp32.c,v 1.8 2023/03/28 14:44:34 rillig Exp $	*/
 # 3 "lex_integer_ilp32.c"
 
 /*
@@ -8,6 +8,7 @@
  */
 
 /* lint1-only-if: ilp32 */
+/* lint1-extra-flags: -X 351 */
 
 void sinki(int);
 void sinku(unsigned int);
@@ -27,7 +28,6 @@ test_signed_int(void)
 
 	sinki(-2147483647);
 
-	/* expect+2: warning: ANSI C treats constant as unsigned, op '-' [218] */
 	/* expect+1: warning: conversion of 'unsigned long' to 'int' is out of range, arg #1 [295] */
 	sinki(-2147483648);
 }

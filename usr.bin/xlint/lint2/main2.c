@@ -1,4 +1,4 @@
-/*	$NetBSD: main2.c,v 1.26 2023/01/14 08:48:18 rillig Exp $	*/
+/*	$NetBSD: main2.c,v 1.28 2023/03/28 14:44:35 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -37,7 +37,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID)
-__RCSID("$NetBSD: main2.c,v 1.26 2023/01/14 08:48:18 rillig Exp $");
+__RCSID("$NetBSD: main2.c,v 1.28 2023/03/28 14:44:35 rillig Exp $");
 #endif
 
 #include <stdio.h>
@@ -84,7 +84,7 @@ bool	Fflag;
  * other input files has been read and, for Cflag, after the new lint library
  * has been written.
  */
-const char **libs;
+static const char **libs;
 
 static	void	usage(void) __attribute__((noreturn));
 
@@ -175,8 +175,7 @@ main(int argc, char *argv[])
 	/* perform all tests */
 	symtab_forall_sorted(check_name_non_const);
 
-	exit(0);
-	/* NOTREACHED */
+	return 0;
 }
 
 static void

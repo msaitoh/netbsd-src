@@ -1,4 +1,4 @@
-/*	$NetBSD: err.c,v 1.186 2023/01/21 13:07:22 rillig Exp $	*/
+/*	$NetBSD: err.c,v 1.193 2023/04/15 11:34:45 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -37,7 +37,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID)
-__RCSID("$NetBSD: err.c,v 1.186 2023/01/21 13:07:22 rillig Exp $");
+__RCSID("$NetBSD: err.c,v 1.193 2023/04/15 11:34:45 rillig Exp $");
 #endif
 
 #include <limits.h>
@@ -285,7 +285,7 @@ static const char *const msgs[] = {
 	"const object '%s' should have initializer",		      /* 227 */
 	"function cannot return const or volatile object",	      /* 228 */
 	"converting '%s' to '%s' is questionable",		      /* 229 */
-	"nonportable character comparison '%s %d'",		      /* 230 */
+	"nonportable character comparison '%s'",		      /* 230 */
 	"argument '%s' unused in function '%s'",		      /* 231 */
 	"label '%s' unused in function '%s'",			      /* 232 */
 	"struct '%s' never defined",				      /* 233 */
@@ -406,6 +406,8 @@ static const char *const msgs[] = {
 	"maximum value %d of '%s' does not match maximum array index %d", /* 348 */
 	"non type argument to alignof is a GCC extension",	      /* 349 */
 	"'_Atomic' requires C11 or later",			      /* 350 */
+	"'extern' declaration of '%s' outside a header",	      /* 351 */
+	"nested 'extern' declaration of '%s'",			      /* 352 */
 };
 
 static bool	is_suppressed[sizeof(msgs) / sizeof(msgs[0])];
@@ -498,19 +500,15 @@ msglist(void)
 static const char *
 lbasename(const char *path)
 {
-	const char *p, *base, *dir;
 
 	if (Fflag)
 		return path;
 
-	p = base = dir = path;
-	while (*p != '\0') {
-		if (*p++ == '/') {
-			dir = base;
-			base = p;
-		}
-	}
-	return *base != '\0' ? base : dir;
+	const char *base = path;
+	for (const char *p = path; *p != '\0'; p++)
+		if (*p == '/')
+			base = p + 1;
+	return base;
 }
 
 static void
@@ -584,24 +582,6 @@ void
 	va_start(ap, msgid);
 	verror_at(msgid, &curr_pos, ap);
 	va_end(ap);
-}
-
-void
-internal_error(const char *file, int line, const char *msg, ...)
-{
-	va_list	ap;
-	const	char *fn;
-
-	fn = lbasename(curr_pos.p_file);
-	(void)fflush(stdout);
-	(void)fprintf(stderr, "lint: internal error in %s:%d near %s:%d: ",
-	    file, line, fn, curr_pos.p_line);
-	va_start(ap, msg);
-	(void)vfprintf(stderr, msg, ap);
-	va_end(ap);
-	(void)fprintf(stderr, "\n");
-	print_stack_trace();
-	abort();
 }
 
 void
@@ -718,6 +698,8 @@ static const char *queries[] = {
 	"pointer addition has integer on the left-hand side",	      /* Q5 */
 	"no-op cast from '%s' to '%s'",				      /* Q6 */
 	"redundant cast from '%s' to '%s' before assignment",	      /* Q7 */
+	"octal number '%.*s'",					      /* Q8 */
+	"parenthesized return value",				      /* Q9 */
 };
 
 bool any_query_enabled;		/* for optimizing non-query scenarios */

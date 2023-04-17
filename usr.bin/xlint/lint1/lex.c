@@ -1,4 +1,4 @@
-/* $NetBSD: lex.c,v 1.148 2023/02/02 22:23:30 rillig Exp $ */
+/* $NetBSD: lex.c,v 1.158 2023/04/11 00:03:42 rillig Exp $ */
 
 /*
  * Copyright (c) 1996 Christopher G. Demetriou.  All Rights Reserved.
@@ -38,7 +38,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID)
-__RCSID("$NetBSD: lex.c,v 1.148 2023/02/02 22:23:30 rillig Exp $");
+__RCSID("$NetBSD: lex.c,v 1.158 2023/04/11 00:03:42 rillig Exp $");
 #endif
 
 #include <ctype.h>
@@ -463,23 +463,14 @@ lex_name(const char *yytext, size_t yyleng)
 int
 lex_integer_constant(const char *yytext, size_t yyleng, int base)
 {
-	int	l_suffix, u_suffix;
-	size_t	len;
-	const	char *cp;
-	char	c, *eptr;
-	tspec_t	typ;
-	bool	ansiu;
-	bool	warned = false;
-	uint64_t uq = 0;
-
 	/* C11 6.4.4.1p5 */
 	static const tspec_t suffix_type[2][3] = {
 		{ INT,  LONG,  QUAD, },
 		{ UINT, ULONG, UQUAD, }
 	};
 
-	cp = yytext;
-	len = yyleng;
+	const char *cp = yytext;
+	size_t len = yyleng;
 
 	/* skip 0[xX] or 0[bB] */
 	if (base == 16 || base == 2) {
@@ -488,9 +479,10 @@ lex_integer_constant(const char *yytext, size_t yyleng, int base)
 	}
 
 	/* read suffixes */
-	l_suffix = u_suffix = 0;
+	unsigned l_suffix = 0, u_suffix = 0;
 	for (;; len--) {
-		if ((c = cp[len - 1]) == 'l' || c == 'L')
+		char c = cp[len - 1];
+		if (c == 'l' || c == 'L')
 			l_suffix++;
 		else if (c == 'u' || c == 'U')
 			u_suffix++;
@@ -505,14 +497,16 @@ lex_integer_constant(const char *yytext, size_t yyleng, int base)
 		if (u_suffix > 1)
 			u_suffix = 1;
 	}
-	if (!allow_c90 && u_suffix != 0) {
+	if (!allow_c90 && u_suffix > 0) {
 		/* suffix U is illegal in traditional C */
 		warning(97);
 	}
-	typ = suffix_type[u_suffix][l_suffix];
+	tspec_t typ = suffix_type[u_suffix][l_suffix];
 
+	bool warned = false;
 	errno = 0;
-	uq = (uint64_t)strtoull(cp, &eptr, base);
+	char *eptr;
+	uint64_t uq = (uint64_t)strtoull(cp, &eptr, base);
 	lint_assert(eptr == cp + len);
 	if (errno != 0) {
 		/* integer constant out of range */
@@ -520,11 +514,16 @@ lex_integer_constant(const char *yytext, size_t yyleng, int base)
 		warned = true;
 	}
 
+	if (any_query_enabled && base == 8 && uq != 0) {
+		/* octal number '%.*s' */
+		query_message(8, (int)len, cp);
+	}
+
 	/*
 	 * If the value is too big for the current type, we must choose
 	 * another type.
 	 */
-	ansiu = false;
+	bool ansiu = false;
 	switch (typ) {
 	case INT:
 		if (uq <= TARG_INT_MAX) {
@@ -543,12 +542,10 @@ lex_integer_constant(const char *yytext, size_t yyleng, int base)
 		if (typ == UINT || typ == ULONG) {
 			if (!allow_c90) {
 				typ = LONG;
-			} else if (allow_trad || allow_c99) {
+			} else if (allow_trad) {
 				/*
 				 * Remember that the constant is unsigned
 				 * only in ANSI C.
-				 *
-				 * TODO: C99 behaves like C90 here.
 				 */
 				ansiu = true;
 			}
@@ -566,8 +563,7 @@ lex_integer_constant(const char *yytext, size_t yyleng, int base)
 	case LONG:
 		if (uq > TARG_LONG_MAX && allow_c90) {
 			typ = ULONG;
-			/* TODO: C99 behaves like C90 here. */
-			if (allow_trad || allow_c99)
+			if (allow_trad)
 				ansiu = true;
 			if (uq > TARG_ULONG_MAX && !warned) {
 				/* integer constant out of range */
@@ -582,12 +578,8 @@ lex_integer_constant(const char *yytext, size_t yyleng, int base)
 		}
 		break;
 	case QUAD:
-		if (uq > TARG_QUAD_MAX && allow_c90) {
+		if (uq > TARG_QUAD_MAX && allow_c90)
 			typ = UQUAD;
-			/* TODO: C99 behaves like C90 here. */
-			if (allow_trad || allow_c99)
-				ansiu = true;
-		}
 		break;
 	case UQUAD:
 		if (uq > TARG_UQUAD_MAX && !warned) {
@@ -631,73 +623,55 @@ convert_integer(int64_t q, tspec_t t, unsigned int len)
 int
 lex_floating_constant(const char *yytext, size_t yyleng)
 {
-	const	char *cp;
-	size_t	len;
+	const char *cp = yytext;
+	size_t len = yyleng;
+
+	bool imaginary = cp[len - 1] == 'i';
+	if (imaginary)
+		len--;
+
+	char c = cp[len - 1];
 	tspec_t typ;
-	char	c, *eptr;
-	double	d;
-
-	cp = yytext;
-	len = yyleng;
-
-	if (cp[len - 1] == 'i')
-		len--;		/* imaginary, do nothing for now */
-
-	if ((c = cp[len - 1]) == 'f' || c == 'F') {
-		typ = FLOAT;
+	if (c == 'f' || c == 'F') {
+		typ = imaginary ? FCOMPLEX : FLOAT;
 		len--;
 	} else if (c == 'l' || c == 'L') {
-		typ = LDOUBLE;
+		typ = imaginary ? LCOMPLEX : LDOUBLE;
 		len--;
-	} else {
-		if (c == 'd' || c == 'D')
-			len--;
-		typ = DOUBLE;
-	}
+	} else
+		typ = imaginary ? DCOMPLEX : DOUBLE;
 
 	if (!allow_c90 && typ != DOUBLE) {
 		/* suffixes F and L are illegal in traditional C */
 		warning(98);
 	}
 
-	/* TODO: Handle precision and exponents of 'long double'. */
 	errno = 0;
-	d = strtod(cp, &eptr);
-	if (eptr != cp + len) {
-		switch (*eptr) {
-			/*
-			 * XXX: Non-native non-current strtod() may not
-			 * handle hex floats, ignore the rest if we find
-			 * traces of hex float syntax.
-			 */
-		case 'p':
-		case 'P':
-		case 'x':
-		case 'X':
-			d = 0;
-			errno = 0;
-			break;
-		default:
-			INTERNAL_ERROR("lex_floating_constant(%.*s)",
-			    (int)(eptr - cp), cp);
-		}
-	}
-	if (errno != 0)
+	char *eptr;
+	long double ld = strtold(cp, &eptr);
+	lint_assert(eptr == cp + len);
+	if (errno != 0) {
 		/* floating-point constant out of range */
 		warning(248);
-
-	if (typ == FLOAT) {
-		d = (float)d;
-		if (isfinite(d) == 0) {
+	} else if (typ == FLOAT) {
+		ld = (float)ld;
+		if (isfinite(ld) == 0) {
 			/* floating-point constant out of range */
 			warning(248);
-			d = d > 0 ? FLT_MAX : -FLT_MAX;
+			ld = ld > 0 ? FLT_MAX : -FLT_MAX;
+		}
+	} else if (typ == DOUBLE) {
+		ld = (double)ld;
+		if (isfinite(ld) == 0) {
+			/* floating-point constant out of range */
+			warning(248);
+			ld = ld > 0 ? DBL_MAX : -DBL_MAX;
 		}
 	}
 
 	yylval.y_val = xcalloc(1, sizeof(*yylval.y_val));
 	yylval.y_val->v_tspec = typ;
-	yylval.y_val->v_ldbl = d;
+	yylval.y_val->v_ldbl = ld;
 
 	return T_CON;
 }
@@ -967,21 +941,19 @@ parse_line_directive_flags(const char *p,
 	*is_system = false;
 
 	while (*p != '\0') {
-		const char *word_start, *word_end;
-
 		while (ch_isspace(*p))
 			p++;
 
-		word_start = p;
+		const char *word = p;
 		while (*p != '\0' && !ch_isspace(*p))
 			p++;
-		word_end = p;
+		size_t len = (size_t)(p - word);
 
-		if (word_end - word_start == 1 && word_start[0] == '1')
+		if (len == 1 && word[0] == '1')
 			*is_begin = true;
-		if (word_end - word_start == 1 && word_start[0] == '2')
+		if (len == 1 && word[0] == '2')
 			*is_end = true;
-		if (word_end - word_start == 1 && word_start[0] == '3')
+		if (len == 1 && word[0] == '3')
 			*is_system = true;
 		/* Flag '4' is only interesting for C++. */
 	}

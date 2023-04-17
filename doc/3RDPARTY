@@ -1,4 +1,4 @@
-#	$NetBSD: 3RDPARTY,v 1.1912 2023/02/07 22:26:46 christos Exp $
+#	$NetBSD: 3RDPARTY,v 1.1919 2023/03/31 19:09:08 kre Exp $
 #
 # This file contains a list of the software that has been integrated into
 # NetBSD where we are not the primary maintainer.
@@ -482,11 +482,11 @@ Before importing a new version of external/gpl3/gcc:
 
 Package:	gdb
 Version:	11.0.50
-Current Vers:	12.1
+Current Vers:	13.1
 Maintainer:	FSF
 Archive Site:	ftp://ftp.gnu.org/gnu/gdb/
 Home Page:	http://www.gnu.org/software/gdb/
-Date:		2022-05-02
+Date:		2023-02-19
 Mailing List:	bug-gdb@gnu.org
 Responsible:	christos
 License:	GPLv3, LGPLv3.1
@@ -1072,11 +1072,11 @@ Patch applied after OpenSSH import.
 
 Package:	OpenSSH
 Version:	9.1
-Current Vers:	9.2 / portable 9.2p1
+Current Vers:	9.3 / portable 9.3p1
 Maintainer:	OpenSSH
 Archive Site:	http://www.openssh.com/ftp.html
 Home Page:	http://www.openssh.com/portable.html
-Date:		2022-10-04
+Date:		2023-03-16
 Mailing List:	openssh-unix-announce@mindrot.org
 Responsible:	thorpej, christos, elric
 License:	BSD. See src/crypto/external/bsd/openssh/dist/LICENSE
@@ -1424,8 +1424,8 @@ Location:	external/bsd/tradcpp
 Notes:
 
 Package:	tz
-Version:	tzcode2022g / tzdata2022ggtz
-Current Vers:	tzcode2022g / tzdata2022g
+Version:	tzcode2022g / tzdata2023cgtz
+Current Vers:	tzcode2023c / tzdata2023c
 Maintainer:	Paul Eggert <eggert@cs.ucla.edu>
 Archive Site:	ftp://ftp.iana.org/tz/releases/
 Archive Site:	ftp://munnari.oz.au/pub/oldtz/
@@ -1530,8 +1530,8 @@ Notes:
 3. Carefully check for non-autoconf GPL components leaked into the dist area.
 
 Package:	mpc
-Version:	1.2.1
-Current Vers:	1.2.1
+Version:	1.3.1
+Current Vers:	1.3.1
 Maintainer:
 Archive Site:	http://www.multiprecision.org/mpc/download/
 Home Page:	http://www.multiprecision.org/mpc/
@@ -1542,8 +1542,8 @@ Location:	external/lgpl3/mpc/dist
 Notes:
 
 Package:	mpfr
-Version:	4.1.0
-Current Vers:	4.1.0
+Version:	4.2.0
+Current Vers:	4.2.0
 Maintainer:
 Archive Site:	http://www.mpfr.org/mpfr-current/
 Home Page:	http://www.mpfr.org/

@@ -1,4 +1,4 @@
-$NetBSD: acronyms.comp,v 1.331 2023/01/26 22:20:16 jschauma Exp $
+$NetBSD: acronyms.comp,v 1.351 2023/04/04 20:13:02 jschauma Exp $
 3WHS	three-way handshake
 8VSB	8-state vestigial side band modulation
 AA	anti-aliasing
@@ -44,6 +44,7 @@ AI	artificial intelligence
 AL	access list
 AL	active link
 ALE	address latch enable
+ALPN	application-layer protocol negotiation
 ALS	ambient light sensor
 ALSA	advanced Linux sound architecture
 ALU	arithmetic and logical unit
@@ -176,6 +177,7 @@ BPI	bits per inch
 BPM	business process modelling
 BPS	bits per second
 BPSK	binary phase shift keying
+BQP	bounded-error quantum polynomial time
 BQS	Berkeley quality software
 BRE	basic regular expression
 BS	backspace
@@ -238,7 +240,7 @@ CF	compact flash
 CFB	cipher feedback
 CFG	context-free grammar
 CFG	control-flow graph
-CFI	control-flow integrity sanitizer
+CFI	control-flow integrity
 CG	control gate
 CGA	Color Graphics Adapter
 CGI	common gateway interface
@@ -269,7 +271,9 @@ CM	configuration management
 CMA	concert multithread architecture
 CMC	chassis management controller
 CMC	corrected machine check
+CMC	certificate management over CMS
 CMS	{configuration,content,course} management system
+CMS	cryptographic message syntax
 CMI	control {management,method} interface
 CMOS	complementary metal-oxide-semiconductor
 CMP	chip multi-processing
@@ -429,6 +433,7 @@ DNARD	Digital network appliance reference design
 DND	drag and drop
 DNLC	directory name lookup cache
 DNS	Domain Name System
+DNSBL   Domain Name System Block List
 DNSSEC	DNS Security Extensions
 DOE	distributed object environment
 DOF	data over fibre
@@ -486,6 +491,7 @@ DVFS	dynamic voltage and frequency scaling
 DVI	device independent
 DVI	Digital Visual Interface
 DVR	digital video recorder
+DWARF	Debugging With Attributed Record Formats
 E-XER	extended XML encoding rules
 EABI	embedded-application binary interface
 EAI	Email Address Internationalization
@@ -627,6 +633,7 @@ GAL	generic array logic
 GARP	generic attribute registration protocol
 GAS	generic address structure
 GC	garbage collector
+GCC	GNU Compiler Collection
 GCM	Galois counter mode
 GCR	group-coded recording
 GDI	Graphics Device Interface
@@ -661,12 +668,15 @@ GSI	global system interrupt
 GSO	generic send offload
 GUI	graphical user interface
 GUID	globally unique identifier
+GUS	Gravis UltraSound
 GVFS    git virtual file system
 HA	high availability
 HAL	hardware abstraction layer
 HAT	hashed array tree
 HATEOAS	hypermedia as the engine of application state
 HBA	host bus adapter
+HCC	Home Cable Computer
+HCCA	Home Cable Computer Adaptor
 HCF	halt and catch fire
 HCI	host controller interface
 HCI	human-computer interaction
@@ -787,6 +797,7 @@ IPSEC	Internet Protocol Security
 IRC	Internet Relay Chat
 IRDA	infrared data association
 IRDP	ICMP Router Discovery Protocol
+IR	intermediate representation
 IRQ	interrupt request
 IRQL	interrupt request level
 IRR	interrupt request register
@@ -824,12 +835,14 @@ JPEG	Joint Photographic Experts Group
 JRE	Java Runtime Environment
 JSON	JavaScript Object Notation
 JTAG	joint test action group
+KASAN	Kernel Address Sanitizer
 KASLR	kernel address space layout randomization
 KB	keyboard
 KB	kilobyte
 KBD	keyboard
 KBD	kilobaud
 KCS	keyboard controller style
+KEM	key encapsulation mechanism
 KLOC	thousand lines of code
 KMS	kernel-mode setting
 KPI	kernel programming interface
@@ -989,6 +1002,7 @@ MLAG	multi-chassis link aggregation group
 MLC	multi-level cell
 MLD	multicast listener discovery
 MLHP	micro loop heat pipe
+MLIR	multi-level intermediate representation
 MMF	multi-mode fiber
 MMIC	monolithic microwave integrated circuit
 MMIO	memory mapped input/output
@@ -1066,6 +1080,7 @@ NFC	near-field communication
 NFCI	no functional change intended
 NFS	network file system
 NFV	network function virtualization
+NHACP	NABU HCCA Application Communication Protocol
 NIA	next instruction address
 NIC	network information center
 NIC	network interface card
@@ -1198,6 +1213,7 @@ PDS	product data sheet
 PDU	protocol data unit
 PE	protection enable
 PE	provider edge
+PE	portable executable
 PEAP	Protected EAP
 PECI	platform environment control interface
 PEP	protocol extension protocol
@@ -1205,6 +1221,7 @@ PER	packed encoding rules
 PFS	perfect forward secrecy
 PGAS	partitioned global address space
 PGE	page global enable
+PGO	profile guided optimization
 PGP	Pretty Good Privacy
 PHB	PCI host bridge
 PHP	PHP: Hypertext Preprocessor
@@ -1219,6 +1236,7 @@ PIM	personal information manager
 PIM	platform-independent model
 PIO	programmed input/output
 PIPT	physically indexed, physically tagged
+PIR	private information retrieval
 PIQ	prefetch input queue
 PIT	programmable interrupt timer
 PIV	personal identity verification
@@ -1268,6 +1286,7 @@ PPR	processor programming reference
 PPT	powerpoint
 PPT	punched paper tape
 PPU	physics processing unit
+PQC	post-quantum cryptography
 PRAM	Parameter RAM
 PRBS	pseudorandom bit sequence
 PRG	pseudorandom generator
@@ -1320,19 +1339,21 @@ RA	router advertisement
 RAD	rapid application development
 RADIUS	remote authentication dial-in user service
 RAID	redundant array of {independent,inexpensive} disks
+RAII	resource acquisition is initialization
 RAM	random access memory
 RAS	reliability, availability and serviceability
 RAS	remote access service
 RAS	restartable atomic sequence
 RAS	row address strobe
 RBF	radial basis function
+RBL     reputation block list
+RBL     real-time blackhole list
 RBNF	routing backus-naur form
 RBT	red-black tree
 RC	release candidate
 RC	remote control
 RC	run commands
 RCS	Revision Control System
-RCS	revision control system
 RCU	read, copy, update
 RDB	Rigid Disk Block
 RDBMS	relational database management system
@@ -1403,6 +1424,7 @@ RTOS	real time operating system
 RTP	Real-time Transport Protocol
 RTS	request to send
 RTT	round trip time
+RTTI	run-time type information
 RUP	rational unified process
 RW	Rabin-Williams
 RWM	read-write memory
@@ -1552,6 +1574,7 @@ SPD	serial presence detect
 SPDIF	Sony/Philips digital interface format
 SPI	serial peripheral interface
 SPI	stateful packet inspection
+SPIR	standard portable intermediate representation
 SPL	system interrupt priority level
 SPL	spinlock
 SPMD	single process, multiple data
@@ -1686,6 +1709,7 @@ TTL	time to live
 TTL	transistor-transistor logic
 TTM	translation table maps
 TTY	teletype
+TU	translation unit
 TUI	{terminal,text-based,textual} user interface
 TX	{transmit out,transmitter}
 TXG	transaction group

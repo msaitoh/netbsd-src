@@ -1,4 +1,4 @@
-/*	$NetBSD: subr_copy.c,v 1.16 2022/04/09 23:51:09 riastradh Exp $	*/
+/*	$NetBSD: subr_copy.c,v 1.18 2023/04/11 10:22:04 riastradh Exp $	*/
 
 /*-
  * Copyright (c) 1997, 1998, 1999, 2002, 2007, 2008, 2019
@@ -80,7 +80,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: subr_copy.c,v 1.16 2022/04/09 23:51:09 riastradh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: subr_copy.c,v 1.18 2023/04/11 10:22:04 riastradh Exp $");
 
 #define	__UFETCHSTORE_PRIVATE
 #define	__UCAS_PRIVATE
@@ -112,10 +112,11 @@ uiomove(void *buf, size_t n, struct uio *uio)
 
 	KASSERT(uio->uio_rw == UIO_READ || uio->uio_rw == UIO_WRITE);
 	while (n > 0 && uio->uio_resid) {
+		KASSERT(uio->uio_iovcnt > 0);
 		iov = uio->uio_iov;
 		cnt = iov->iov_len;
 		if (cnt == 0) {
-			KASSERT(uio->uio_iovcnt > 0);
+			KASSERT(uio->uio_iovcnt > 1);
 			uio->uio_iov++;
 			uio->uio_iovcnt--;
 			continue;
@@ -411,9 +412,7 @@ ucas_critical_cpu_gate(void *arg __unused)
 	 * Matches atomic_load_acquire in ucas_critical_wait -- turns
 	 * the following atomic_dec_uint into a store-release.
 	 */
-#ifndef __HAVE_ATOMIC_AS_MEMBAR
 	membar_release();
-#endif
 	atomic_dec_uint(&ucas_critical_pausing_cpus);
 
 	/*
