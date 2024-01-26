@@ -1,4 +1,4 @@
-/*	$NetBSD: tyname.c,v 1.54 2023/02/18 15:14:11 rillig Exp $	*/
+/*	$NetBSD: tyname.c,v 1.58 2024/01/20 10:25:57 rillig Exp $	*/
 
 /*-
  * Copyright (c) 2005 The NetBSD Foundation, Inc.
@@ -35,7 +35,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID)
-__RCSID("$NetBSD: tyname.c,v 1.54 2023/02/18 15:14:11 rillig Exp $");
+__RCSID("$NetBSD: tyname.c,v 1.58 2024/01/20 10:25:57 rillig Exp $");
 #endif
 
 #include <assert.h>
@@ -43,7 +43,7 @@ __RCSID("$NetBSD: tyname.c,v 1.54 2023/02/18 15:14:11 rillig Exp $");
 #include <string.h>
 #include <stdlib.h>
 
-#if defined(IS_LINT1)
+#if IS_LINT1
 #include "lint1.h"
 #else
 #include "lint2.h"
@@ -154,15 +154,13 @@ type_name_of_function(buffer *buf, const type_t *tp)
 
 	buf_add(buf, "(");
 	if (tp->t_proto) {
-#ifdef IS_LINT1
-		sym_t *arg;
-
-		arg = tp->t_args;
-		if (arg == NULL)
+#if IS_LINT1
+		const sym_t *param = tp->t_params;
+		if (param == NULL)
 			buf_add(buf, "void");
-		for (; arg != NULL; arg = arg->s_next) {
+		for (; param != NULL; param = param->s_next) {
 			buf_add(buf, sep), sep = ", ";
-			buf_add(buf, type_name(arg->s_type));
+			buf_add(buf, type_name(param->s_type));
 		}
 #else
 		type_t **argtype;
@@ -188,13 +186,13 @@ static void
 type_name_of_struct_or_union(buffer *buf, const type_t *tp)
 {
 	buf_add(buf, " ");
-#ifdef IS_LINT1
-	if (tp->t_str->sou_tag->s_name == unnamed &&
-	    tp->t_str->sou_first_typedef != NULL) {
+#if IS_LINT1
+	if (tp->t_sou->sou_tag->s_name == unnamed &&
+	    tp->t_sou->sou_first_typedef != NULL) {
 		buf_add(buf, "typedef ");
-		buf_add(buf, tp->t_str->sou_first_typedef->s_name);
+		buf_add(buf, tp->t_sou->sou_first_typedef->s_name);
 	} else {
-		buf_add(buf, tp->t_str->sou_tag->s_name);
+		buf_add(buf, tp->t_sou->sou_tag->s_name);
 	}
 #else
 	buf_add(buf, tp->t_isuniqpos ? "*anonymous*" : tp->t_tag->h_name);
@@ -205,7 +203,7 @@ static void
 type_name_of_enum(buffer *buf, const type_t *tp)
 {
 	buf_add(buf, " ");
-#ifdef IS_LINT1
+#if IS_LINT1
 	if (tp->t_enum->en_tag->s_name == unnamed &&
 	    tp->t_enum->en_first_typedef != NULL) {
 		buf_add(buf, "typedef ");
@@ -222,7 +220,7 @@ static void
 type_name_of_array(buffer *buf, const type_t *tp)
 {
 	buf_add(buf, "[");
-#ifdef IS_LINT1
+#if IS_LINT1
 	if (tp->t_incomplete_array)
 		buf_add(buf, "unknown_size");
 	else
@@ -254,16 +252,16 @@ type_name(const type_t *tp)
 	if (tp->t_volatile)
 		buf_add(&buf, "volatile ");
 
-#ifdef IS_LINT1
-	if (is_struct_or_union(t) && tp->t_str->sou_incomplete)
+#if IS_LINT1
+	if (is_struct_or_union(t) && tp->t_sou->sou_incomplete)
 		buf_add(&buf, "incomplete ");
 #endif
 	buf_add(&buf, tspec_name(t));
 
-#ifdef IS_LINT1
+#if IS_LINT1
 	if (tp->t_bitfield) {
 		buf_add(&buf, ":");
-		buf_add_int(&buf, (int)tp->t_flen);
+		buf_add_int(&buf, (int)tp->t_bit_field_width);
 	}
 #endif
 

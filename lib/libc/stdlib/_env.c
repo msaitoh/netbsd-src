@@ -1,4 +1,4 @@
-/*	$NetBSD: _env.c,v 1.13 2022/03/12 17:31:39 christos Exp $ */
+/*	$NetBSD: _env.c,v 1.15 2024/01/02 19:27:26 christos Exp $ */
 
 /*-
  * Copyright (c) 2010 The NetBSD Foundation, Inc.
@@ -31,7 +31,7 @@
 
 #include <sys/cdefs.h>
 #if defined(LIBC_SCCS) && !defined(lint)
-__RCSID("$NetBSD: _env.c,v 1.13 2022/03/12 17:31:39 christos Exp $");
+__RCSID("$NetBSD: _env.c,v 1.15 2024/01/02 19:27:26 christos Exp $");
 #endif /* LIBC_SCCS and not lint */
 
 #include "namespace.h"
@@ -73,7 +73,8 @@ static const rb_tree_ops_t env_tree_ops = {
 };
 
 /* The single instance of above tree. */
-static rb_tree_t	env_tree;
+static rb_tree_t	env_tree =
+    RB_TREE_INITIALIZER(env_tree, &env_tree_ops);
 
 /* The allocated environment. */
 static char	**allocated_environ;
@@ -87,7 +88,7 @@ static rwlock_t env_lock = RWLOCK_INITIALIZER;
 #endif
 
 /* Compatibility function. */
-char *__findenv(const char *name, int *offsetp);
+extern char *__findenv(const char *name, int *offsetp);
 
 __warn_references(__findenv,
     "warning: __findenv is an internal obsolete function.")
@@ -401,10 +402,3 @@ __unlockenv(void)
 }
 
 #endif
-
-/* Initialize environment memory RB tree. */
-void __section(".text.startup")
-__libc_env_init(void)
-{
-	rb_tree_init(&env_tree, &env_tree_ops);
-}

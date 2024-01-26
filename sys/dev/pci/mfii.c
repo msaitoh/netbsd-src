@@ -1,4 +1,4 @@
-/* $NetBSD: mfii.c,v 1.28 2022/09/29 10:27:02 bouyer Exp $ */
+/* $NetBSD: mfii.c,v 1.31 2023/10/05 21:41:00 christos Exp $ */
 /* $OpenBSD: mfii.c,v 1.58 2018/08/14 05:22:21 jmatthew Exp $ */
 
 /*
@@ -19,7 +19,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: mfii.c,v 1.28 2022/09/29 10:27:02 bouyer Exp $");
+__KERNEL_RCSID(0, "$NetBSD: mfii.c,v 1.31 2023/10/05 21:41:00 christos Exp $");
 
 #include "bio.h"
 
@@ -375,6 +375,7 @@ struct mfii_softc {
 	/* sensors */
 	struct sysmon_envsys	*sc_sme;
 	envsys_data_t		*sc_sensors;
+	envsys_data_t		*sc_ld_sensors;
 	bool			sc_bbuok;
 
 	device_t		sc_child;
@@ -528,6 +529,8 @@ static const char *mfi_bbu_indicators[] = {
 	"periodic learn req'd"
 };
 #endif
+
+#define MFI_BBU_SENSORS 4
 
 static void	mfii_init_ld_sensor(struct mfii_softc *, envsys_data_t *, int);
 static void	mfii_refresh_ld_sensor(struct mfii_softc *, envsys_data_t *);
@@ -1460,18 +1463,20 @@ mfii_aen_ld_update(struct mfii_softc *sc)
 		if (old == -1 && nld != -1) {
 			printf("%s: logical drive %d added (target %d)\n",
 			    DEVNAME(sc), i, nld);
+			sc->sc_ld[i].ld_present = 1;
 
 			// XXX scsi_probe_target(sc->sc_scsibus, i);
 
-			mfii_init_ld_sensor(sc, &sc->sc_sensors[i], i);
-			mfii_attach_sensor(sc, &sc->sc_sensors[i]);
+			mfii_init_ld_sensor(sc, &sc->sc_ld_sensors[i], i);
+			mfii_attach_sensor(sc, &sc->sc_ld_sensors[i]);
 		} else if (nld == -1 && old != -1) {
 			printf("%s: logical drive %d removed (target %d)\n",
 			    DEVNAME(sc), i, old);
+			sc->sc_ld[i].ld_present = 0;
 
 			scsipi_target_detach(&sc->sc_chan, i, 0, DETACH_FORCE);
 			sysmon_envsys_sensor_detach(sc->sc_sme,
-			    &sc->sc_sensors[i]);
+			    &sc->sc_ld_sensors[i]);
 		}
 	}
 
@@ -3832,8 +3837,6 @@ freeme:
 
 #endif /* NBIO > 0 */
 
-#define MFI_BBU_SENSORS 4
-
 static void
 mfii_bbu(struct mfii_softc *sc, envsys_data_t *edata)
 {
@@ -3953,6 +3956,7 @@ mfii_create_sensors(struct mfii_softc *sc)
 	sc->sc_sensors[3].units = ENVSYS_STEMP;
 	sc->sc_sensors[3].state = ENVSYS_SINVALID;
 	sc->sc_sensors[3].value_cur = 0;
+	sc->sc_ld_sensors = sc->sc_sensors + MFI_BBU_SENSORS;
 
 	if (ISSET(le32toh(sc->sc_info.mci_hw_present), MFI_INFO_HW_BBU)) {
 		sc->sc_bbuok = true;
@@ -3971,8 +3975,8 @@ mfii_create_sensors(struct mfii_softc *sc)
 	}
 
 	for (i = 0; i < sc->sc_ld_list.mll_no_ld; i++) {
-		mfii_init_ld_sensor(sc, &sc->sc_sensors[i + MFI_BBU_SENSORS], i);
-		mfii_attach_sensor(sc, &sc->sc_sensors[i + MFI_BBU_SENSORS]);
+		mfii_init_ld_sensor(sc, &sc->sc_ld_sensors[i], i);
+		mfii_attach_sensor(sc, &sc->sc_ld_sensors[i]);
 	}
 
 	sc->sc_sme->sme_name = DEVNAME(sc);

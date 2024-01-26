@@ -1,4 +1,4 @@
-/*	$NetBSD: mem.c,v 1.21 2023/01/13 19:41:50 rillig Exp $	*/
+/*	$NetBSD: mem.c,v 1.25 2024/01/20 12:02:09 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -14,7 +14,7 @@
  *    documentation and/or other materials provided with the distribution.
  * 3. All advertising materials mentioning features or use of this software
  *    must display the following acknowledgement:
- *      This product includes software developed by Jochen Pohl for
+ *	This product includes software developed by Jochen Pohl for
  *	The NetBSD Project.
  * 4. The name of the author may not be used to endorse or promote products
  *    derived from this software without specific prior written permission.
@@ -37,7 +37,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID)
-__RCSID("$NetBSD: mem.c,v 1.21 2023/01/13 19:41:50 rillig Exp $");
+__RCSID("$NetBSD: mem.c,v 1.25 2024/01/20 12:02:09 rillig Exp $");
 #endif
 
 #include <stdarg.h>
@@ -51,10 +51,11 @@ not_null(void *ptr)
 {
 
 	if (ptr == NULL)
-		errx(1, "virtual memory exhausted");
+		errx(1, "out of memory");
 	return ptr;
 }
 
+#if IS_LINT1 || IS_LINT2
 void *
 xmalloc(size_t s)
 {
@@ -68,6 +69,7 @@ xcalloc(size_t n, size_t s)
 
 	return not_null(calloc(n, s));
 }
+#endif
 
 void *
 xrealloc(void *p, size_t s)
@@ -83,7 +85,7 @@ xstrdup(const char *s)
 	return not_null(strdup(s));
 }
 
-#if defined(IS_XLINT)
+#if IS_XLINT
 char *
 xasprintf(const char *fmt, ...)
 {

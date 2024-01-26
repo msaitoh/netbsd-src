@@ -1,9 +1,8 @@
-# $NetBSD: directive-for-escape.mk,v 1.16 2022/06/12 16:09:21 rillig Exp $
+# $NetBSD: directive-for-escape.mk,v 1.23 2023/11/19 22:32:44 rillig Exp $
 #
 # Test escaping of special characters in the iteration values of a .for loop.
 # These values get expanded later using the :U variable modifier, and this
-# escaping and unescaping must pass all characters and strings effectively
-# unmodified.
+# escaping and unescaping must pass all characters and strings unmodified.
 
 .MAKEFLAGS: -df
 
@@ -12,12 +11,14 @@
 # This could be considered a bug.
 ASCII=	!"\#$$%&'()*+,-./0-9:;<=>?@A-Z[\]_^a-z{|}~
 
+
 # XXX: As of 2020-12-31, the '#' is not preserved in the expanded body of
 # the loop.  Not only would it need the escaping for the variable modifier
 # ':U' but also the escaping for the line-end comment.
 .for chars in ${ASCII}
 .  info ${chars}
 .endfor
+# expect-2: !"
 
 # As of 2020-12-31, using 2 backslashes before be '#' would treat the '#'
 # as comment character.  Using 3 backslashes doesn't help either since
@@ -28,6 +29,7 @@ ASCII.2020-12-31=	!"\\\#$$%&'()*+,-./0-9:;<=>?@A-Z[\]_^a-z{|}~
 .for chars in ${ASCII.2020-12-31}
 .  info ${chars}
 .endfor
+# expect-2: !"\\
 
 # Cover the code in ExprLen.
 #
@@ -42,11 +44,32 @@ VALUES=		$$ $${V} $${V:=-with-modifier} $$(V) $$(V:=-with-modifier)
 .for i in ${VALUES}
 .  info $i
 .endfor
-
+# expect: .  info ${:U\$}
+# expect-3: $
+# expect: .  info ${:U${V}}
+# expect-5: value
+# expect: .  info ${:U${V:=-with-modifier}}
+# expect-7: value-with-modifier
+# expect: .  info ${:U$(V)}
+# expect-9: value
+# expect: .  info ${:U$(V:=-with-modifier)}
+# expect-11: value-with-modifier
+#
+# Providing the loop items directly has the same effect.
+.for i in $$ $${V} $${V:=-with-modifier} $$(V) $$(V:=-with-modifier)
+.  info $i
+.endfor
+# expect: .  info ${:U\$}
+# expect-3: $
+# expect: .  info ${:U${V}}
+# expect-5: value
+# expect-6: value-with-modifier
+# expect-7: value
+# expect-8: value-with-modifier
 
 # Try to cover the code for nested '{}' in ExprLen, without success.
 #
-# The value of the variable VALUES is not meant to be a variable expression.
+# The value of the variable VALUES is not meant to be an expression.
 # Instead, it is meant to represent literal text, the only escaping mechanism
 # being that each '$' is written as '$$'.
 VALUES=		$${UNDEF:U\$$\$$ {{}} end}
@@ -65,11 +88,11 @@ VALUES=		$${UNDEF:U\$$\$$ {{}} end}
 # When these words are injected into the body of the .for loop, each inside a
 # '${:U...}' expression, the result is:
 #
-# expect: For: loop body:
+# expect: For: loop body with i = ${UNDEF:U\$\$:
 # expect: # ${:U\${UNDEF\:U\\$\\$}
-# expect: For: loop body:
+# expect: For: loop body with i = {{}}:
 # expect: # ${:U{{\}\}}
-# expect: For: loop body:
+# expect: For: loop body with i = end}:
 # expect: # ${:Uend\}}
 # expect: For: end for 1
 #
@@ -105,13 +128,14 @@ ${:U\\}=	backslash
 # XXX: It is not the job of ExprLen to parse an expression, it is naive to
 # expect ExprLen to get all the details right in just a few lines of code.
 # Each variable modifier has its own inconsistent way of parsing nested
-# variable expressions, braces and parentheses.  (Compare ':M', ':S', and
+# expressions, braces and parentheses.  (Compare ':M', ':S', and
 # ':D' for details.)  The only sensible thing to do is therefore to let
 # Var_Parse do all the parsing work.
 VALUES=		begin<$${UNDEF:Ufallback:N{{{}}}}>end
 .for i in ${VALUES}
 .  info $i
 .endfor
+# expect-2: begin<fallback>end
 
 # A single trailing dollar doesn't happen in practice.
 # The dollar sign is correctly passed through to the body of the .for loop.
@@ -120,21 +144,23 @@ VALUES=		begin<$${UNDEF:Ufallback:N{{{}}}}>end
 .for i in ${:U\$}
 .  info ${i}
 .endfor
+# expect-2: $
 
-# As of 2020-12-31, the name of the iteration variable can even contain
-# colons, which then affects variable expressions having this exact modifier.
-# This is clearly an unintended side effect of the implementation.
+# Before for.c 1.173 from 2023-05-08, the name of the iteration variable
+# could contain colons, which affected expressions having this exact
+# modifier.  This possibility was neither intended nor documented.
 NUMBERS=	one two three
+# expect+1: invalid character ':' in .for loop variable name
 .for NUMBERS:M*e in replaced
 .  info ${NUMBERS} ${NUMBERS:M*e}
 .endfor
 
-# As of 2020-12-31, the name of the iteration variable can contain braces,
-# which gets even more surprising than colons, since it allows to replace
-# sequences of variable expressions.  There is no practical use case for
-# this, though.
+# Before for.c 1.173 from 2023-05-08, the name of the iteration variable
+# could contain braces, which allowed to replace sequences of
+# expressions.  This possibility was neither intended nor documented.
 BASENAME=	one
 EXT=		.c
+# expect+1: invalid character '}' in .for loop variable name
 .for BASENAME}${EXT in replaced
 .  info ${BASENAME}${EXT}
 .endfor
@@ -155,22 +181,35 @@ i,=		comma
 .  info .     $${i,}: ${i,}
 .  info .  adjacent: $i${i}${i:M*}$i
 .endfor
+# expect-11: .        $i: inner
+# expect-11: .      ${i}: inner
+# expect-11: .   ${i:M*}: inner
+# expect-11: .      $(i): inner
+# expect-11: .   $(i:M*): inner
+# expect-11: . ${i${:U}}: outer
+# expect-11: .    ${i\}}: inner}
+# expect-11: .     ${i2}: two
+# expect-11: .     ${i,}: comma
+# expect-11: .  adjacent: innerinnerinnerinner
 
-# The variable name can be a single '$' since there is no check on valid
-# variable names. ForLoop_SubstVarShort skips "stupid" variable names though,
-# but ForLoop_SubstVarLong naively parses the body of the loop, substituting
-# each '${$}' with an actual 'dollar'.
+# Before for.c 1.173 from 2023-05-08, the variable name could be a single '$'
+# since there was no check on valid variable names.  ForLoop_SubstVarShort
+# skipped "stupid" variable names though, but ForLoop_SubstVarLong naively
+# parsed the body of the loop, substituting each '${$}' with an actual
+# '${:Udollar}'.
+# expect+1: invalid character '$' in .for loop variable name
 .for $ in dollar
 .  info eight $$$$$$$$ and no cents.
 .  info eight ${$}${$}${$}${$} and no cents.
 .endfor
 # Outside a .for loop, '${$}' is interpreted differently. The outer '$' starts
-# a variable expression. The inner '$' is followed by a '}' and is thus a
+# an expression. The inner '$' is followed by a '}' and is thus a
 # silent syntax error, the '$' is skipped. The variable name is thus '', and
 # since since there is never a variable named '', the whole expression '${$}'
 # evaluates to an empty string.
 closing-brace=		}		# guard against an
 ${closing-brace}=	<closing-brace>	# alternative interpretation
+# expect+1: eight  and no cents.
 .info eight ${$}${$}${$}${$} and no cents.
 
 # What happens if the values from the .for loop contain a literal newline?
@@ -178,10 +217,18 @@ ${closing-brace}=	<closing-brace>	# alternative interpretation
 # body of the .for loop, where it was then interpreted as a literal newline,
 # leading to syntax errors such as "Unclosed variable expression" in the upper
 # line and "Invalid line type" in the lower line.
+#
+# The error message occurs in the line of the .for loop since that's the place
+# where the body of the .for loop is constructed, and at this point the
+# newline character gets replaced with a plain space.
+# expect+2: newline in .for value
+# expect+1: newline in .for value
 .for i in "${.newline}"
 .  info short: $i
 .  info long: ${i}
 .endfor
+# expect-3: short: " "
+# expect-3: long: " "
 
 # No error since the newline character is not actually used.
 .for i in "${.newline}"
@@ -193,6 +240,7 @@ ${closing-brace}=	<closing-brace>	# alternative interpretation
 # loop is assembled, and at that point, ForLoop.nextItem had already been
 # advanced.
 .MAKEFLAGS: -dp
+# expect+1: newline in .for value
 .for i in "${.newline}"
 : $i
 .endfor
@@ -224,6 +272,22 @@ ${closing-brace}=	<closing-brace>	# alternative interpretation
 .for i in ((( {{{ ))) }}}
 # $i
 .endfor
-.MAKEFLAGS: -d0
 
-all:
+
+# When generating the body of a .for loop, recognizing the expressions is done
+# using simple heuristics.  These can go wrong in ambiguous cases like this.
+# The variable name ',' is unusual as it is not a pronounceable name, but the
+# same principle applies for other names as well.  In this case, the text '$,'
+# is replaced with the expression '${:U1}', even though the text does not
+# represent an expression.
+.for , in 1
+# $$i $i
+# VAR= $$i $i ${a:S,from$,to,}
+VAR= $$i $i ${a:S,from$,to,}
+.endfor
+# expect: # $$i $i
+# expect: # VAR= $$i $i ${a:S,from${:U1}to,}
+# expect: VAR= $$i $i ${a:S,from${:U1}to,}
+#
+# When the above variable is evaluated, make will complain about the
+# unfinished modifier ':S', as it is missing a comma.

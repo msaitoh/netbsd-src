@@ -4796,10 +4796,6 @@ _bfd_elf_map_sections_to_segments (bfd *abfd,
       hdr_index = 0;
       writable = false;
       executable = false;
-      dynsec = bfd_get_section_by_name (abfd, ".dynamic");
-      if (dynsec != NULL
-	  && (dynsec->flags & SEC_LOAD) == 0)
-	dynsec = NULL;
 
       if ((abfd->flags & D_PAGED) == 0)
 	phdr_in_segment = false;
@@ -11145,7 +11141,7 @@ elfcore_grok_netbsd_note (bfd *abfd, Elf_Internal_Note *note)
       return elfcore_grok_netbsd_procinfo (abfd, note);
     case NT_NETBSDCORE_AUXV:
       /* NetBSD-specific Elf Auxiliary Vector data. */
-      return elfcore_make_auxv_note_section (abfd, note, 4);
+      return elfcore_make_auxv_note_section (abfd, note, 0);
     case NT_NETBSDCORE_LWPSTATUS:
       return elfcore_make_note_pseudosection (abfd,
 					      ".note.netbsdcore.lwpstatus",

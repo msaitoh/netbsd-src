@@ -1,4 +1,4 @@
-/* $NetBSD: t_fenv.c,v 1.6 2019/04/25 20:48:54 kamil Exp $ */
+/* $NetBSD: t_fenv.c,v 1.13 2023/11/06 13:48:12 riastradh Exp $ */
 
 /*-
  * Copyright (c) 2014 The NetBSD Foundation, Inc.
@@ -29,16 +29,26 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 #include <sys/cdefs.h>
-__RCSID("$NetBSD: t_fenv.c,v 1.6 2019/04/25 20:48:54 kamil Exp $");
+__RCSID("$NetBSD: t_fenv.c,v 1.13 2023/11/06 13:48:12 riastradh Exp $");
 
 #include <atf-c.h>
 
 #include <fenv.h>
 #ifdef __HAVE_FENV
 
+/* XXXGCC gcc lacks #pragma STDC FENV_ACCESS */
+/* XXXclang clang lacks #pragma STDC FENV_ACCESS on some ports */
+#if !defined(__GNUC__)
+#pragma STDC FENV_ACCESS ON
+#endif
+
+#include <float.h>
 #include <ieeefp.h>
 #include <stdlib.h>
 
+#if FLT_RADIX != 2
+#error This test assumes binary floating-point arithmetic.
+#endif
 
 #if (__arm__ && !__SOFTFP__) || __aarch64__
 	/*
@@ -67,6 +77,86 @@ __RCSID("$NetBSD: t_fenv.c,v 1.6 2019/04/25 20:48:54 kamil Exp $");
 #endif
 
 
+static int
+feround_to_fltrounds(int feround)
+{
+
+	/*
+	 * C99, Sec. 5.2.4.2.2 Characteristics of floating types
+	 * <float.h>, p. 24, clause 7
+	 */
+	switch (feround) {
+	case FE_TOWARDZERO:
+		return 0;
+	case FE_TONEAREST:
+		return 1;
+	case FE_UPWARD:
+		return 2;
+	case FE_DOWNWARD:
+		return 3;
+	default:
+		return -1;
+	}
+}
+
+static void
+checkfltrounds(void)
+{
+	int feround = fegetround();
+	int expected = feround_to_fltrounds(feround);
+
+	ATF_CHECK_EQ_MSG(FLT_ROUNDS, expected,
+	    "FLT_ROUNDS=%d expected=%d fegetround()=%d",
+	    FLT_ROUNDS, expected, feround);
+}
+
+static void
+checkrounding(int feround, const char *name)
+{
+	volatile double ulp1 = DBL_EPSILON;
+
+	/*
+	 * XXX These must be volatile to force rounding to double when
+	 * the intermediate quantities are evaluated in long double
+	 * precision, e.g. on 32-bit x86 with x87 long double.  Under
+	 * the C standard (C99, C11, C17, &c.), cast and assignment
+	 * operators are required to remove all extra range and
+	 * precision, i.e., round double to long double.  But we build
+	 * this code with -std=gnu99, which diverges from this
+	 * requirement -- unless you add a volatile qualifier.
+	 */
+	volatile double y1 = -1 + ulp1/4;
+	volatile double y2 = 1 + 3*(ulp1/2);
+
+	double z1, z2;
+
+	switch (feround) {
+	case FE_TONEAREST:
+		z1 = -1;
+		z2 = 1 + 2*ulp1;
+		break;
+	case FE_TOWARDZERO:
+		z1 = -1 + ulp1/2;
+		z2 = 1 + ulp1;
+		break;
+	case FE_UPWARD:
+		z1 = -1 + ulp1/2;
+		z2 = 1 + 2*ulp1;
+		break;
+	case FE_DOWNWARD:
+		z1 = -1;
+		z2 = 1 + ulp1;
+		break;
+	default:
+		atf_tc_fail("unknown rounding mode %d (%s)", feround, name);
+	}
+
+	ATF_CHECK_EQ_MSG(y1, z1, "%s[-1 + ulp(1)/4] expected=%a actual=%a",
+	    name, y1, z1);
+	ATF_CHECK_EQ_MSG(y2, z2, "%s[1 + 3*(ulp(1)/2)] expected=%a actual=%a",
+	    name, y2, z2);
+}
+
 ATF_TC(fegetround);
 
 ATF_TC_HEAD(fegetround, tc)
@@ -80,14 +170,35 @@ ATF_TC_BODY(fegetround, tc)
 {
 	FPU_RND_PREREQ();
 
+	checkrounding(FE_TONEAREST, "FE_TONEAREST");
+
 	fpsetround(FP_RZ);
-	ATF_CHECK(fegetround() == FE_TOWARDZERO);
+	ATF_CHECK_EQ_MSG(fegetround(), FE_TOWARDZERO,
+	    "fegetround()=%d FE_TOWARDZERO=%d",
+	    fegetround(), FE_TOWARDZERO);
+	checkfltrounds();
+	checkrounding(FE_TOWARDZERO, "FE_TOWARDZERO");
+
 	fpsetround(FP_RM);
-	ATF_CHECK(fegetround() == FE_DOWNWARD);
+	ATF_CHECK_EQ_MSG(fegetround(), FE_DOWNWARD,
+	    "fegetround()=%d FE_DOWNWARD=%d",
+	    fegetround(), FE_DOWNWARD);
+	checkfltrounds();
+	checkrounding(FE_DOWNWARD, "FE_DOWNWARD");
+
 	fpsetround(FP_RN);
-	ATF_CHECK(fegetround() == FE_TONEAREST);
+	ATF_CHECK_EQ_MSG(fegetround(), FE_TONEAREST,
+	    "fegetround()=%d FE_TONEAREST=%d",
+	    fegetround(), FE_TONEAREST);
+	checkfltrounds();
+	checkrounding(FE_TONEAREST, "FE_TONEAREST");
+
 	fpsetround(FP_RP);
-	ATF_CHECK(fegetround() == FE_UPWARD);
+	ATF_CHECK_EQ_MSG(fegetround(), FE_UPWARD,
+	    "fegetround()=%d FE_UPWARD=%d",
+	    fegetround(), FE_UPWARD);
+	checkfltrounds();
+	checkrounding(FE_UPWARD, "FE_UPWARD");
 }
 
 ATF_TC(fesetround);
@@ -103,14 +214,35 @@ ATF_TC_BODY(fesetround, tc)
 {
 	FPU_RND_PREREQ();
 
+	checkrounding(FE_TONEAREST, "FE_TONEAREST");
+
 	fesetround(FE_TOWARDZERO);
-	ATF_CHECK(fpgetround() == FP_RZ);
+	ATF_CHECK_EQ_MSG(fpgetround(), FP_RZ,
+	    "fpgetround()=%d FP_RZ=%d",
+	    (int)fpgetround(), (int)FP_RZ);
+	checkfltrounds();
+	checkrounding(FE_TOWARDZERO, "FE_TOWARDZERO");
+
 	fesetround(FE_DOWNWARD);
-	ATF_CHECK(fpgetround() == FP_RM);
+	ATF_CHECK_EQ_MSG(fpgetround(), FP_RM,
+	    "fpgetround()=%d FP_RM=%d",
+	    (int)fpgetround(), (int)FP_RM);
+	checkfltrounds();
+	checkrounding(FE_DOWNWARD, "FE_DOWNWARD");
+
 	fesetround(FE_TONEAREST);
-	ATF_CHECK(fpgetround() == FP_RN);
+	ATF_CHECK_EQ_MSG(fpgetround(), FP_RN,
+	    "fpgetround()=%d FP_RN=%d",
+	    (int)fpgetround(), (int)FP_RN);
+	checkfltrounds();
+	checkrounding(FE_TONEAREST, "FE_TONEAREST");
+
 	fesetround(FE_UPWARD);
-	ATF_CHECK(fpgetround() == FP_RP);
+	ATF_CHECK_EQ_MSG(fpgetround(), FP_RP,
+	    "fpgetround()=%d FP_RP=%d",
+	    (int)fpgetround(), (int)FP_RP);
+	checkfltrounds();
+	checkrounding(FE_UPWARD, "FE_UPWARD");
 }
 
 ATF_TC(fegetexcept);
@@ -127,26 +259,38 @@ ATF_TC_BODY(fegetexcept, tc)
 	FPU_EXC_PREREQ();
 
 	fpsetmask(0);
-	ATF_CHECK(fegetexcept() == 0);
+	ATF_CHECK_EQ_MSG(fegetexcept(), 0,
+	    "fegetexcept()=%d",
+	    fegetexcept());
 
 	fpsetmask(FP_X_INV|FP_X_DZ|FP_X_OFL|FP_X_UFL|FP_X_IMP);
 	ATF_CHECK(fegetexcept() == (FE_INVALID|FE_DIVBYZERO|FE_OVERFLOW
 	    |FE_UNDERFLOW|FE_INEXACT));
 
 	fpsetmask(FP_X_INV);
-	ATF_CHECK(fegetexcept() == FE_INVALID);
+	ATF_CHECK_EQ_MSG(fegetexcept(), FE_INVALID,
+	    "fegetexcept()=%d FE_INVALID=%d",
+	    fegetexcept(), FE_INVALID);
 
 	fpsetmask(FP_X_DZ);
-	ATF_CHECK(fegetexcept() == FE_DIVBYZERO);
+	ATF_CHECK_EQ_MSG(fegetexcept(), FE_DIVBYZERO,
+	    "fegetexcept()=%d FE_DIVBYZERO=%d",
+	    fegetexcept(), FE_DIVBYZERO);
 
 	fpsetmask(FP_X_OFL);
-	ATF_CHECK(fegetexcept() == FE_OVERFLOW);
+	ATF_CHECK_EQ_MSG(fegetexcept(), FE_OVERFLOW,
+	    "fegetexcept()=%d FE_OVERFLOW=%d",
+	    fegetexcept(), FE_OVERFLOW);
 
 	fpsetmask(FP_X_UFL);
-	ATF_CHECK(fegetexcept() == FE_UNDERFLOW);
+	ATF_CHECK_EQ_MSG(fegetexcept(), FE_UNDERFLOW,
+	    "fegetexcept()=%d FE_UNDERFLOW=%d",
+	    fegetexcept(), FE_UNDERFLOW);
 
 	fpsetmask(FP_X_IMP);
-	ATF_CHECK(fegetexcept() == FE_INEXACT);
+	ATF_CHECK_EQ_MSG(fegetexcept(), FE_INEXACT,
+	    "fegetexcept()=%d FE_INEXACT=%d",
+	    fegetexcept(), FE_INEXACT);
 }
 
 ATF_TC(feenableexcept);
@@ -163,26 +307,38 @@ ATF_TC_BODY(feenableexcept, tc)
 	FPU_EXC_PREREQ();
 
 	fedisableexcept(FE_ALL_EXCEPT);
-	ATF_CHECK(fpgetmask() == 0);
+	ATF_CHECK_EQ_MSG(fpgetmask(), 0,
+	    "fpgetmask()=%d",
+	    (int)fpgetmask());
 
 	feenableexcept(FE_UNDERFLOW);
-	ATF_CHECK(fpgetmask() == FP_X_UFL);
+	ATF_CHECK_EQ_MSG(fpgetmask(), FP_X_UFL,
+	    "fpgetmask()=%d FP_X_UFL=%d",
+	    (int)fpgetmask(), (int)FP_X_UFL);
 
 	fedisableexcept(FE_ALL_EXCEPT);
 	feenableexcept(FE_OVERFLOW);
-	ATF_CHECK(fpgetmask() == FP_X_OFL);
+	ATF_CHECK_EQ_MSG(fpgetmask(), FP_X_OFL,
+	    "fpgetmask()=%d FP_X_OFL=%d",
+	    (int)fpgetmask(), (int)FP_X_OFL);
 
 	fedisableexcept(FE_ALL_EXCEPT);
 	feenableexcept(FE_DIVBYZERO);
-	ATF_CHECK(fpgetmask() == FP_X_DZ);
+	ATF_CHECK_EQ_MSG(fpgetmask(), FP_X_DZ,
+	    "fpgetmask()=%d FP_X_DZ=%d",
+	    (int)fpgetmask(), (int)FP_X_DZ);
 
 	fedisableexcept(FE_ALL_EXCEPT);
 	feenableexcept(FE_INEXACT);
-	ATF_CHECK(fpgetmask() == FP_X_IMP);
+	ATF_CHECK_EQ_MSG(fpgetmask(), FP_X_IMP,
+	    "fpgetmask()=%d FP_X_IMP=%d",
+	    (int)fpgetmask(), (int)FP_X_IMP);
 
 	fedisableexcept(FE_ALL_EXCEPT);
 	feenableexcept(FE_INVALID);
-	ATF_CHECK(fpgetmask() == FP_X_INV);
+	ATF_CHECK_EQ_MSG(fpgetmask(), FP_X_INV,
+	    "fpgetmask()=%d FP_X_INV=%d",
+	    (int)fpgetmask(), (int)FP_X_INV);
 }
 
 ATF_TP_ADD_TCS(tp)

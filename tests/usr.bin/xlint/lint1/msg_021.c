@@ -1,9 +1,11 @@
-/*	$NetBSD: msg_021.c,v 1.4 2022/06/20 21:13:36 rillig Exp $	*/
+/*	$NetBSD: msg_021.c,v 1.6 2023/08/02 18:51:25 rillig Exp $	*/
 # 3 "msg_021.c"
 
 // Test for message: redeclaration of formal parameter '%s' [21]
 
 /* See also message 237, which has the same text. */
+
+/* lint1-extra-flags: -X 351 */
 
 /*ARGSUSED*/
 void
@@ -11,7 +13,7 @@ void
 old_style_with_duplicate_parameter(parameter, parameter)
     int parameter;
 {
-	/* expect-1: warning: type of argument 'parameter' defaults to 'int' [32] */
+	/* expect-1: warning: type of parameter 'parameter' defaults to 'int' [32] */
 }
 
 void

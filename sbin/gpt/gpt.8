@@ -1,4 +1,4 @@
-.\" $NetBSD: gpt.8,v 1.76 2022/04/07 13:57:44 kre Exp $
+.\" $NetBSD: gpt.8,v 1.80 2023/11/07 00:53:39 gutteridge Exp $
 .\"
 .\" Copyright (c) 2002 Marcel Moolenaar
 .\" All rights reserved.
@@ -26,7 +26,7 @@
 .\"
 .\" $FreeBSD: src/sbin/gpt/gpt.8,v 1.17 2006/06/22 22:22:32 marcel Exp $
 .\"
-.Dd April 7, 2022
+.Dd July 15, 2023
 .Dt GPT 8
 .Os
 .Sh NAME
@@ -59,11 +59,6 @@ tables
 but see
 .Sx BUGS
 below for how and where functionality is missing.
-The basic usage model of the
-.Nm
-tool follows that of the
-.Xr cvs 1
-tool.
 The general options are described in the following paragraph.
 The remaining paragraphs describe the individual commands with their options.
 Here we conclude by mentioning that a
@@ -165,7 +160,7 @@ or
 .Sq S
 then size is in sectors, otherwise size is in bytes which must be
 a multiple of the device's sector size.
-Accepted suffix units are
+Accepted suffix units (case insensitive) are
 .Sq b
 to denote bytes,
 .Sq k
@@ -173,13 +168,19 @@ to denote kilobytes,
 .Sq m
 to denote megabytes and
 .Sq g
-to denote gigabytes.
+to denote gigabytes,
+.Sq t
+to denote terabytes,
+.Sq p
+to denote petabytes, and
+.Sq e
+to denote exabytes.
 The minimum size is 1 sector.
 .Pp
 The
 .Fl t Ar type
 option allows the user to specify the partition type.
-The type is given as an UUID, but
+The type is given as a UUID, but
 .Nm
 accepts
 .Bl -tag -width "windows-reserved" -compact -offset indent
@@ -386,7 +387,7 @@ This can cause multiple partitions to be labeled.
 The
 .Fl t Ar type
 option selects all partitions that have the given type.
-The type is given as an UUID or by the aliases that the
+The type is given as a UUID or by the aliases that the
 .Ic add
 command accepts.
 This can cause multiple partitions to be labeled.
@@ -644,7 +645,7 @@ option the GPT partition label will be displayed instead of the GPT partition
 type.
 With the
 .Fl u
-option the GPT partition type is displayed as an UUID instead of in a
+option the GPT partition type is displayed as a UUID instead of in a
 user friendly form.
 With the
 .Fl i
@@ -658,7 +659,7 @@ option, all information for all GPT partitions (just like with
 .Fl i Ar index )
 will be printed.
 None of the options have any effect on non-GPT partitions.
-The order of precedence for the options are:
+The order of precedence for the options is:
 .Fl a ,
 .Fl i ,
 .Fl l ,
@@ -831,7 +832,7 @@ However, it is believed that the currently present functionality is reliable
 and stable enough that this tool can be used without bullet-proof footware if
 one thinks one does not make mistakes.
 .Pp
-It is expected that the basic usage model does not change, but it is
+It is expected that the basic usage model will not change, but it is
 possible that future versions will not be compatible in the strictest sense
 of the word.
 Also, options primarily intended for diagnostic or debug purposes may be

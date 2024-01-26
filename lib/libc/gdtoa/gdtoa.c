@@ -1,4 +1,4 @@
-/* $NetBSD: gdtoa.c,v 1.9 2023/04/01 23:44:11 dholland Exp $ */
+/* $NetBSD: gdtoa.c,v 1.11 2024/01/20 14:52:47 christos Exp $ */
 
 /****************************************************************
 
@@ -372,7 +372,7 @@ gdtoa
 			ds = 1.;
 			if ( (jj1 = -k) !=0) {
 				dval(&d) *= tens[jj1 & 0xf];
-				for(j = jj1 >> 4; j; j >>= 1, i++)
+				for(j = (unsigned int)jj1 >> 4; j; j = (unsigned int)j >> 1, i++)
 					if (j & 1) {
 						ieps++;
 						dval(&d) *= bigtens[i];

@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile.inc,v 1.45 2022/01/09 16:39:50 martin Exp $
+#	$NetBSD: Makefile.inc,v 1.47 2023/11/28 14:10:18 martin Exp $
 #
 # Makefile for sysinst
 
@@ -106,6 +106,8 @@ CPPFLAGS+=	-DPKG_ARCH_SUBDIR="\"${MACHINE_ARCH}\""
 .if defined(NETBSD_OFFICIAL_RELEASE) && ${NETBSD_OFFICIAL_RELEASE} == "yes"
 CPPFLAGS+= -DSYSINST_FTP_HOST=\"ftp.NetBSD.org\" -DNETBSD_OFFICIAL_RELEASE
 CPPFLAGS+= -DSYSINST_HTTP_HOST=\"cdn.NetBSD.org\" -DNETBSD_OFFICIAL_RELEASE
+CPPFLAGS+= -DREL_PATH=\"netbsd-${DISTRIBVER:C/\.[0-9][_A-Z]*[0-9]*$//:S/./-/}\"
+CPPFLAGS+= -DPKG_SUBDIR="\"${DISTRIBVER:C/_.*$//}\""
 .else
 CPPFLAGS+= -DSYSINST_FTP_HOST=\"nyftp.NetBSD.org\"
 CPPFLAGS+= -DSYSINST_HTTP_HOST=\"nycdn.NetBSD.org\"
@@ -144,8 +146,8 @@ COPTS += -Os
 CPPFLAGS+=-DINET6
 .endif
 
-COPTS+=	${GCC_NO_FORMAT_TRUNCATION}
-COPTS.disklabel.c+= ${GCC_NO_STRINGOP_TRUNCATION}
+COPTS+=	${CC_WNO_FORMAT_TRUNCATION}
+COPTS.disklabel.c+= ${CC_WNO_STRINGOP_TRUNCATION}
 
 # Host to ftp from.  Default:
 #	"ftp.NetBSD.org"
@@ -256,7 +258,7 @@ check-lang:	msg.def msg_defs.h
 	${HOST_SH} ${MSG_CMP_SH} msg_defs.h /tmp/sysinst.en sysinstmsgs.${LANG}
 	@rm /tmp/sysinst.en
 
-COPTS.util.c+=	${GCC_NO_STRINGOP_TRUNCATION}
+COPTS.util.c+=	${CC_WNO_STRINGOP_TRUNCATION}
 COPTS+=		-fcommon
 
 .include <bsd.prog.mk>

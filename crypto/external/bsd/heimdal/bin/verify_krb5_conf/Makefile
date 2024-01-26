@@ -1,8 +1,6 @@
-#	$NetBSD: Makefile,v 1.2 2011/05/25 19:21:17 he Exp $
+#	$NetBSD: Makefile,v 1.6 2023/09/14 19:29:52 rillig Exp $
 
 WARNS?=	2	# XXX -Wextra
-
-NOLINT= # defined
 
 .include <bsd.own.mk>
 .include <${.CURDIR}/../../Makefile.inc>
@@ -22,3 +20,6 @@ SRCS= verify_krb5_conf.c
 
 .include <${HEIMBASE}/Makefile.rules.inc>
 .include <bsd.prog.mk>
+
+LDADD+= ${KRB5LDADD}
+DPADD+= ${KRB5DPADD}

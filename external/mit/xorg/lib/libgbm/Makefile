@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.8 2021/07/11 20:52:06 mrg Exp $
+#	$NetBSD: Makefile,v 1.10 2023/11/22 17:48:35 rjs Exp $
 
 .include <bsd.own.mk>
 
@@ -18,6 +18,10 @@ SRCS.dri=	\
 BUILDSYMLINKS+= ${X11SRCDIR.Mesa}/src/util/debug.c UTILdebug.c
 SRCS.util=      \
 	UTILdebug.c \
+	ralloc.c \
+	mesa-sha1.c \
+	os_file.c \
+	u_printf.cpp \
 	u_process.c
 CPPFLAGS.UTILdebug.c+=          -I${X11SRCDIR.Mesa}/src/util \
 				-I${X11SRCDIR.Mesa}/src/mesa \
@@ -28,7 +32,7 @@ SRCS=	${SRCS.main} ${SRCS.dri} ${SRCS.util}
 
 CPPFLAGS+=	-D_OS_UNIX=1
 CPPFLAGS+=	-DHAVE_PTHREAD=1 -DHAVE_TIMESPEC_GET
-CPPFLAGS+=	-DDEFAULT_DRIVER_DIR=\"${X11USRLIBDIR}/modules/dri\"
+CPPFLAGS+=	-DDEFAULT_BACKENDS_PATH=\"${X11USRLIBDIR}/modules/dri\"
 CPPFLAGS+=	-DMODULEDIR=\"${X11USRLIBDIR}/gbm\"
 CPPFLAGS+=	-I${X11SRCDIR.Mesa}/include
 CPPFLAGS+=	-I${X11SRCDIR.Mesa}/src

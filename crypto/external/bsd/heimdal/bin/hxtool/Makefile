@@ -1,4 +1,4 @@
-# $NetBSD: Makefile,v 1.2 2011/05/25 19:21:16 he Exp $
+# $NetBSD: Makefile,v 1.6 2023/06/22 22:39:22 christos Exp $
 
 .include <bsd.own.mk>
 .include <${.CURDIR}/../../Makefile.inc>
@@ -13,12 +13,12 @@ HEIMSRCS= hxtool.c hxtool-commands.in
 
 MAN=
 
-LDADD+= -lgssapi
-LDADD+= -lsl
-LDADD+= -ledit -lterminfo
-DPADD+= ${LIBGSSAPI}
-DPADD+= ${LIBSL}
-DPADD+= ${LIBEDIT} ${LIBTERMINFO}
+PROGDPLIBS+= ${DPLIBGSSAPI} ${DPLIBSL}
+
+COPTS.hxtool.c+= -Wno-error=deprecated-declarations
 
 .include <${HEIMBASE}/Makefile.rules.inc>
 .include <bsd.prog.mk>
+
+LDADD+= -lcrypto -ledit -lterminfo
+DPADD+= ${LIBCRYPTO} ${LIBEDIT} ${LIBTERMINFO}

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * dhcpcd - DHCP client daemon
- * Copyright (c) 2006-2021 Roy Marples <roy@marples.name>
+ * Copyright (c) 2006-2023 Roy Marples <roy@marples.name>
  * All rights reserved
 
  * Redistribution and use in source and binary forms, with or without
@@ -266,6 +266,9 @@ struct if_options {
 
 	struct if_ia *ia;
 	size_t ia_len;
+#ifdef INET6
+	struct in6_addr token;
+#endif
 
 	struct dhcp_opt *dhcp_override;
 	size_t dhcp_override_len;
@@ -282,7 +285,6 @@ struct if_options {
 	struct auth auth;
 };
 
-struct if_options *default_config(struct dhcpcd_ctx *);
 struct if_options *read_config(struct dhcpcd_ctx *,
     const char *, const char *, const char *);
 int add_options(struct dhcpcd_ctx *, const char *,

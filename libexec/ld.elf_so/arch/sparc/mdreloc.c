@@ -1,4 +1,4 @@
-/*	$NetBSD: mdreloc.c,v 1.55 2018/04/03 21:10:27 joerg Exp $	*/
+/*	$NetBSD: mdreloc.c,v 1.58 2023/09/24 11:08:32 martin Exp $	*/
 
 /*-
  * Copyright (c) 1999, 2002 The NetBSD Foundation, Inc.
@@ -31,7 +31,7 @@
 
 #include <sys/cdefs.h>
 #ifndef lint
-__RCSID("$NetBSD: mdreloc.c,v 1.55 2018/04/03 21:10:27 joerg Exp $");
+__RCSID("$NetBSD: mdreloc.c,v 1.58 2023/09/24 11:08:32 martin Exp $");
 #endif /* not lint */
 
 #include <machine/elf_support.h>
@@ -282,9 +282,9 @@ _rtld_relocate_nonplt_objects(Obj_Entry *obj)
 				break;
 
 			case R_TYPE(TLS_TPOFF32):
-				if (!defobj->tls_done &&
-					_rtld_tls_offset_allocate(obj))
-					     return -1;
+				if (!defobj->tls_static &&
+				    _rtld_tls_offset_allocate(__UNCONST(defobj)))
+					return -1;
 
 				*where = (Elf_Addr)(def->st_value -
 				    defobj->tlsoffset + rela->r_addend);
@@ -301,7 +301,7 @@ _rtld_relocate_nonplt_objects(Obj_Entry *obj)
 
 		/*
 		 * If it is no TLS relocation (handled above), we can not
-		 * deal with it if it is beyound R_SPARC_6.
+		 * deal with it if it is beyond R_SPARC_6.
 		 */
 		if (type > R_TYPE(6))
 			return (-1);
@@ -384,7 +384,7 @@ _rtld_relocate_nonplt_objects(Obj_Entry *obj)
 #ifdef RTLD_DEBUG_RELOC
 		if (RELOC_RESOLVE_SYMBOL(type)) {
 			rdbg(("%s %s in %s --> %p in %s", reloc_names[type],
-			    obj->strtab + obj->symtab[symnum].st_name,
+			    obj->strtab + obj->symtab[ELF_R_SYM(rela->r_info)].st_name,
 			    obj->path, (void *)value, defobj->path));
 		} else {
 			rdbg(("%s in %s --> %p", reloc_names[type],

@@ -1,11 +1,11 @@
-#	$NetBSD: Makefile,v 1.18 2022/10/05 22:39:36 christos Exp $
+#	$NetBSD: Makefile,v 1.20 2023/12/20 17:15:20 christos Exp $
 
 .include <bsd.own.mk>
 
 BINDIR = /usr/bin
 
 PROG=	ssh
-SRCS=	ssh.c readconf.c clientloop.c sshtty.c \
+SRCS=	channels.c ssh.c readconf.c clientloop.c sshtty.c \
 	sshconnect.c sshconnect2.c mux.c auth.c auth-options.c
 
 COPTS.auth.c=		-DHOST_ONLY
@@ -23,6 +23,6 @@ LDADD+=	-lgssapi -lheimntlm ${LIBKRB5_LDADD}
 DPADD+=	${LIBGSSAPI} ${LIBHEIMNTLM} ${LIBKRB5_DPADD}
 .endif
 
-COPTS.sshconnect.c+=	${GCC_NO_FORMAT_TRUNCATION}
+COPTS.sshconnect.c+=	${CC_WNO_FORMAT_TRUNCATION}
 
 .include <bsd.prog.mk>

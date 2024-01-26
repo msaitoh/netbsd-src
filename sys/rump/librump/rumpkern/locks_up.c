@@ -1,4 +1,4 @@
-/*	$NetBSD: locks_up.c,v 1.12 2023/04/12 06:35:40 riastradh Exp $	*/
+/*	$NetBSD: locks_up.c,v 1.14 2023/11/02 10:31:55 martin Exp $	*/
 
 /*
  * Copyright (c) 2010 Antti Kantee.  All Rights Reserved.
@@ -35,7 +35,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: locks_up.c,v 1.12 2023/04/12 06:35:40 riastradh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: locks_up.c,v 1.14 2023/11/02 10:31:55 martin Exp $");
 
 #include <sys/param.h>
 #include <sys/kernel.h>

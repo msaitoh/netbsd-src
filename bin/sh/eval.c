@@ -1,4 +1,4 @@
-/*	$NetBSD: eval.c,v 1.189 2023/04/07 10:34:13 kre Exp $	*/
+/*	$NetBSD: eval.c,v 1.191 2023/12/25 04:52:38 kre Exp $	*/
 
 /*-
  * Copyright (c) 1993
@@ -37,7 +37,7 @@
 #if 0
 static char sccsid[] = "@(#)eval.c	8.9 (Berkeley) 6/8/95";
 #else
-__RCSID("$NetBSD: eval.c,v 1.189 2023/04/07 10:34:13 kre Exp $");
+__RCSID("$NetBSD: eval.c,v 1.191 2023/12/25 04:52:38 kre Exp $");
 #endif
 #endif /* not lint */
 
@@ -932,7 +932,8 @@ evalcommand(union node *cmd, int flgs, struct backcmd *backcmd)
 		line_number = argp->narg.lineno;
 		if (!isassignment(argp->narg.text))
 			break;
-		expandarg(argp, &varlist, EXP_VARTILDE);
+		/* EXP_CASE handles CTL* chars in expansions properly */
+		expandarg(argp, &varlist, EXP_VARTILDE | EXP_CASE);
 	}
 	*varlist.lastp = NULL;
 
@@ -1002,7 +1003,7 @@ evalcommand(union node *cmd, int flgs, struct backcmd *backcmd)
 		 */
 		cmdentry.cmdtype = CMDBUILTIN;
 		cmdentry.u.bltin = bltincmd;
-		VTRACE(DBG_CMDS, ("No command name, assume \"comamnd\"\n"));
+		VTRACE(DBG_CMDS, ("No command name, assume \"command\"\n"));
 	} else {
 		static const char PATH[] = "PATH=";
 

@@ -1,4 +1,4 @@
-/* $NetBSD: emit1.c,v 1.65 2023/02/02 22:23:30 rillig Exp $ */
+/* $NetBSD: emit1.c,v 1.81 2023/12/03 18:17:41 rillig Exp $ */
 
 /*
  * Copyright (c) 1996 Christopher G. Demetriou.  All Rights Reserved.
@@ -15,7 +15,7 @@
  *    documentation and/or other materials provided with the distribution.
  * 3. All advertising materials mentioning features or use of this software
  *    must display the following acknowledgement:
- *      This product includes software developed by Jochen Pohl for
+ *	This product includes software developed by Jochen Pohl for
  *	The NetBSD Project.
  * 4. The name of the author may not be used to endorse or promote products
  *    derived from this software without specific prior written permission.
@@ -38,19 +38,18 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID)
-__RCSID("$NetBSD: emit1.c,v 1.65 2023/02/02 22:23:30 rillig Exp $");
+__RCSID("$NetBSD: emit1.c,v 1.81 2023/12/03 18:17:41 rillig Exp $");
 #endif
 
 #include "lint1.h"
 
-static	void	outtt(sym_t *, sym_t *);
-static	void	outfstrg(strg_t *);
+static void outtt(sym_t *, sym_t *);
+static void outfstrg(strg_t *);
 
 /*
- * Write type into the output buffer.
- * The type is written as a sequence of substrings, each of which describes a
- * node of type type_t
- * a node is encoded as follows:
+ * Write type into the output file, encoded as follows:
+ *	const			c
+ *	volatile		v
  *	_Bool			B
  *	_Complex float		s X
  *	_Complex double		X
@@ -84,25 +83,20 @@ static	void	outfstrg(strg_t *);
  *				1 n tag			tagged type
  *				2 n typename		only typedef name
  *				3 line.file.uniq	anonymous types
- *
- * spaces are only for better readability
- * additionally it is possible to prepend the characters 'c' (for const)
- * and 'v' (for volatile)
  */
 void
 outtype(const type_t *tp)
 {
 	/* Available letters: ------GH--K-MNO--R--U-W-YZ */
 #ifdef INT128_SIZE
-	static const char tt[NTSPEC] = "???BCCCSSIILLQQJJDDDVTTTPAF?XXX";
-	static const char ss[NTSPEC] = "???  su u u u u us l sue   ?s l";
+	static const char tt[NTSPEC] = "???BCCCSSIILLQQJJDDD?XXXVTTTPAF";
+	static const char ss[NTSPEC] = "???  su u u u u us l?s l sue   ";
 #else
-	static const char tt[NTSPEC] = "???BCCCSSIILLQQDDDVTTTPAF?XXX";
-	static const char ss[NTSPEC] = "???  su u u u us l sue   ?s l";
+	static const char tt[NTSPEC] = "???BCCCSSIILLQQDDD?XXXVTTTPAF";
+	static const char ss[NTSPEC] = "???  su u u u us l?s l sue   ";
 #endif
-	int	na;
-	sym_t	*arg;
-	tspec_t	ts;
+	int na;
+	tspec_t ts;
 
 	while (tp != NULL) {
 		if ((ts = tp->t_tspec) == INT && tp->t_is_enum)
@@ -121,16 +115,18 @@ outtype(const type_t *tp)
 		} else if (ts == ENUM) {
 			outtt(tp->t_enum->en_tag, tp->t_enum->en_first_typedef);
 		} else if (is_struct_or_union(ts)) {
-			outtt(tp->t_str->sou_tag, tp->t_str->sou_first_typedef);
+			outtt(tp->t_sou->sou_tag, tp->t_sou->sou_first_typedef);
 		} else if (ts == FUNC && tp->t_proto) {
 			na = 0;
-			for (arg = tp->t_args; arg != NULL; arg = arg->s_next)
+			for (const sym_t *param = tp->t_params;
+			    param != NULL; param = param->s_next)
 				na++;
 			if (tp->t_vararg)
 				na++;
 			outint(na);
-			for (arg = tp->t_args; arg != NULL; arg = arg->s_next)
-				outtype(arg->s_type);
+			for (const sym_t *param = tp->t_params;
+			    param != NULL; param = param->s_next)
+				outtype(param->s_type);
 			if (tp->t_vararg)
 				outchar('E');
 		}
@@ -180,25 +176,18 @@ outsym(const sym_t *sym, scl_t sc, def_t def)
 
 	/*
 	 * Static function declarations must also be written to the output
-	 * file. Compatibility of function declarations (for both static
-	 * and extern functions) must be checked in lint2. Lint1 can't do
-	 * this, especially not if functions are declared at block level
-	 * before their first declaration at level 0.
+	 * file. Compatibility of function declarations (for both static and
+	 * extern functions) must be checked in lint2. Lint1 can't do this,
+	 * especially not if functions are declared at block level before their
+	 * first declaration at level 0.
 	 */
 	if (sc != EXTERN && !(sc == STATIC && sym->s_type->t_tspec == FUNC))
 		return;
 	if (ch_isdigit(sym->s_name[0]))	/* 00000000_tmp */
 		return;
 
-	/* reset buffer */
-	outclr();
-
-	/*
-	 * line number of .c source, 'd' for declaration, Id of current
-	 * source (.c or .h), and line in current source.
-	 */
 	outint(csrc_pos.p_line);
-	outchar('d');
+	outchar('d');		/* declaration */
 	outint(get_filename_id(sym->s_def_pos.p_file));
 	outchar('.');
 	outint(sym->s_def_pos.p_line);
@@ -216,8 +205,8 @@ outsym(const sym_t *sym, scl_t sc, def_t def)
 
 	if (llibflg && def != DECL) {
 		/*
-		 * mark it as used so lint2 does not complain about
-		 * unused symbols in libraries
+		 * mark it as used so lint2 does not complain about unused
+		 * symbols in libraries
 		 */
 		outchar('u');
 	}
@@ -225,24 +214,20 @@ outsym(const sym_t *sym, scl_t sc, def_t def)
 	if (sc == STATIC)
 		outchar('s');
 
-	/* name of the symbol */
 	outname(sym->s_name);
 
-	/* renamed name of symbol, if necessary */
 	if (sym->s_rename != NULL) {
 		outchar('r');
 		outname(sym->s_rename);
 	}
 
-	/* type of the symbol */
 	outtype(sym->s_type);
+	outchar('\n');
 }
 
 /*
- * write information about function definition
- *
- * this is also done for static functions so we are able to check if
- * they are called with proper argument types
+ * Write information about a function definition. This is also done for static
+ * functions, to later check if they are called with proper argument types.
  */
 void
 outfdef(const sym_t *fsym, const pos_t *posp, bool rval, bool osdef,
@@ -251,28 +236,15 @@ outfdef(const sym_t *fsym, const pos_t *posp, bool rval, bool osdef,
 	int narg;
 	const sym_t *arg;
 
-	/* reset the buffer */
-	outclr();
-
-	/*
-	 * line number of .c source, 'd' for declaration, Id of current
-	 * source (.c or .h), and line in current source
-	 *
-	 * we are already at the end of the function. If we are in the
-	 * .c source, posp->p_line is correct, otherwise csrc_pos.p_line
-	 * (for functions defined in header files).
-	 */
 	if (posp->p_file == csrc_pos.p_file) {
 		outint(posp->p_line);
 	} else {
 		outint(csrc_pos.p_line);
 	}
-	outchar('d');
+	outchar('d');		/* declaration */
 	outint(get_filename_id(posp->p_file));
 	outchar('.');
 	outint(posp->p_line);
-
-	/* flags */
 
 	/* both SCANFLIKE and PRINTFLIKE imply VARARGS */
 	if (printflike_argnum != -1) {
@@ -302,8 +274,8 @@ outfdef(const sym_t *fsym, const pos_t *posp, bool rval, bool osdef,
 
 	if (llibflg)
 		/*
-		 * mark it as used so lint2 does not complain about
-		 * unused symbols in libraries
+		 * mark it as used so lint2 does not complain about unused
+		 * symbols in libraries
 		 */
 		outchar('u');
 
@@ -316,16 +288,14 @@ outfdef(const sym_t *fsym, const pos_t *posp, bool rval, bool osdef,
 	if (fsym->s_scl == STATIC)
 		outchar('s');
 
-	/* name of function */
 	outname(fsym->s_name);
 
-	/* renamed name of function, if necessary */
 	if (fsym->s_rename != NULL) {
 		outchar('r');
 		outname(fsym->s_rename);
 	}
 
-	/* argument types and return value */
+	/* parameter types and return value */
 	if (osdef) {
 		narg = 0;
 		for (arg = args; arg != NULL; arg = arg->s_next)
@@ -338,6 +308,7 @@ outfdef(const sym_t *fsym, const pos_t *posp, bool rval, bool osdef,
 	} else {
 		outtype(fsym->s_type);
 	}
+	outchar('\n');
 }
 
 /*
@@ -351,32 +322,23 @@ outfdef(const sym_t *fsym, const pos_t *posp, bool rval, bool osdef,
 void
 outcall(const tnode_t *tn, bool retval_used, bool retval_discarded)
 {
-	tnode_t	*args, *arg;
-	int	narg, n, i;
-	int64_t	q;
-	tspec_t	t;
+	tnode_t *args, *arg;
+	int narg, n, i;
+	tspec_t t;
 
-	/* reset buffer */
-	outclr();
-
-	/*
-	 * line number of .c source, 'c' for function call, Id of current
-	 * source (.c or .h), and line in current source
-	 */
 	outint(csrc_pos.p_line);
-	outchar('c');
+	outchar('c');		/* function call */
 	outint(get_filename_id(curr_pos.p_file));
 	outchar('.');
 	outint(curr_pos.p_line);
 
 	/*
-	 * flags; 'u' and 'i' must be last to make sure a letter
-	 * is between the numeric argument of a flag and the name of
-	 * the function
+	 * flags; 'u' and 'i' must be last to make sure a letter is between the
+	 * numeric argument of a flag and the name of the function
 	 */
 	narg = 0;
-	args = tn->tn_right;
-	for (arg = args; arg != NULL; arg = arg->tn_right)
+	args = tn_ck_right(tn);
+	for (arg = args; arg != NULL; arg = tn_ck_right(arg))
 		narg++;
 	/* information about arguments */
 	for (n = 1; n <= narg; n++) {
@@ -390,10 +352,11 @@ outcall(const tnode_t *tn, bool retval_used, bool retval_discarded)
 				 * XXX it would probably be better to
 				 * explicitly test the sign
 				 */
-				if ((q = arg->tn_val->v_quad) == 0) {
+				int64_t si = arg->tn_val.u.integer;
+				if (si == 0) {
 					/* zero constant */
 					outchar('z');
-				} else if (!msb(q, t)) {
+				} else if (!msb(si, t)) {
 					/* positive if cast to signed */
 					outchar('p');
 				} else {
@@ -403,20 +366,18 @@ outcall(const tnode_t *tn, bool retval_used, bool retval_discarded)
 				outint(n);
 			}
 		} else if (arg->tn_op == ADDR &&
-			   arg->tn_left->tn_op == STRING &&
-			   arg->tn_left->tn_string->st_char) {
+		    arg->tn_left->tn_op == STRING &&
+		    arg->tn_left->tn_string->st_char) {
 			/* constant string, write all format specifiers */
 			outchar('s');
 			outint(n);
 			outfstrg(arg->tn_left->tn_string);
 		}
-
 	}
-	/* return value discarded/used/ignored */
-	outchar((char)(retval_discarded ? 'd' : (retval_used ? 'u' : 'i')));
+	outchar((char)(retval_discarded ? 'd' : retval_used ? 'u' : 'i'));
 
 	/* name of the called function */
-	outname(tn->tn_left->tn_left->tn_sym->s_name);
+	outname(tn_ck_left(tn->tn_left)->tn_sym->s_name);
 
 	/* types of arguments */
 	outchar('f');
@@ -429,9 +390,10 @@ outcall(const tnode_t *tn, bool retval_used, bool retval_discarded)
 	}
 	/* expected type of return value */
 	outtype(tn->tn_type);
+	outchar('\n');
 }
 
-/* write a character to the output buffer, quoted if necessary */
+/* write a character to the output file, quoted if necessary */
 static void
 outqchar(char c)
 {
@@ -483,13 +445,13 @@ outqchar(char c)
 
 /*
  * extracts potential format specifiers for printf() and scanf() and
- * writes them, enclosed in "" and quoted if necessary, to the output buffer
+ * writes them, enclosed in "" and quoted if necessary, to the output file
  */
 static void
 outfstrg(strg_t *strg)
 {
 	char c, oc;
-	bool	first;
+	bool first;
 	const char *cp;
 
 	lint_assert(strg->st_char);
@@ -511,7 +473,7 @@ outfstrg(strg_t *strg)
 
 		/* flags for printf and scanf and *-fieldwidth for printf */
 		while (c == '-' || c == '+' || c == ' ' ||
-		       c == '#' || c == '0' || c == '*') {
+		    c == '#' || c == '0' || c == '*') {
 			outchar(c);
 			c = *cp++;
 		}
@@ -552,8 +514,8 @@ outfstrg(strg_t *strg)
 			oc = c;
 			c = *cp++;
 			/*
-			 * handle [ for scanf. [-] means that a minus sign
-			 * was found at an undefined position.
+			 * handle [ for scanf. [-] means that a minus sign was
+			 * found at an undefined position.
 			 */
 			if (oc == '[') {
 				if (c == '^')
@@ -575,36 +537,24 @@ outfstrg(strg_t *strg)
 				}
 			}
 		}
-
 	}
 
 	outchar('"');
 }
 
-/*
- * writes a record if sym was used
- */
+/* writes a record if sym was used */
 void
 outusg(const sym_t *sym)
 {
-	if (ch_isdigit(sym->s_name[0]))	/* 00000000_tmp */
+	if (ch_isdigit(sym->s_name[0]))	/* 00000000_tmp, from mktempsym */
 		return;
 
-	/* reset buffer */
-	outclr();
-
-	/*
-	 * line number of .c source, 'u' for used, Id of current
-	 * source (.c or .h), and line in current source
-	 */
 	outint(csrc_pos.p_line);
-	outchar('u');
+	outchar('u');		/* used */
 	outint(get_filename_id(curr_pos.p_file));
 	outchar('.');
 	outint(curr_pos.p_line);
-
-	/* necessary to delimit both numbers */
-	outchar('x');
-
+	outchar('x');		/* separate the two numbers */
 	outname(sym->s_name);
+	outchar('\n');
 }

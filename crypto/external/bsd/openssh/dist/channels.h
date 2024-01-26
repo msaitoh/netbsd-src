@@ -1,5 +1,5 @@
-/*	$NetBSD: channels.h,v 1.23 2022/10/05 22:39:36 christos Exp $	*/
-/* $OpenBSD: channels.h,v 1.143 2022/05/05 00:56:58 djm Exp $ */
+/*	$NetBSD: channels.h,v 1.26 2023/12/20 17:15:20 christos Exp $	*/
+/* $OpenBSD: channels.h,v 1.154 2023/12/18 14:47:20 djm Exp $ */
 
 /*
  * Author: Tatu Ylonen <ylo@cs.hut.fi>
@@ -89,7 +89,7 @@ typedef struct Channel Channel;
 struct fwd_perm_list;
 
 typedef void channel_open_fn(struct ssh *, int, int, void *);
-typedef void channel_callback_fn(struct ssh *, int, void *);
+typedef void channel_callback_fn(struct ssh *, int, int, void *);
 typedef int channel_infilter_fn(struct ssh *, struct Channel *, const char *,
     int);
 typedef void channel_filter_cleanup_fn(struct ssh *, int, void *);
@@ -152,6 +152,7 @@ struct Channel {
 				 * this way post-IO handlers are not
 				 * accidentally called if a FD gets reused */
 	int	restore_block;	/* fd mask to restore blocking status */
+	int	restore_flags[3];/* flags to restore */
 	struct sshbuf *input;	/* data read from socket, to be sent over
 				 * encrypted connection */
 	struct sshbuf *output;	/* data received over encrypted connection for
@@ -168,6 +169,7 @@ struct Channel {
 	u_int	remote_window;
 	u_int	remote_maxpacket;
 	u_int	local_window;
+	u_int	local_window_exceeded;
 	u_int	local_window_max;
 	u_int	local_consumed;
 	u_int	local_maxpacket;
@@ -176,7 +178,8 @@ struct Channel {
 	int	single_connection;
 	u_int 	tcpwinsz;	
 
-	char   *ctype;		/* type */
+	char   *ctype;		/* const type - NB. not freed on channel_free */
+	char   *xctype;		/* extended type */
 
 	/* callback */
 	channel_open_fn		*open_confirm;
@@ -203,6 +206,13 @@ struct Channel {
 	void			*mux_ctx;
 	int			mux_pause;
 	int			mux_downstream_id;
+
+	/* Inactivity timeouts */
+
+	/* Last traffic seen for OPEN channels */
+	time_t			lastused;
+	/* Inactivity timeout deadline in seconds (0 = no timeout) */
+	int			inactive_deadline;
 };
 
 #define CHAN_EXTENDED_IGNORE		0
@@ -284,6 +294,8 @@ void	 channel_set_fds(struct ssh *, int, int, int, int, int,
 void	 channel_free(struct ssh *, Channel *);
 void	 channel_free_all(struct ssh *);
 void	 channel_stop_listening(struct ssh *);
+void	 channel_force_close(struct ssh *, Channel *, int);
+void	 channel_set_xtype(struct ssh *, int, const char *);
 
 void	 channel_send_open(struct ssh *, int);
 void	 channel_request_start(struct ssh *, int, const char *, int);
@@ -298,6 +310,10 @@ void	 channel_register_status_confirm(struct ssh *, int,
 void	 channel_cancel_cleanup(struct ssh *, int);
 int	 channel_close_fd(struct ssh *, Channel *, int *);
 void	 channel_send_window_changes(struct ssh *);
+
+/* channel inactivity timeouts */
+void channel_add_timeout(struct ssh *, const char *, int);
+void channel_clear_timeouts(struct ssh *);
 
 /* mux proxy support */
 
@@ -318,15 +334,17 @@ int	 channel_input_status_confirm(int, u_int32_t, struct ssh *);
 
 /* file descriptor handling (read/write) */
 struct pollfd;
+struct timespec;
 
 void	 channel_prepare_poll(struct ssh *, struct pollfd **,
-	    u_int *, u_int *, u_int, time_t *);
+	    u_int *, u_int *, u_int, struct timespec *);
 void	 channel_after_poll(struct ssh *, struct pollfd *, u_int);
-void     channel_output_poll(struct ssh *);
+int	 channel_output_poll(struct ssh *);
 
 int      channel_not_very_much_buffered_data(struct ssh *);
 void     channel_close_all(struct ssh *);
 int      channel_still_open(struct ssh *);
+int	 channel_tty_open(struct ssh *);
 const char *channel_format_extended_usage(const Channel *);
 char	*channel_open_message(struct ssh *);
 int	 channel_find_open(struct ssh *);
@@ -345,7 +363,7 @@ Channel	*channel_connect_to_port(struct ssh *, const char *, u_short,
 Channel *channel_connect_to_path(struct ssh *, const char *, const char *,
 	    const char *);
 Channel	*channel_connect_stdio_fwd(struct ssh *, const char *,
-	    u_short, int, int, int);
+	    int, int, int, int);
 Channel	*channel_connect_by_listen_address(struct ssh *, const char *,
 	    u_short, const char *, const char *);
 Channel	*channel_connect_by_listen_path(struct ssh *, const char *,
@@ -363,7 +381,7 @@ int	 permitopen_port(const char *);
 
 /* x11 forwarding */
 
-void	 channel_set_x11_refuse_time(struct ssh *, u_int);
+void	 channel_set_x11_refuse_time(struct ssh *, time_t);
 int	 x11_connect_display(struct ssh *);
 int	 x11_create_display_inet(struct ssh *, int, int, int, u_int *, int **);
 void	 x11_request_forwarding_with_spoofing(struct ssh *, int,

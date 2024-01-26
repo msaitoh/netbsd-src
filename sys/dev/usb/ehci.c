@@ -1,4 +1,4 @@
-/*	$NetBSD: ehci.c,v 1.315 2022/12/13 21:29:04 jakllsch Exp $ */
+/*	$NetBSD: ehci.c,v 1.319 2023/10/28 21:18:31 riastradh Exp $ */
 
 /*
  * Copyright (c) 2004-2012,2016,2020 The NetBSD Foundation, Inc.
@@ -54,7 +54,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: ehci.c,v 1.315 2022/12/13 21:29:04 jakllsch Exp $");
+__KERNEL_RCSID(0, "$NetBSD: ehci.c,v 1.319 2023/10/28 21:18:31 riastradh Exp $");
 
 #include "ohci.h"
 #include "uhci.h"
@@ -95,7 +95,12 @@ __KERNEL_RCSID(0, "$NetBSD: ehci.c,v 1.315 2022/12/13 21:29:04 jakllsch Exp $");
 #ifndef EHCI_DEBUG
 #define ehcidebug 0
 #else
-static int ehcidebug = 0;
+
+#ifndef EHCI_DEBUG_DEFAULT
+#define EHCI_DEBUG_DEFAULT 0
+#endif
+
+static int ehcidebug = EHCI_DEBUG_DEFAULT;
 
 SYSCTL_SETUP(sysctl_hw_ehci_setup, "sysctl hw.ehci setup")
 {
@@ -821,7 +826,7 @@ ehci_doorbell(void *addr)
 	if (sc->sc_doorbelllwp == NULL)
 		DPRINTF("spurious doorbell interrupt", 0, 0, 0, 0);
 	sc->sc_doorbelllwp = NULL;
-	cv_signal(&sc->sc_doorbell);
+	cv_broadcast(&sc->sc_doorbell);
 	mutex_exit(&sc->sc_lock);
 }
 
@@ -2032,14 +2037,17 @@ ehci_open(struct usbd_pipe *pipe)
 		    );
 		sqh->qh.qh_endphub = htole32(
 		    EHCI_QH_SET_MULT(1) |
-		    EHCI_QH_SET_SMASK(xfertype == UE_INTERRUPT ? 0x02 : 0)
+		    (xfertype == UE_INTERRUPT ?
+			EHCI_QH_SET_SMASK(__BIT(1))	   /* Start Split Y1 */
+			: 0)
 		    );
 		if (speed != EHCI_QH_SPEED_HIGH)
 			sqh->qh.qh_endphub |= htole32(
 			    EHCI_QH_SET_PORT(hshubport) |
 			    EHCI_QH_SET_HUBA(hshubaddr) |
 			    (xfertype == UE_INTERRUPT ?
-				 EHCI_QH_SET_CMASK(0x08) : 0)
+				 EHCI_QH_SET_CMASK(__BITS(3,5)) /* CS Y[345] */
+				 : 0)
 			);
 		sqh->qh.qh_curqtd = EHCI_NULL;
 		/* Fill the overlay qTD */
@@ -2269,9 +2277,9 @@ ehci_sync_hc(ehci_softc_t *sc)
 	 */
 	while (sc->sc_doorbelllwp == curlwp) {
 		now = getticks();
-		if (endtime - now > delta) {
+		if (now - starttime >= delta) {
 			sc->sc_doorbelllwp = NULL;
-			cv_signal(&sc->sc_doorbell);
+			cv_broadcast(&sc->sc_doorbell);
 			DPRINTF("doorbell timeout", 0, 0, 0, 0);
 #ifdef DIAGNOSTIC		/* XXX DIAGNOSTIC abuse, do this differently */
 			printf("ehci_sync_hc: timed out\n");

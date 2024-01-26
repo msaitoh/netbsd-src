@@ -1,7 +1,8 @@
-/*	$NetBSD: kern_lock.c,v 1.184 2023/04/09 08:17:36 riastradh Exp $	*/
+/*	$NetBSD: kern_lock.c,v 1.188 2024/01/14 11:46:05 andvar Exp $	*/
 
 /*-
- * Copyright (c) 2002, 2006, 2007, 2008, 2009, 2020 The NetBSD Foundation, Inc.
+ * Copyright (c) 2002, 2006, 2007, 2008, 2009, 2020, 2023
+ *     The NetBSD Foundation, Inc.
  * All rights reserved.
  *
  * This code is derived from software contributed to The NetBSD Foundation
@@ -31,7 +32,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: kern_lock.c,v 1.184 2023/04/09 08:17:36 riastradh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: kern_lock.c,v 1.188 2024/01/14 11:46:05 andvar Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_lockdebug.h"
@@ -67,9 +68,8 @@ __cpu_simple_lock_t kernel_lock[CACHE_LINE_SIZE / sizeof(__cpu_simple_lock_t)]
 void
 assert_sleepable(void)
 {
-	struct lwp *l = curlwp;
 	const char *reason;
-	uint64_t ncsw;
+	long pctr;
 	bool idle;
 
 	if (__predict_false(panicstr != NULL)) {
@@ -83,11 +83,9 @@ assert_sleepable(void)
 	 * routine may be called in delicate situations.
 	 */
 	do {
-		ncsw = l->l_ncsw;
-		__insn_barrier();
+		pctr = lwp_pctr();
 		idle = CURCPU_IDLE_P();
-		__insn_barrier();
-	} while (__predict_false(ncsw != l->l_ncsw));
+	} while (__predict_false(pctr != lwp_pctr()));
 
 	reason = NULL;
 	if (__predict_false(idle) && !cold) {
@@ -139,7 +137,9 @@ lockops_t _kernel_lock_ops = {
 
 #ifdef LOCKDEBUG
 
+#ifdef DDB
 #include <ddb/ddb.h>
+#endif
 
 static void
 kernel_lock_trace_ipi(void *cookie)
@@ -148,7 +148,9 @@ kernel_lock_trace_ipi(void *cookie)
 	printf("%s[%d %s]: hogging kernel lock\n", cpu_name(curcpu()),
 	    curlwp->l_lid,
 	    curlwp->l_name ? curlwp->l_name : curproc->p_comm);
+#ifdef DDB
 	db_stacktrace();
+#endif
 }
 
 #endif

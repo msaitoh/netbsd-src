@@ -1,4 +1,4 @@
-/*	$NetBSD: cd9660_eltorito.c,v 1.25 2022/04/09 10:05:35 riastradh Exp $	*/
+/*	$NetBSD: cd9660_eltorito.c,v 1.27 2023/12/28 12:13:56 tsutsui Exp $	*/
 
 /*
  * Copyright (c) 2005 Daniel Watt, Walter Deignan, Ryan Gabrys, Alan
@@ -40,7 +40,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(__lint)
-__RCSID("$NetBSD: cd9660_eltorito.c,v 1.25 2022/04/09 10:05:35 riastradh Exp $");
+__RCSID("$NetBSD: cd9660_eltorito.c,v 1.27 2023/12/28 12:13:56 tsutsui Exp $");
 #endif  /* !__lint */
 
 #ifdef DEBUG
@@ -377,8 +377,8 @@ cd9660_setup_boot(iso9660_disk *diskStructure, int first_sector)
 	/* Point to catalog: For now assume it consumes one sector */
 	ELTORITO_DPRINTF(("Boot catalog will go in sector %d\n", first_sector));
 	diskStructure->boot_catalog_sector = first_sector;
-	cd9660_bothendian_dword(first_sector,
-		diskStructure->boot_descriptor->boot_catalog_pointer);
+	cd9660_731(first_sector,
+	    diskStructure->boot_descriptor->boot_catalog_pointer);
 
 	/*
 	 * Use system type of default image for validation entry. Fallback to
@@ -546,7 +546,7 @@ cd9660_write_mbr_partition_entry(FILE *fd, int idx, off_t sector_start,
 	uint32_t lba;
 
 	if (fseeko(fd, (off_t)(idx) * 16 + 0x1be, SEEK_SET) == -1)
-		err(1, "fseeko");
+		err(EXIT_FAILURE, "fseeko");
 
 	val = 0x80; /* Bootable */
 	fwrite(&val, sizeof(val), 1, fd);
@@ -593,7 +593,7 @@ cd9660_write_apm_partition_entry(FILE *fd, int idx, int total_partitions,
 	    APPLE_PS_WRITABLE;
 
 	if (fseeko(fd, (off_t)(idx + 1) * sector_size, SEEK_SET) == -1)
-		err(1, "fseeko");
+		err(EXIT_FAILURE, "fseeko");
 
 	/* Signature */
 	apm16 = htobe16(0x504d);
@@ -639,7 +639,7 @@ cd9660_write_boot(iso9660_disk *diskStructure, FILE *fd)
 	/* write boot catalog */
 	if (fseeko(fd, (off_t)diskStructure->boot_catalog_sector *
 	    diskStructure->sectorSize, SEEK_SET) == -1)
-		err(1, "fseeko");
+		err(EXIT_FAILURE, "fseeko");
 
 	if (diskStructure->verbose_level > 0) {
 		printf("Writing boot catalog to sector %" PRId64 "\n",

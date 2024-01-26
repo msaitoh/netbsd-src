@@ -1,4 +1,4 @@
-/* $NetBSD: ckctype.c,v 1.5 2022/05/20 21:18:55 rillig Exp $ */
+/* $NetBSD: ckctype.c,v 1.9 2023/12/03 13:12:40 rillig Exp $ */
 
 /*-
  * Copyright (c) 2021 The NetBSD Foundation, Inc.
@@ -36,7 +36,7 @@
 #include <sys/cdefs.h>
 
 #if defined(__RCSID)
-__RCSID("$NetBSD: ckctype.c,v 1.5 2022/05/20 21:18:55 rillig Exp $");
+__RCSID("$NetBSD: ckctype.c,v 1.9 2023/12/03 13:12:40 rillig Exp $");
 #endif
 
 #include <string.h>
@@ -47,8 +47,8 @@ __RCSID("$NetBSD: ckctype.c,v 1.5 2022/05/20 21:18:55 rillig Exp $");
  * Check that the functions from <ctype.h> are used properly.  They must not
  * be called with an argument of type 'char'.  In such a case, the argument
  * must be converted to 'unsigned char'.  The tricky thing is that even though
- * the expected argument type is 'int', a 'char' argument must not be directly
- * cast to 'int', as that would preserve negative argument values.
+ * the parameter type is declared as 'int', a 'char' argument must not be
+ * directly cast to 'int', as that would preserve negative argument values.
  *
  * See also:
  *	ctype(3)
@@ -61,21 +61,21 @@ is_ctype_function(const char *name)
 
 	if (name[0] == 'i' && name[1] == 's')
 		return strcmp(name, "isalnum") == 0 ||
-		       strcmp(name, "isalpha") == 0 ||
-		       strcmp(name, "isblank") == 0 ||
-		       strcmp(name, "iscntrl") == 0 ||
-		       strcmp(name, "isdigit") == 0 ||
-		       strcmp(name, "isgraph") == 0 ||
-		       strcmp(name, "islower") == 0 ||
-		       strcmp(name, "isprint") == 0 ||
-		       strcmp(name, "ispunct") == 0 ||
-		       strcmp(name, "isspace") == 0 ||
-		       strcmp(name, "isupper") == 0 ||
-		       strcmp(name, "isxdigit") == 0;
+		    strcmp(name, "isalpha") == 0 ||
+		    strcmp(name, "isblank") == 0 ||
+		    strcmp(name, "iscntrl") == 0 ||
+		    strcmp(name, "isdigit") == 0 ||
+		    strcmp(name, "isgraph") == 0 ||
+		    strcmp(name, "islower") == 0 ||
+		    strcmp(name, "isprint") == 0 ||
+		    strcmp(name, "ispunct") == 0 ||
+		    strcmp(name, "isspace") == 0 ||
+		    strcmp(name, "isupper") == 0 ||
+		    strcmp(name, "isxdigit") == 0;
 
 	if (name[0] == 't' && name[1] == 'o')
 		return strcmp(name, "tolower") == 0 ||
-		       strcmp(name, "toupper") == 0;
+		    strcmp(name, "toupper") == 0;
 
 	return false;
 }
@@ -106,7 +106,7 @@ check_ctype_arg(const char *func, const tnode_t *arg)
 		return;
 
 	if (arg->tn_op == CVT && arg->tn_cast) {
-		/* argument to '%s' must be cast to 'unsigned char', not to '%s' */
+		/* argument to '%s' must be cast to 'unsigned char', not ... */
 		warning(342, func, type_name(arg->tn_type));
 		return;
 	}
@@ -126,7 +126,7 @@ check_ctype_function_call(const tnode_t *func, const tnode_t *args)
 	if (func->tn_op == NAME &&
 	    is_ctype_function(func->tn_sym->s_name) &&
 	    args != NULL &&
-	    args->tn_left != NULL &&
+	    tn_ck_left(args) != NULL &&
 	    args->tn_right == NULL)
 		check_ctype_arg(func->tn_sym->s_name, args->tn_left);
 }

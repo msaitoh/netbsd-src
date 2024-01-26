@@ -1,4 +1,4 @@
-/*	$NetBSD: label.c,v 1.48 2023/01/06 18:19:27 martin Exp $	*/
+/*	$NetBSD: label.c,v 1.50 2023/11/20 18:03:55 martin Exp $	*/
 
 /*
  * Copyright 1997 Jonathan Stone
@@ -36,7 +36,7 @@
 
 #include <sys/cdefs.h>
 #if defined(LIBC_SCCS) && !defined(lint)
-__RCSID("$NetBSD: label.c,v 1.48 2023/01/06 18:19:27 martin Exp $");
+__RCSID("$NetBSD: label.c,v 1.50 2023/11/20 18:03:55 martin Exp $");
 #endif
 
 #include <sys/types.h>
@@ -439,7 +439,7 @@ edit_fs_mountpt(menudesc *m, void *arg)
 	if (last != NULL)
 		last[1] = 0;
 
-	if (first == NULL || *first == 0 || strcmp(first, "none") == 0) {
+	if (first == NULL || *first == 0 || strcmp(first, "-") == 0) {
 		edit->wanted->mount[0] = 0;
 		edit->wanted->instflags &= ~PUIINST_MOUNT;
 		return 0;
@@ -452,6 +452,7 @@ edit_fs_mountpt(menudesc *m, void *arg)
 	} else {
 		strlcpy(edit->wanted->mount, first, sizeof edit->wanted->mount);
 	}
+	edit->wanted->instflags |= PUIINST_MOUNT;
 
 	return 0;
 }
@@ -1966,7 +1967,7 @@ const char *
 get_last_mounted(int fd, daddr_t partstart, uint *fs_type, uint *fs_sub_type,
     uint flags)
 {
-	static char sblk[SBLOCKSIZE];		/* is this enough? */
+	static char sblk[SBLOCKSIZE] __aligned(8);	/* is this enough? */
 	struct fs *SB = (struct fs *)sblk;
 	static const off_t sblocks[] = SBLOCKSEARCH;
 	const off_t *sbp;

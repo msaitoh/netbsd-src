@@ -1,4 +1,4 @@
-/*	$NetBSD: expand.c,v 1.142 2023/03/06 05:54:34 kre Exp $	*/
+/*	$NetBSD: expand.c,v 1.144 2023/12/29 15:49:23 kre Exp $	*/
 
 /*-
  * Copyright (c) 1991, 1993
@@ -37,7 +37,7 @@
 #if 0
 static char sccsid[] = "@(#)expand.c	8.5 (Berkeley) 5/15/95";
 #else
-__RCSID("$NetBSD: expand.c,v 1.142 2023/03/06 05:54:34 kre Exp $");
+__RCSID("$NetBSD: expand.c,v 1.144 2023/12/29 15:49:23 kre Exp $");
 #endif
 #endif /* not lint */
 
@@ -465,7 +465,8 @@ exptilde(const char *p, int flag)
 	if (home == NULL) {
 		CTRACE(DBG_EXPAND, (": returning unused \"%s\"\n", startp));
 		return startp;
-	} while ((c = *home++) != '\0') {
+	}
+	while ((c = *home++) != '\0') {
 		if ((quotes && NEEDESC(c)) || ISCTL(c))
 			STPUTC(CTLESC, expdest);
 		STPUTC(c, expdest);
@@ -1205,7 +1206,7 @@ varvalue(const char *name, int quoted, int subtype, int flag)
 	    quoted ? ", quoted" : "", subtype, flag));
 
 	if (subtype == VSLENGTH)	/* no magic required ... */
-		flag &= ~EXP_FULL;
+		flag &= ~(EXP_FULL | EXP_QNEEDED);
 
 #define STRTODEST(p) \
 	do {\
@@ -1217,7 +1218,7 @@ varvalue(const char *name, int quoted, int subtype, int flag)
 			} \
 		} else \
 			while (*p) { \
-				if (ISCTL(*p)) \
+				if ((flag & EXP_QNEEDED) && ISCTL(*p)) \
 					STPUTC(CTLESC, expdest); \
 				STPUTC(*p++, expdest); \
 			} \

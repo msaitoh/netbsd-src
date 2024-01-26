@@ -1,4 +1,4 @@
-/*	$NetBSD: uvm_amap.c,v 1.127 2023/04/09 09:00:56 riastradh Exp $	*/
+/*	$NetBSD: uvm_amap.c,v 1.129 2023/09/10 14:54:34 ad Exp $	*/
 
 /*
  * Copyright (c) 1997 Charles D. Cranor and Washington University.
@@ -35,7 +35,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: uvm_amap.c,v 1.127 2023/04/09 09:00:56 riastradh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: uvm_amap.c,v 1.129 2023/09/10 14:54:34 ad Exp $");
 
 #include "opt_uvmhist.h"
 
@@ -305,9 +305,9 @@ uvm_amap_init(void)
 
 	mutex_init(&amap_list_lock, MUTEX_DEFAULT, IPL_NONE);
 
-	pool_cache_bootstrap(&uvm_amap_cache, sizeof(struct vm_amap), 0, 0,
-	    PR_LARGECACHE, "amappl", NULL, IPL_NONE, amap_ctor, amap_dtor,
-	    NULL);
+	pool_cache_bootstrap(&uvm_amap_cache, sizeof(struct vm_amap),
+	    COHERENCY_UNIT, 0, 0, "amappl", NULL, IPL_NONE,
+	    amap_ctor, amap_dtor, NULL);
 }
 
 /*
@@ -893,7 +893,7 @@ amap_copy(struct vm_map *map, struct vm_map_entry *entry, int flags,
 	 * First check and see if we are the only map entry referencing
 	 * he amap we currently have.  If so, then just take it over instead
 	 * of copying it.  Note that we are reading am_ref without lock held
-	 * as the value value can only be one if we have the only reference
+	 * as the value can only be one if we have the only reference
 	 * to the amap (via our locked map).  If the value is greater than
 	 * one, then allocate amap and re-check the value.
 	 */

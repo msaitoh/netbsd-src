@@ -1,4 +1,4 @@
-/*	$NetBSD: expr_cast.c,v 1.3 2021/08/03 18:44:33 rillig Exp $	*/
+/*	$NetBSD: expr_cast.c,v 1.5 2023/08/06 19:44:50 rillig Exp $	*/
 # 3 "expr_cast.c"
 
 /*
@@ -12,7 +12,7 @@
  * c-typeck.c, function build_c_cast, RECORD_OR_UNION_TYPE_P.
  */
 
-/* lint1-flags: -Sw */
+/* lint1-flags: -Sw -X 351 */
 
 struct S {
 	int member;
@@ -28,6 +28,6 @@ cast(void)
 	};
 
 	/* expect+2: error: invalid cast from 'struct S' to 'struct S' [147] */
-	/* expect+1: warning: function 'cast' expects to return value [214] */
+	/* expect+1: error: function 'cast' expects to return value [214] */
 	return (struct S)local;
 }

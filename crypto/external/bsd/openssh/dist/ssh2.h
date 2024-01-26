@@ -1,5 +1,5 @@
-/*	$NetBSD: ssh2.h,v 1.13 2021/03/05 17:47:16 christos Exp $	*/
-/* $OpenBSD: ssh2.h,v 1.19 2020/11/19 23:05:05 dtucker Exp $ */
+/*	$NetBSD: ssh2.h,v 1.15 2023/12/20 17:15:21 christos Exp $	*/
+/* $OpenBSD: ssh2.h,v 1.22 2023/10/10 03:57:45 djm Exp $ */
 
 /*
  * Copyright (c) 2000 Markus Friedl.  All rights reserved.
@@ -54,6 +54,7 @@
  *   Local extensions:
  *
  *     192-255  Local extensions
+ *     248-255  Local extensions (OpenSSH will never use numbers in this range)
  */
 
 /* special marker for no message */
@@ -86,6 +87,7 @@
 #define SSH2_MSG_SERVICE_REQUEST			5
 #define SSH2_MSG_SERVICE_ACCEPT				6
 #define SSH2_MSG_EXT_INFO				7
+#define SSH2_MSG_NEWCOMPRESS				8
 
 /* transport layer: alg negotiation */
 
@@ -107,6 +109,10 @@
 /* ecdh */
 #define SSH2_MSG_KEX_ECDH_INIT				30
 #define SSH2_MSG_KEX_ECDH_REPLY				31
+
+/* transport layer: OpenSSH extensions */
+#define SSH2_MSG_PING					192
+#define SSH2_MSG_PONG					193
 
 /* user authentication: generic */
 

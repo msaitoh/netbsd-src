@@ -1,4 +1,4 @@
-/*	$NetBSD: d_lint_assert.c,v 1.7 2023/03/28 14:44:34 rillig Exp $	*/
+/*	$NetBSD: d_lint_assert.c,v 1.10 2023/08/02 18:51:25 rillig Exp $	*/
 # 3 "d_lint_assert.c"
 
 /*
@@ -19,7 +19,27 @@ enum {
 
 /*
  * Before decl.c 1.196 from 2021-07-10, lint ran into an assertion failure
- * for 'sym->s_type != NULL' in declare_argument.
+ * for 'sym->s_type != NULL' in declare_argument (now declare_parameter).
  */
 /* expect+1: warning: old-style declaration; add 'int' [1] */
 c(void());
+
+
+// As of 2023-07-15, replacing 'const' with 'unknown_type_modifier' leads to a
+// crash.  When the '}' from the 'switch' statement is processed, symbols that
+// are already freed are still in the symbol table.  To reproduce the crash,
+// run:
+//	make -s -DDEBUG DBG="-O0 -g"
+//	MALLOC_OPTIONS='JA' MALLOC_CONF='junk:true' ./lint1 -Sy \
+//	    ../../../tests/usr.bin/xlint/lint1/d_lint_assert.c
+ static inline void
+ f(void)
+ {
+	int i = 3;
+
+	for (const char *p = "";; ) {
+		switch (i) {
+		case 3:;
+		}
+	}
+ }

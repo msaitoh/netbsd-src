@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.6 2018/02/18 23:38:47 christos Exp $
+#	$NetBSD: Makefile,v 1.8 2023/10/25 17:17:51 christos Exp $
 
 .include "bsd.own.mk"
 
@@ -10,8 +10,10 @@ regen:
 		 ${OPENSSLSRC}/crypto/bn/asm/sparct4-mont.pl \
 		 ${OPENSSLSRC}/crypto/bn/asm/vis3-mont.pl; do \
 		j=$$(basename $$i .pl).S; \
+		k=$$(echo $$j | sed -e s/512/256/); \
 		case $$j in \
 		sparc*_modes.pl|sha1-*) perl $$i $$j;; \
+		sha512-*) perl $$i $$j; perl $$i $$k;; \
 		*) perl $$i > $$j;; \
 		esac; \
 	done

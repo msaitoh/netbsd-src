@@ -1,4 +1,4 @@
-/*	$NetBSD: d_c99_decls_after_stmt.c,v 1.5 2023/01/22 17:17:25 rillig Exp $	*/
+/*	$NetBSD: d_c99_decls_after_stmt.c,v 1.7 2023/08/02 18:51:25 rillig Exp $	*/
 # 3 "d_c99_decls_after_stmt.c"
 
 /*
@@ -7,6 +7,8 @@
  *
  * https://gnats.netbsd.org/45417
  */
+
+/* lint1-extra-flags: -X 351 */
 
 void
 two_groups_of_decl_plus_stmt(void)
@@ -33,7 +35,7 @@ second_decl_stmt_uses_a_typedef(void)
 }
 
 void
-function_with_argument(int i)
+function_with_parameter(int i)
 {
 	i += 1;
 

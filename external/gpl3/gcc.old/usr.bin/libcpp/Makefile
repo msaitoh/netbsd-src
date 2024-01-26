@@ -1,5 +1,6 @@
-#	$NetBSD: Makefile,v 1.11 2023/02/20 02:12:36 mrg Exp $
+#	$NetBSD: Makefile,v 1.13 2023/07/14 19:46:45 mrg Exp $
 
+HOSTPROG_CXX=	1
 LIBISPRIVATE=	yes
 
 .include <bsd.init.mk>
@@ -12,8 +13,6 @@ CPPFLAGS+=	-I${.CURDIR} -I${.CURDIR}/arch/${GCC_MACHINE_ARCH} \
 		-I${GCCARCH} -I${BACKENDOBJ} -I. \
 		${G_INCLUDES:M-I*:N-I.*} \
 		-DPREFIX=\"/usr\"
-
-HOSTPROG_CXX=	1
 
 .include <bsd.lib.mk>
 

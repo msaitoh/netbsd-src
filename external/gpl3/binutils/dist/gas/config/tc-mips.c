@@ -5871,13 +5871,6 @@ match_save_restore_list_operand (struct mips_arg_info *arg)
     }
   frame_size /= 8;
 
-  /* If the branch is itself the target of a branch, we can not swap.
-     We cheat on this; all we check for is whether there is a label on
-     this instruction.  If there are any branches to anything other than
-     a label, users must use .set noreorder.  */
-  if (seg_info (now_seg)->label_list)
-    return FALSE;
-
   /* Finally build the instruction.  */
   if (mips_opts.mips16)
     opcode |= mips16_encode_save_restore (arg_mask, num_sregs, ra, s0, s1,
@@ -6516,8 +6509,8 @@ insns_between (const struct mips_cl_insn *insn1,
       /* Itbl support may require additional care here. FIXME!
 	 Need to modify this to include knowledge about
 	 user specified delays!  */
-      else if ((!cop_interlocks && (pinfo1 & INSN_COPROC_MOVE))
-	       || (!cop_mem_interlocks && (pinfo1 & INSN_COPROC_MEMORY_DELAY)))
+      if ((!cop_interlocks && (pinfo1 & INSN_COPROC_MOVE))
+	 || (!cop_mem_interlocks && (pinfo1 & INSN_COPROC_MEMORY_DELAY)))
 	{
 	  /* Handle cases where INSN1 writes to a known general coprocessor
 	     register.  There must be a one instruction delay before INSN2

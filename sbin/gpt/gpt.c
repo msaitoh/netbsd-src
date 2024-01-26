@@ -35,7 +35,7 @@
 __FBSDID("$FreeBSD: src/sbin/gpt/gpt.c,v 1.16 2006/07/07 02:44:23 marcel Exp $");
 #endif
 #ifdef __RCSID
-__RCSID("$NetBSD: gpt.c,v 1.84 2022/11/22 00:25:52 mlelstv Exp $");
+__RCSID("$NetBSD: gpt.c,v 1.87 2023/12/13 06:51:57 mrg Exp $");
 #endif
 
 #include <sys/param.h>
@@ -386,8 +386,10 @@ gpt_gpt(gpt_t gpt, off_t lba, int found)
 	uint32_t crc;
 
 	hdr = gpt_read(gpt, lba, 1);
-	if (hdr == NULL)
+	if (hdr == NULL) {
+		gpt_warn(gpt, "Read failed");
 		return -1;
+	}
 
 	if (memcmp(hdr->hdr_sig, GPT_HDR_SIG, sizeof(hdr->hdr_sig)))
 		goto fail_hdr;
@@ -540,6 +542,7 @@ gpt_open(const char *dev, int flags, int verbose, off_t mediasz, u_int secsz,
 			gpt->secsz = 512;	/* Fixed size for files. */
 		if (gpt->mediasz == 0) {
 			if (gpt->sb.st_size % gpt->secsz) {
+				gpt_warn(gpt, "Media size not a multiple of sector size (%u)\n", gpt->secsz);
 				errno = EINVAL;
 				goto close;
 			}
@@ -601,6 +604,7 @@ gpt_open(const char *dev, int flags, int verbose, off_t mediasz, u_int secsz,
  close:
 	if (gpt->fd != -1)
 		close(gpt->fd);
+	gpt_warn(gpt, "No GPT found");
 	free(gpt);
 	return NULL;
 }
@@ -1239,13 +1243,62 @@ const char *
 gpt_attr_list(char *buf, size_t len, uint64_t attributes)
 {
 	size_t i;
+	/*
+	 * a uint64_t (attributes) has at most 16 hex digits
+	 * in its representation, add 2 for "0x", and 2 more
+	 * for surrounding [ ], plus one for a trailing \0,
+	 * and we need 21 bytes, round that up to 24
+	 */
+	char xbuf[24];
+
 	strlcpy(buf, "", len);	
 
-	for (i = 0; i < __arraycount(gpt_attr); i++)
+	for (i = 0; i < __arraycount(gpt_attr); i++) {
+		/*
+		 * if the attribute is specified in one of bits
+		 * 48..63, it should depend upon the defining
+		 * partition type for that attribute.   Currently
+		 * we have no idea what that is, so...
+		 *
+		 * Also note that for some partition types, these
+		 * fields are not a single bit boolean, but several
+		 * bits to form a numeric value.  That we could handle.
+		 */
+
 		if (attributes & gpt_attr[i].mask) {
 			strlcat(buf, buf[0] ? ", " : "", len); 
 			strlcat(buf, gpt_attr[i].name, len);
+#if 0
+	/*
+	 * there are none currently defined, so this is untestable
+	 * (it does build however).
+	 */
+			if (gpt_attr[i].mask & (gpt_attr[i].mask - 1)) {
+				/* This only happens in bits 46..63 */
+
+				/*
+				 * xbuf is big enough for "=65535\0"
+				 * which is the biggest possible value
+				 */
+				snprintf(xbuf, sizeof xbuf, "=%ju",
+				    (uintmax_t) (
+				      (attributes & gpt_attr[i].mask) >>
+				      (ffs((int)(gpt_attr[i].mask >> 48)) + 47)
+				    ));
+
+				strlcat(buf, xbuf, len);
+			}
+#endif
+			attributes &=~ gpt_attr[i].mask;
 		}
+	}
+
+	if (attributes != 0) {
+		snprintf(xbuf, sizeof xbuf, "[%#jx]", (uintmax_t)attributes);
+		strlcat(buf, buf[0] ? ", " : "", len);
+		strlcat(buf, xbuf, len);
+	}
+
 	return buf;
 }
 

@@ -1,4 +1,4 @@
-# $NetBSD: HACKS,v 1.235 2023/01/22 20:41:25 christos Exp $
+# $NetBSD: HACKS,v 1.241 2024/01/12 08:44:42 martin Exp $
 #
 # This file is intended to document workarounds for currently unsolved
 # (mostly) compiler bugs.
@@ -747,6 +747,16 @@ port	mips
 		Add COPTS.count.c+=-Wa,--no-warn to avoid -Wa,--fatal-warnings
 	kcah
 
+	hack	mips-use-binutils-old
+	cdate	Sun May  7 14:28:55 CEST 2023
+	who	martin
+	file	src/share/mk/bsd.own.mk : 1.1311, 1.1308
+	descr
+		Use binutils.old for 64bit mips with 32bit userland.
+		Version 2.39 causes random (cross-) build failures
+		that are hard to reproduce or analyze.
+	kcah
+
 port	i386
 
 	hack	use volatile intermediate variable to enforce rounding
@@ -1024,19 +1034,6 @@ port	sh3
 		https://gcc.gnu.org/bugzilla/show_bug.cgi?id=101177
 kcah
 
-port	sh3
-hack	compile lint1/initdecl() with -O0 for sh3 (port-sh3/56311)
-cdate	Thu Jul 15 07:58:05 UTC 2021
-mdate	Fri Jul 16 10:00:00 UTC 2021
-who	rin
-file	src/usr.bin/xlint/lint1/decl.c: 1.200
-descr	GCC 9 and 10 miscompile initdecl() due to mischoice of register,
-	as described in the PR. Compiling this function with -O0 works
-	around the problem.
-	The problem has been reported to upstream as GCC Bug 101469:
-	https://gcc.gnu.org/bugzilla/show_bug.cgi?id=101469
-kcah
-
 port	vax
 hack	compile blake2b.c with -O0 for vax
 cdate	Wed Oct 13 14:28:32 UTC 2021
@@ -1061,14 +1058,16 @@ kcah
 hack	alpha gcc error in lint
 cdate	2022/04/10 13:21:34
 who	martin
-port	alpha
-file	usr.bin/xlint/Makefile.inc: 1.23
+port	alpha, vax
+file	usr.bin/xlint/Makefile.inc: 1.23, 1.25
 pr	56789
 descr
 	Compiling lint with -ftrapv fails with an internal
 	gcc compiler error.
 
 	https://gcc.gnu.org/bugzilla/show_bug.cgi?id=105209
+
+	Supposedly fixed in gcc 11 or newer.
 kcah
 
 hack	compile copy{in,out}() for ibm4xx with -O0 for clang
@@ -1079,4 +1078,40 @@ file	sys/arch/powerpc/ibm4xx/trap.c: 1.99
 descr
 	clang 13.0.0 miscompiles copy{in,out}() with -O[12]. As a result,
 	kernel cannot execute /sbin/init.
+kcah
+
+hack	Disable secure PLT for alpha
+cdate	Fri Jul  7 08:33:25 UTC 2023
+who	rin
+port	alpha
+file	src/external/gpl3/binutils/dist/bfd/elf64-alpha.c: 1.11
+pr	port-alpha/57511
+descr
+	Temporally disable secure PLT support, introduced by
+	binutils 2.39 for us. We need its support to ld.elf_so(1).
+kcah
+
+hack	openssl: Disable ec_nistp_64_gcc_128 on aarch64eb
+cdate	Sat Jul  8 23:54:27 UTC 2023
+who	rin
+port	aarch64eb
+file	src/crypto/external/bsd/openssl/lib/libcrypto/arch/aarch64/ec.inc : 1.4
+descr
+	As described in upstream document:
+	https://github.com/openssl/openssl/blob/master/INSTALL.md#enable-ec_nistp_64_gcc_128
+	This feature (for LP64) does not support big-endian machines.
+	Note that sparc64 does not use this (port-sparc64/57472).
+kcah
+
+hack	GCC: Disable "-Warray-bounds" for x86 curcpu() and curlwp()
+cdate	Mon Sep  4 13:59:32 PDT 2023
+who	mrg
+port	i386 amd64
+file	src/sys/arch/amd64/include/cpu.h : 1.71
+file	src/sys/arch/i386/include/cpu.h : 1.184
+descr
+	These functions trigger eg:
+	./machine/cpu.h:57:9: error: array subscript 0 is outside array bounds of 'struct cpu_info * const[0]' [-Werror=array-bounds]
+	   56 |         __asm("movq %%gs:%1, %0" :
+	and can't easily be worked around.
 kcah

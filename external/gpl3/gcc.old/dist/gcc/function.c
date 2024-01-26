@@ -1720,6 +1720,27 @@ instantiate_virtual_regs_in_insn (rtx_insn *insn)
 	  break;
 
 	case SUBREG:
+#ifdef NB_FIX_VAX_BACKEND
+	  if (MEM_P (XEXP (x, 0)))
+	    {
+	      /* convert a subreg of a MEMORY operand into a
+		 register operand */
+	      rtx mx = XEXP (x, 0); /* memory operand */
+	      rtx addr = XEXP (mx, 0);
+	      instantiate_virtual_regs_in_rtx (&addr);
+	      start_sequence ();
+	      mx = replace_equiv_address (mx, addr, true);
+	      addr = force_reg (GET_MODE (addr), addr);
+	      mx = replace_equiv_address (mx, addr, true);
+	      seq = get_insns ();
+	      end_sequence ();
+	      if (seq)
+		emit_insn_before (seq, insn);
+
+	      /* generate a new subreg expression */
+	      x = gen_rtx_SUBREG (GET_MODE (x), mx, SUBREG_BYTE (x));
+	    }
+#endif
 	  new_rtx = instantiate_new_reg (SUBREG_REG (x), &offset);
 	  if (new_rtx == NULL)
 	    continue;
@@ -1821,6 +1842,15 @@ instantiate_decl_rtl (rtx x)
       instantiate_decl_rtl (XEXP (x, 1));
       return;
     }
+
+#ifdef NB_FIX_VAX_BACKEND
+  /* If this is a SUBREG, recurse for the pieces */
+  if (GET_CODE (x) == SUBREG)
+    {
+      instantiate_decl_rtl (XEXP (x, 0));
+      return;
+    }
+#endif
 
   /* If this is not a MEM, no need to do anything.  Similarly if the
      address is a constant or a register that is not a virtual register.  */
@@ -4848,7 +4878,7 @@ allocate_struct_function (tree fndecl, bool abstract_p)
    instead of just setting it.  */
 
 void
-push_struct_function (tree fndecl)
+push_struct_function (tree fndecl, bool abstract_p)
 {
   /* When in_dummy_function we might be in the middle of a pop_cfun and
      current_function_decl and cfun may not match.  */
@@ -4857,7 +4887,7 @@ push_struct_function (tree fndecl)
 	      || (cfun && current_function_decl == cfun->decl));
   cfun_stack.safe_push (cfun);
   current_function_decl = fndecl;
-  allocate_struct_function (fndecl, false);
+  allocate_struct_function (fndecl, abstract_p);
 }
 
 /* Reset crtl and other non-struct-function variables to defaults as
@@ -5018,9 +5048,12 @@ stack_protect_epilogue (void)
    PARMS_HAVE_CLEANUPS is nonzero if there are cleanups associated with
    the function's parameters, which must be run at any return statement.  */
 
+bool currently_expanding_function_start;
 void
 expand_function_start (tree subr)
 {
+  currently_expanding_function_start = true;
+
   /* Make sure volatile mem refs aren't considered
      valid operands of arithmetic insns.  */
   init_recog_no_volatile ();
@@ -5213,6 +5246,8 @@ expand_function_start (tree subr)
   /* If we are doing generic stack checking, the probe should go here.  */
   if (flag_stack_check == GENERIC_STACK_CHECK)
     stack_check_probe_note = emit_note (NOTE_INSN_DELETED);
+
+  currently_expanding_function_start = false;
 }
 
 void

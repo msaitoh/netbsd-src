@@ -1,5 +1,5 @@
 %{
-/* $NetBSD: scan.l,v 1.138 2023/01/09 00:07:30 rillig Exp $ */
+/* $NetBSD: scan.l,v 1.140 2023/09/14 22:20:08 rillig Exp $ */
 
 /*
  * Copyright (c) 1996 Christopher G. Demetriou.  All Rights Reserved.
@@ -16,8 +16,8 @@
  *    documentation and/or other materials provided with the distribution.
  * 3. All advertising materials mentioning features or use of this software
  *    must display the following acknowledgement:
- *      This product includes software developed by Jochen Pohl for
- *      The NetBSD Project.
+ *	This product includes software developed by Jochen Pohl for
+ *	The NetBSD Project.
  * 4. The name of the author may not be used to endorse or promote products
  *    derived from this software without specific prior written permission.
  *
@@ -35,7 +35,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID)
-__RCSID("$NetBSD: scan.l,v 1.138 2023/01/09 00:07:30 rillig Exp $");
+__RCSID("$NetBSD: scan.l,v 1.140 2023/09/14 22:20:08 rillig Exp $");
 #endif
 
 #include "lint1.h"
@@ -87,8 +87,8 @@ FSUF	([fFlL]?[i]?)
 ">="				return lex_operator(T_RELATIONAL, GE);
 "<<"				return lex_operator(T_SHIFT, SHL);
 ">>"				return lex_operator(T_SHIFT, SHR);
-"++"				return lex_operator(T_INCDEC, INC);
-"--"				return lex_operator(T_INCDEC, DEC);
+"++"				return yylval.y_inc = true, T_INCDEC;
+"--"				return yylval.y_inc = false, T_INCDEC;
 "->"				return T_ARROW;
 "."				return T_POINT;
 "+"				return lex_operator(T_ADDITIVE, PLUS);

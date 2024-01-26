@@ -16,6 +16,7 @@ base-crypto-bin base-sys-usr
 base-crypto-examples base-sys-share
 base-crypto-root base-sys-root
 base-crypto-shlib base-sys-usr
+base-crypto-usr base-sys-usr
 base-cxx-usr base-c-usr
 base-debug-bin base-sys-usr
 base-dhcpd-bin base-sys-share
@@ -341,6 +342,7 @@ games-utils-bin base-games-usr
 games-utils-catman base-man-share
 games-utils-man base-man-share
 games-utils-share base-games-share
+gpu-firmware-base base-sys-root
 man-adosfs-catman base-man-share
 man-adosfs-man base-man-share
 man-amd-catman base-man-share

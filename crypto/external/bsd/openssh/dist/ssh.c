@@ -1,5 +1,5 @@
-/*	$NetBSD: ssh.c,v 1.42 2022/10/05 22:39:36 christos Exp $	*/
-/* $OpenBSD: ssh.c,v 1.576 2022/09/17 10:33:18 djm Exp $ */
+/*	$NetBSD: ssh.c,v 1.45 2023/12/20 17:15:21 christos Exp $	*/
+/* $OpenBSD: ssh.c,v 1.599 2023/12/18 14:47:44 djm Exp $ */
 
 /*
  * Author: Tatu Ylonen <ylo@cs.hut.fi>
@@ -43,7 +43,7 @@
  */
 
 #include "includes.h"
-__RCSID("$NetBSD: ssh.c,v 1.42 2022/10/05 22:39:36 christos Exp $");
+__RCSID("$NetBSD: ssh.c,v 1.45 2023/12/20 17:15:21 christos Exp $");
 #include <sys/types.h>
 #include <sys/param.h>
 #include <sys/ioctl.h>
@@ -121,10 +121,11 @@ int tty_flag = 0;
  * Flag indicating that the current process should be backgrounded and
  * a new mux-client launched in the foreground for ControlPersist.
  */
-int need_controlpersist_detach = 0;
+static int need_controlpersist_detach = 0;
 
 /* Copies of flags for ControlPersist foreground mux-client */
-int ostdin_null_flag, osession_type, otty_flag, orequest_tty;
+static int ostdin_null_flag, osession_type, otty_flag, orequest_tty;
+static int ofork_after_authentication;
 
 /*
  * General data structure for command line options and options configurable
@@ -170,13 +171,14 @@ __dead static void
 usage(void)
 {
 	fprintf(stderr,
-"usage: ssh [-46AaCfGgKkMNnqsTtVvXxYy] [-B bind_interface]\n"
-"           [-b bind_address] [-c cipher_spec] [-D [bind_address:]port]\n"
-"           [-E log_file] [-e escape_char] [-F configfile] [-I pkcs11]\n"
-"           [-i identity_file] [-J [user@]host[:port]] [-L address]\n"
-"           [-l login_name] [-m mac_spec] [-O ctl_cmd] [-o option] [-p port]\n"
-"           [-Q query_option] [-R address] [-S ctl_path] [-W host:port]\n"
-"           [-w local_tun[:remote_tun]] destination [command [argument ...]]\n"
+"usage: ssh [-46AaCfGgKkMNnqsTtVvXxYy] [-B bind_interface] [-b bind_address]\n"
+"           [-c cipher_spec] [-D [bind_address:]port] [-E log_file]\n"
+"           [-e escape_char] [-F configfile] [-I pkcs11] [-i identity_file]\n"
+"           [-J destination] [-L address] [-l login_name] [-m mac_spec]\n"
+"           [-O ctl_cmd] [-o option] [-P tag] [-p port] [-R address]\n"
+"           [-S ctl_path] [-W host:port] [-w local_tun[:remote_tun]]\n"
+"           destination [command [argument ...]]\n"
+"       ssh [-Q query_option]\n"
 	);
 	exit(255);
 }
@@ -242,6 +244,7 @@ static struct addrinfo *
 resolve_host(const char *name, int port, int logerr, char *cname, size_t clen)
 {
 	char strport[NI_MAXSERV];
+	const char *errstr = NULL;
 	struct addrinfo hints, *res;
 	int gaierr;
 	LogLevel loglevel = SYSLOG_LEVEL_DEBUG1;
@@ -267,7 +270,10 @@ resolve_host(const char *name, int port, int logerr, char *cname, size_t clen)
 		return NULL;
 	}
 	if (cname != NULL && res->ai_canonname != NULL) {
-		if (strlcpy(cname, res->ai_canonname, clen) >= clen) {
+		if (!valid_domain(res->ai_canonname, 0, &errstr)) {
+			error("ignoring bad CNAME \"%s\" for host \"%s\": %s",
+			    res->ai_canonname, name, errstr);
+		} else if (strlcpy(cname, res->ai_canonname, clen) >= clen) {
 			error_f("host \"%s\" cname \"%s\" too long (max %lu)",
 			    name,  res->ai_canonname, (u_long)clen);
 			if (clen > 0)
@@ -448,7 +454,7 @@ resolve_canonicalize(char **hostp, int port)
 	 * a proxy unless the user specifically requests so.
 	 */
 	direct = option_clear_or_none(options.proxy_command) &&
-	    options.jump_host == NULL;
+	    option_clear_or_none(options.jump_host);
 	if (!direct &&
 	    options.canonicalize_hostname != SSH_CANONICALISE_ALWAYS)
 		return NULL;
@@ -607,7 +613,43 @@ ssh_conn_info_free(struct ssh_conn_info *cinfo)
 	free(cinfo->remuser);
 	free(cinfo->homedir);
 	free(cinfo->locuser);
+	free(cinfo->jmphost);
 	free(cinfo);
+}
+
+static int
+valid_hostname(const char *s)
+{
+	size_t i;
+
+	if (*s == '-')
+		return 0;
+	for (i = 0; s[i] != 0; i++) {
+		if (strchr("'`\"$\\;&<>|(){}", s[i]) != NULL ||
+		    isspace((u_char)s[i]) || iscntrl((u_char)s[i]))
+			return 0;
+	}
+	return 1;
+}
+
+static int
+valid_ruser(const char *s)
+{
+	size_t i;
+
+	if (*s == '-')
+		return 0;
+	for (i = 0; s[i] != 0; i++) {
+		if (strchr("'`\";&<>|(){}", s[i]) != NULL)
+			return 0;
+		/* Disallow '-' after whitespace */
+		if (isspace((u_char)s[i]) && s[i + 1] == '-')
+			return 0;
+		/* Disallow \ in last position */
+		if (s[i] == '\\' && s[i + 1] == '\0')
+			return 0;
+	}
+	return 1;
 }
 
 /*
@@ -619,7 +661,7 @@ main(int ac, char **av)
 	struct ssh *ssh = NULL;
 	int i, r, opt, exit_status, use_syslog, direct, timeout_ms;
 	int was_addr, config_test = 0, opt_terminated = 0, want_final_pass = 0;
-	char *p, *cp, *line, *argv0, *logfile, *host_arg;
+	char *p, *cp, *line, *argv0, *logfile;
 	char cname[NI_MAXHOST], thishost[NI_MAXHOST];
 	struct stat st;
 	struct passwd *pw;
@@ -661,7 +703,7 @@ main(int ac, char **av)
 	 * writable only by the owner, which is ok for all files for which we
 	 * don't set the modes explicitly.
 	 */
-	umask(022);
+	umask(022 | umask(077));
 
 	setlocale(LC_CTYPE, "");
 
@@ -686,7 +728,7 @@ main(int ac, char **av)
 
  again:
 	while ((opt = getopt(ac, av, "1246ab:c:e:fgi:kl:m:no:p:qstvx"
-	    "AB:CD:E:F:GI:J:KL:MNO:PQ:R:S:TVw:W:XYy")) != -1) { /* HUZdhjruz */
+	    "AB:CD:E:F:GI:J:KL:MNO:P:Q:R:S:TVw:W:XYy")) != -1) { /* HUZdhjruz */
 		switch (opt) {
 		case '1':
 			fatal("SSH protocol v.1 is no longer supported");
@@ -750,7 +792,9 @@ main(int ac, char **av)
 			else
 				fatal("Invalid multiplex command.");
 			break;
-		case 'P':	/* deprecated */
+		case 'P':
+			if (options.tag == NULL)
+				options.tag = xstrdup(optarg);
 			break;
 		case 'Q':
 			cp = NULL;
@@ -771,6 +815,9 @@ main(int ac, char **av)
 				cp = sshkey_alg_list(1, 0, 0, '\n');
 			else if (strcmp(optarg, "key-plain") == 0)
 				cp = sshkey_alg_list(0, 1, 0, '\n');
+			else if (strcmp(optarg, "key-ca-sign") == 0 ||
+			    strcasecmp(optarg, "CASignatureAlgorithms") == 0)
+				cp = sshkey_alg_list(0, 1, 1, '\n');
 			else if (strcmp(optarg, "key-sig") == 0 ||
 			    strcasecmp(optarg, "PubkeyAcceptedKeyTypes") == 0 || /* deprecated name */
 			    strcasecmp(optarg, "PubkeyAcceptedAlgorithms") == 0 ||
@@ -864,8 +911,7 @@ main(int ac, char **av)
 		case 'V':
 			fprintf(stderr, "%s, %s\n",
 			    SSH_VERSION, SSH_OPENSSL_VERSION);
-			if (opt == 'V')
-				exit(0);
+			exit(0);
 			break;
 		case 'w':
 			if (options.tun_open == -1)
@@ -883,7 +929,9 @@ main(int ac, char **av)
 			if (muxclient_command != 0)
 				fatal("Cannot specify stdio forward with -O");
 			if (parse_forward(&fwd, optarg, 1, 0)) {
-				options.stdio_forward_host = fwd.listen_host;
+				options.stdio_forward_host =
+				    fwd.listen_port == PORT_STREAMLOCAL ?
+				    fwd.listen_path : fwd.listen_host;
 				options.stdio_forward_port = fwd.listen_port;
 				free(fwd.connect_host);
 			} else {
@@ -1091,7 +1139,11 @@ main(int ac, char **av)
 	if (!host)
 		usage();
 
-	host_arg = xstrdup(host);
+	if (!valid_hostname(host))
+		fatal("hostname contains invalid characters");
+	if (options.user != NULL && !valid_ruser(options.user))
+		fatal("remote username contains invalid characters");
+	options.host_arg = xstrdup(host);
 
 #ifdef WITH_OPENSSL
 	OpenSSL_add_all_algorithms();
@@ -1144,7 +1196,7 @@ main(int ac, char **av)
 		logit("%s, %s", SSH_VERSION, SSH_OPENSSL_VERSION);
 
 	/* Parse the configuration files */
-	process_config_files(host_arg, pw, 0, &want_final_pass);
+	process_config_files(options.host_arg, pw, 0, &want_final_pass);
 	if (want_final_pass)
 		debug("configuration requests final Match pass");
 
@@ -1187,7 +1239,7 @@ main(int ac, char **av)
 	 * CanonicalizeHostname=always
 	 */
 	direct = option_clear_or_none(options.proxy_command) &&
-	    options.jump_host == NULL;
+	    option_clear_or_none(options.jump_host);
 	if (addrs == NULL && config_has_permitted_cnames(&options) && (direct ||
 	    options.canonicalize_hostname == SSH_CANONICALISE_ALWAYS)) {
 		if ((addrs = resolve_host(host, options.port,
@@ -1213,7 +1265,7 @@ main(int ac, char **av)
 		debug("re-parsing configuration");
 		free(options.hostname);
 		options.hostname = xstrdup(host);
-		process_config_files(host_arg, pw, 1, NULL);
+		process_config_files(options.host_arg, pw, 1, NULL);
 		/*
 		 * Address resolution happens early with canonicalisation
 		 * enabled and the port number may have changed since, so
@@ -1366,14 +1418,16 @@ main(int ac, char **av)
 	xasprintf(&cinfo->uidstr, "%llu",
 	    (unsigned long long)pw->pw_uid);
 	cinfo->keyalias = xstrdup(options.host_key_alias ?
-	    options.host_key_alias : host_arg);
-	cinfo->conn_hash_hex = ssh_connection_hash(cinfo->thishost, host,
-	    cinfo->portstr, options.user);
-	cinfo->host_arg = xstrdup(host_arg);
+	    options.host_key_alias : options.host_arg);
+	cinfo->host_arg = xstrdup(options.host_arg);
 	cinfo->remhost = xstrdup(host);
 	cinfo->remuser = xstrdup(options.user);
 	cinfo->homedir = xstrdup(pw->pw_dir);
 	cinfo->locuser = xstrdup(pw->pw_name);
+	cinfo->jmphost = xstrdup(options.jump_host == NULL ?
+	    "" : options.jump_host);
+	cinfo->conn_hash_hex = ssh_connection_hash(cinfo->thishost,
+	    cinfo->remhost, cinfo->portstr, cinfo->remuser, cinfo->jmphost);
 
 	/*
 	 * Expand tokens in arguments. NB. LocalCommand is expanded later,
@@ -1406,6 +1460,14 @@ main(int ac, char **av)
 		free(p);
 		free(options.identity_agent);
 		options.identity_agent = cp;
+	}
+
+	if (options.revoked_host_keys != NULL) {
+		p = tilde_expand_filename(options.revoked_host_keys, getuid());
+		cp = default_client_percent_dollar_expand(p, cinfo);
+		free(p);
+		free(options.revoked_host_keys);
+		options.revoked_host_keys = cp;
 	}
 
 	if (options.forward_agent_sock_path != NULL) {
@@ -1545,9 +1607,23 @@ main(int ac, char **av)
 	else
 		timeout_ms = options.connection_timeout * 1000;
 
+	/* Apply channels timeouts, if set */
+	channel_clear_timeouts(ssh);
+	for (j = 0; j < options.num_channel_timeouts; j++) {
+		debug3("applying channel timeout %s",
+		    options.channel_timeouts[j]);
+		if (parse_pattern_interval(options.channel_timeouts[j],
+		    &cp, &i) != 0) {
+			fatal_f("internal error: bad timeout %s",
+			    options.channel_timeouts[j]);
+		}
+		channel_add_timeout(ssh, cp, i);
+		free(cp);
+	}
+
 	/* Open a connection to the remote host. */
-	if (ssh_connect(ssh, host, host_arg, addrs, &hostaddr, options.port,
-	    options.connection_attempts,
+	if (ssh_connect(ssh, host, options.host_arg, addrs, &hostaddr,
+	    options.port, options.connection_attempts,
 	    &timeout_ms, options.tcp_keep_alive) != 0)
 		exit(255);
 
@@ -1568,9 +1644,11 @@ main(int ac, char **av)
 	sensitive_data.nkeys = 0;
 	sensitive_data.keys = NULL;
 	if (options.hostbased_authentication) {
+		int loaded = 0;
+
 		sensitive_data.nkeys = 10;
 		sensitive_data.keys = xcalloc(sensitive_data.nkeys,
-		    sizeof(struct sshkey));
+		    sizeof(*sensitive_data.keys));
 
 		/* XXX check errors? */
 #define L_PUBKEY(p,o) do { \
@@ -1578,18 +1656,22 @@ main(int ac, char **av)
 		fatal_f("pubkey out of array bounds"); \
 	check_load(sshkey_load_public(p, &(sensitive_data.keys[o]), NULL), \
 	    &(sensitive_data.keys[o]), p, "pubkey"); \
-	if (sensitive_data.keys[o] != NULL) \
+	if (sensitive_data.keys[o] != NULL) { \
 		debug2("hostbased key %d: %s key from \"%s\"", o, \
 		    sshkey_ssh_name(sensitive_data.keys[o]), p); \
+		loaded++; \
+	} \
 } while (0)
 #define L_CERT(p,o) do { \
 	if ((o) >= sensitive_data.nkeys) \
 		fatal_f("cert out of array bounds"); \
 	check_load(sshkey_load_cert(p, &(sensitive_data.keys[o])), \
 	    &(sensitive_data.keys[o]), p, "cert"); \
-	if (sensitive_data.keys[o] != NULL) \
+	if (sensitive_data.keys[o] != NULL) { \
 		debug2("hostbased key %d: %s cert from \"%s\"", o, \
 		    sshkey_ssh_name(sensitive_data.keys[o]), p); \
+		loaded++; \
+	} \
 } while (0)
 
 		if (options.hostbased_authentication == 1) {
@@ -1603,6 +1685,9 @@ main(int ac, char **av)
 			L_PUBKEY(_PATH_HOST_DSA_KEY_FILE, 7);
 			L_CERT(_PATH_HOST_XMSS_KEY_FILE, 8);
 			L_PUBKEY(_PATH_HOST_XMSS_KEY_FILE, 9);
+			if (loaded == 0)
+				debug("HostbasedAuthentication enabled but no "
+				   "local public host keys could be loaded.");
 		}
 	}
 
@@ -1721,16 +1806,20 @@ control_persist_detach(void)
 		/* Child: master process continues mainloop */
 		break;
 	default:
-		/* Parent: set up mux client to connect to backgrounded master */
+		/*
+		 * Parent: set up mux client to connect to backgrounded
+		 * master.
+		 */
 		debug2_f("background process is %ld", (long)pid);
 		options.stdin_null = ostdin_null_flag;
 		options.request_tty = orequest_tty;
 		tty_flag = otty_flag;
+		options.fork_after_authentication = ofork_after_authentication;
 		options.session_type = osession_type;
 		close(muxserver_sock);
 		muxserver_sock = -1;
 		options.control_master = SSHCTL_MASTER_NO;
-		muxclient(options.control_path);
+		(void)muxclient(options.control_path);
 		/* muxclient() doesn't return on success. */
 		fatal("Failed to connect to new control master");
 	}
@@ -1833,7 +1922,7 @@ ssh_confirm_remote_forward(struct ssh *ssh, int type, u_int32_t seq, void *ctxt)
 }
 
 __dead static void
-client_cleanup_stdio_fwd(struct ssh *ssh, int id, void *arg)
+client_cleanup_stdio_fwd(struct ssh *ssh, int id, int force, void *arg)
 {
 	debug("stdio forwarding: done");
 	cleanup_exit(0);
@@ -2019,7 +2108,7 @@ ssh_session2_setup(struct ssh *ssh, int id, int success, void *arg)
 	char *proto = NULL, *data = NULL;
 
 	if (!success)
-		return; /* No need for error message, channels code sens one */
+		return; /* No need for error message, channels code sends one */
 
 	display = getenv("DISPLAY");
 	if (display == NULL && options.forward_x11)
@@ -2185,7 +2274,7 @@ ssh_session2_open(struct ssh *ssh)
 static int
 ssh_session2(struct ssh *ssh, const struct ssh_conn_info *cinfo)
 {
-	int r, id = -1;
+	int r, interactive, id = -1;
 	char *cp, *tun_fwd_ifname = NULL;
 
 	/*
@@ -2230,11 +2319,11 @@ ssh_session2(struct ssh *ssh, const struct ssh_conn_info *cinfo)
 		osession_type = options.session_type;
 		orequest_tty = options.request_tty;
 		otty_flag = tty_flag;
+		ofork_after_authentication = options.fork_after_authentication;
 		options.stdin_null = 1;
 		options.session_type = SESSION_TYPE_NONE;
 		tty_flag = 0;
-		if (!options.fork_after_authentication &&
-		    (osession_type != SESSION_TYPE_NONE ||
+		if ((osession_type != SESSION_TYPE_NONE ||
 		    options.stdio_forward_host != NULL))
 			need_controlpersist_detach = 1;
 		options.fork_after_authentication = 1;
@@ -2249,8 +2338,11 @@ ssh_session2(struct ssh *ssh, const struct ssh_conn_info *cinfo)
 	if (options.session_type != SESSION_TYPE_NONE)
 		id = ssh_session2_open(ssh);
 	else {
-		ssh_packet_set_interactive(ssh,
-		    options.control_master == SSHCTL_MASTER_NO,
+		interactive = options.control_master == SSHCTL_MASTER_NO;
+		/* ControlPersist may have clobbered ControlMaster, so check */
+		if (need_controlpersist_detach)
+			interactive = otty_flag != 0;
+		ssh_packet_set_interactive(ssh, interactive,
 		    options.ip_qos_interactive, options.ip_qos_bulk);
 	}
 

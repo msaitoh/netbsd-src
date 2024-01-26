@@ -1,4 +1,4 @@
-/*	$NetBSD: main1.c,v 1.66 2023/01/13 19:41:50 rillig Exp $	*/
+/*	$NetBSD: main1.c,v 1.79 2024/01/21 14:11:52 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -14,7 +14,7 @@
  *    documentation and/or other materials provided with the distribution.
  * 3. All advertising materials mentioning features or use of this software
  *    must display the following acknowledgement:
- *      This product includes software developed by Jochen Pohl for
+ *	This product includes software developed by Jochen Pohl for
  *	The NetBSD Project.
  * 4. The name of the author may not be used to endorse or promote products
  *    derived from this software without specific prior written permission.
@@ -37,7 +37,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID)
-__RCSID("$NetBSD: main1.c,v 1.66 2023/01/13 19:41:50 rillig Exp $");
+__RCSID("$NetBSD: main1.c,v 1.79 2024/01/21 14:11:52 rillig Exp $");
 #endif
 
 #include <sys/types.h>
@@ -49,78 +49,37 @@ __RCSID("$NetBSD: main1.c,v 1.66 2023/01/13 19:41:50 rillig Exp $");
 
 #include "lint1.h"
 
-/* set yydebug to 1*/
-bool	yflag;
-
-/*
- * Print warnings if an assignment of an integer type to another integer type
- * causes an implicit narrowing conversion. If aflag is 1, these warnings
- * are printed only if the source type is at least as wide as long. If aflag
- * is greater than 1, they are always printed.
- */
-int	aflag;
-
-/* Print a warning if a break statement cannot be reached. */
-bool	bflag;
-
-/* Print warnings for pointer casts. */
-bool	cflag;
-
-/* Perform stricter checking of enum types and operations on enum types. */
-bool	eflag;
-
-/* Print complete pathnames, not only the basename. */
-bool	Fflag;
-
-/* Treat warnings as errors */
-bool	wflag;
-
-/*
- * Apply a number of heuristic tests to attempt to intuit bugs, improve
- * style, and reduce waste.
- */
-bool	hflag;
-
-/* Attempt to check portability to other dialects of C. */
-bool	pflag;
-
-/*
- * In case of redeclarations/redefinitions print the location of the
- * previous declaration/definition.
- */
-bool	rflag;
-
-bool	Tflag;
-
-/* Picky flag */
-bool	Pflag;
-
-/*
- * Complain about functions and external variables used and not defined,
- * or defined and not used.
- */
-bool	uflag = true;
-
-/* Complain about unused function arguments. */
-bool	vflag = true;
-
-/* Complain about structures which are never defined. */
-bool	zflag = true;
+int aflag;
+bool bflag;
+bool cflag;
+bool eflag;
+bool Fflag;
+bool hflag;
+bool Pflag;
+bool pflag;
+bool rflag;
+bool Tflag;
+bool uflag;
+bool vflag;
+bool wflag;
+bool yflag;
+bool zflag;
 
 /*
  * The default language level is the one that checks for compatibility
  * between traditional C and C90.  As of 2022, this default is no longer
  * useful since most traditional C code has already been migrated.
  */
-bool	allow_trad = true;
-bool	allow_c90 = true;
-bool	allow_c99;
-bool	allow_c11;
-bool	allow_gcc;
+bool allow_trad = true;
+bool allow_c90 = true;
+bool allow_c99;
+bool allow_c11;
+bool allow_c23;
+bool allow_gcc;
 
 sig_atomic_t fpe;
 
-static	void	usage(void);
+static void usage(void);
 
 static FILE *
 gcc_builtins(void)
@@ -177,7 +136,7 @@ main(int argc, char *argv[])
 
 	setprogname(argv[0]);
 
-	while ((c = getopt(argc, argv, "abceghmpq:rstuvwyzA:FPR:STX:")) != -1) {
+	while ((c = getopt(argc, argv, "abceghpq:rstuvwyzA:FPR:STX:")) != -1) {
 		switch (c) {
 		case 'a':	aflag++;	break;
 		case 'b':	bflag = true;	break;
@@ -195,12 +154,14 @@ main(int argc, char *argv[])
 			allow_c90 = true;
 			allow_c99 = false;
 			allow_c11 = false;
+			allow_c23 = false;
 			break;
 		case 'S':
 			allow_trad = false;
 			allow_c90 = true;
 			allow_c99 = true;
 			allow_c11 = false;
+			allow_c23 = false;
 			break;
 		case 'T':	Tflag = true;	break;
 		case 't':
@@ -208,26 +169,30 @@ main(int argc, char *argv[])
 			allow_c90 = false;
 			allow_c99 = false;
 			allow_c11 = false;
+			allow_c23 = false;
 			break;
-		case 'u':	uflag = false;	break;
+		case 'u':	uflag = true;	break;
 		case 'w':	wflag = true;	break;
-		case 'v':	vflag = false;	break;
+		case 'v':	vflag = true;	break;
 		case 'y':	yflag = true;	break;
-		case 'z':	zflag = false;	break;
+		case 'z':	zflag = true;	break;
 
 		case 'A':
-			if (strcmp(optarg, "c11") == 0) {
+			if (strcmp(optarg, "c23") == 0) {
 				allow_trad = false;
 				allow_c90 = true;
 				allow_c99 = true;
 				allow_c11 = true;
+				allow_c23 = true;
+			} else if (strcmp(optarg, "c11") == 0) {
+				allow_trad = false;
+				allow_c90 = true;
+				allow_c99 = true;
+				allow_c11 = true;
+				allow_c23 = false;
 			} else
 				usage();
 			break;
-
-		case 'm':
-			msglist();
-			return 0;
 
 		case 'R':
 			add_directory_replacement(optarg);
@@ -248,12 +213,12 @@ main(int argc, char *argv[])
 
 
 	/* initialize output */
-	outopen(any_query_enabled ? "/dev/null" : argv[1]);
+	outopen(argv[1]);
 
 #ifdef DEBUG
 	setvbuf(stdout, NULL, _IONBF, 0);
 #endif
-#ifdef YYDEBUG
+#if YYDEBUG
 	if (yflag)
 		yydebug = 1;
 #endif
@@ -285,24 +250,25 @@ main(int argc, char *argv[])
 	lwarn = LWARN_ALL;
 	debug_step("main lwarn = %d", lwarn);
 
-	check_global_symbols();
+	end_translation_unit();
 
 	outclose();
 
-	return nerr != 0 ? 1 : 0;
+	return seen_error || (wflag && seen_warning) ? 1 : 0;
 }
 
-static void __attribute__((noreturn))
+static void __dead
 usage(void)
 {
 	(void)fprintf(stderr,
-	    "usage: %s [-abceghmprstuvwyzFPST] [-Ac11] [-R old=new]\n"
-	    "       %*s [-X <id>[,<id>]...] src dest\n",
+	    "usage: %s [-abceghmprstuvwyzFPST] [-Alevel] [-ddirectory] "
+	    "[-R old=new]\n"
+	    "       %*s [-X id,...] [-q id,...] src dest\n",
 	    getprogname(), (int)strlen(getprogname()), "");
 	exit(1);
 }
 
-void __attribute__((noreturn))
+void __dead
 norecover(void)
 {
 	/* cannot recover from previous errors */

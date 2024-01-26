@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.40 2020/09/24 14:53:17 christos Exp $
+#	$NetBSD: Makefile,v 1.49 2023/08/20 02:30:58 rin Exp $
 
 .include <bsd.hostinit.mk>
 
@@ -10,7 +10,11 @@ FIND_ARGS=	\! \( -type d -name sim -prune \)
 
 CONFIGURE_ARGS=	--target=${MACHINE_GNU_PLATFORM} --disable-nls \
 		--program-transform-name="s,^,${MACHINE_GNU_PLATFORM}-," \
-		--without-mpfr
+		--without-mpfr --with-libgmp-prefix=${TOOLDIR}
+
+.if ${MACHINE} == "ia64"
+CONFIGURE_ARGS+=--enable-obsolete
+.endif
 
 MAKE_ARGS=	MACHINE= MAKEINFO=${TOOL_MAKEINFO:Q}
 
@@ -25,6 +29,7 @@ BUILD_MAKE=${TOOL_GMAKE}
 
 BINENV=		/usr/bin/env -i
 
+.include "${.CURDIR}/../gcc/lgpl3.mk"
 
 MKNATIVE_ENV=	${BINENV} ${CONFIGURE_ENV:NC*:NLD*:Nam_cv_func_iconv*} \
 			CC_FOR_BUILD=${HOST_CC:Q} \
@@ -33,7 +38,8 @@ MKNATIVE_ENV=	${BINENV} ${CONFIGURE_ENV:NC*:NLD*:Nam_cv_func_iconv*} \
 			CC=${CC:Q}' '${CCADDFLAGS:Q} \
 			CXX=${CXX:Q}' '${CCADDFLAGS:Q}' '${CXXADDFLAGS:Q} \
 			CPP=${CPP:Q}' '-I${DESTDIR}/usr/include \
-			CFLAGS= CPPFLAGS= CXXFLAGS= LDFLAGS= \
+			CFLAGS= CPPFLAGS= \
+			CXXFLAGS= LDFLAGS=-L${GMPOBJ} \
 			AS=${AS:Q} AWK=${TOOL_AWK:Q} LD=${LD:Q} \
 			MSGFMT=${TOOLDIR}/bin/${_TOOL_PREFIX}msgfmt \
 			NM=${NM:Q} OBJDUMP=${OBJDUMP:Q} \
@@ -43,12 +49,17 @@ MKNATIVE_ENV=	${BINENV} ${CONFIGURE_ENV:NC*:NLD*:Nam_cv_func_iconv*} \
 
 MKENV_BUILD_MAKE=${MKNATIVE_ENV} ${BUILD_MAKE}
 
-CCADDFLAGS+= --sysroot=${DESTDIR} -B${DESTDIR}/usr/lib/ -I${.OBJDIR}/.native/gcc/include
+CCADDFLAGS+= --sysroot=${DESTDIR} -B${DESTDIR}/usr/lib/ \
+		-I${.OBJDIR}/.native/include \
+		-I${.OBJDIR}/.native/gcc/include
 LDADDFLAGS+= -L${DESTDIR}/lib -L${DESTDIR}/usr/lib
 CXXADDFLAGS+= -D__STDC_FORMAT_MACROS
 CXXADDFLAGS+= -D__STDC_LIMIT_MACROS
 CXXADDFLAGS+= -D__STDC_CONSTANT_MACROS
 HOST_CXXFLAGS+= ${CXXADDFLAGS}
+# Since we are using gmake -e the environment overwrites CPPFLAGS
+# so we overwrite it again here! (see Makefile.gnuhost)
+HOST_CPPFLAGS+= -I${TOOLDIR}/include
 
 NEWCONFIGDIR?=	${.CURDIR}/../..
 MKNATIVE?=	${.CURDIR}/mknative-gdb
@@ -59,13 +70,18 @@ MKNATIVE?=	${.CURDIR}/mknative-gdb
 MKNATIVE_CONFIGURE_PRESET= \
 	ac_cv_prog_cc_cross=yes \
 	ac_cv_func_fork_works=yes \
+	ac_cv_func_sigprocmask=yes \
 	ac_cv_func_strcoll_works=yes \
 	ac_cv_func_XML_StopParser=yes \
 	ac_cv_libexpat=yes \
 	bash_cv_func_ctype_nonascii=yes \
 	bash_cv_func_sigsetjmp=present \
 	bash_cv_func_strcoll_broken=no \
-	bash_cv_must_reinstall_sighandlers=no
+	bash_cv_must_reinstall_sighandlers=no \
+	gl_cv_func_rename_slash_dst_works=yes \
+	gl_cv_func_rename_slash_src_works=yes \
+	gl_cv_func_rename_link_works=yes \
+	gl_cv_func_rename_dest_works=yes
 
 CONFIGURE_ENV+=	am_cv_func_iconv=no
 
@@ -93,6 +109,7 @@ CONFIGURE_ARGS_GDBSERVER=
 CONFIGURE_ARGS_GDBSERVER+= --enable-gdbserver
 .endif
 
+
 native-gdb: .native/.configure_done
 	@echo 'Extracting GDB configury for a native toolchain.'
 	MAKE=${BUILD_MAKE:Q} ${HOST_SH} ${MKNATIVE} gdb \
@@ -100,7 +117,9 @@ native-gdb: .native/.configure_done
 		${GDB_MACHINE_ARCH}
 
 .native/.configure_done: ${_GNU_CFGSRC} ${.CURDIR}/Makefile
-	mkdir ${.OBJDIR}/.native 2>/dev/null || true
+	mkdir -p ${.OBJDIR}/.native/include
+	# we need to make a copy because ${GMPINC} has a config.h
+	cp -p ${GMPINC}/gmp.h ${.OBJDIR}/.native/include
 	PATH=${TOOLDIR}/bin:$$PATH; export PATH; \
 		(cd ${.OBJDIR}/.native && \
 			${MKNATIVE_ENV} ${HOST_SH} ${GNUHOSTDIST}/configure \
@@ -117,7 +136,9 @@ native-gdb: .native/.configure_done
 		(cd ${.OBJDIR}/.native/bfd && \
 			${MKENV_BUILD_MAKE} bfd.h bfdver.h) && \
 		(cd ${.OBJDIR}/.native/gdb && \
-			${MKENV_BUILD_MAKE} init.c version.c) && \
+			${MKENV_BUILD_MAKE} xml-builtin.c init.c version.c) && \
+		(cd ${.OBJDIR}/.native/libbacktrace && \
+			${MKENV_BUILD_MAKE} backtrace-supported.h) && \
 		(if [ -d ${.OBJDIR}/.native/gdbserver ]; then \
 			cd ${.OBJDIR}/.native/gdbserver && \
 			${MKENV_BUILD_MAKE} version-generated.cc; fi)

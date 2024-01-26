@@ -1,4 +1,4 @@
-# $NetBSD: Makefile,v 1.70 2021/10/01 18:18:32 martin Exp $
+# $NetBSD: Makefile,v 1.77 2023/10/17 13:51:52 rjs Exp $
 
 NOMAN=		# defined
 
@@ -7,10 +7,15 @@ NOMAN=		# defined
 TESTSDIR=	${TESTSBASE}/kernel
 
 TESTS_SUBDIRS+=	kqueue
-TESTS_C=	t_fcntl
+#TESTS_C=	t_epoll
+TESTS_C+=	t_fcntl
+.if ${MKRUMP} != "no"
+TESTS_C+=	t_fdrestart
+.endif
 TESTS_C+=	t_lock
 TESTS_C+=	t_lockf
 TESTS_C+=	t_pty
+TESTS_C+=	t_memfd_create
 TESTS_C+=	t_mqueue
 TESTS_C+=	t_proccwd
 TESTS_C+=	t_sysv
@@ -20,6 +25,7 @@ TESTS_C+=	t_ksem
 TESTS_C+=	t_sysctl
 TESTS_C+=	t_timeleft
 TESTS_C+=	t_zombie
+TESTS_C+=	t_open_pr_57260
 
 TESTS_SH=	t_umount
 TESTS_SH+=	t_umountstress
@@ -46,6 +52,13 @@ PROGS+=		h_fpufork
 
 SCRIPTSDIR=	${TESTSDIR}
 SCRIPTS=	h_interpreter.sh
+
+LDADD.t_fdrestart+=	-lpthread
+LDADD.t_fdrestart+=	-lrumpnet_local
+LDADD.t_fdrestart+=	-lrumpnet_net
+LDADD.t_fdrestart+=	-lrumpnet_netinet
+LDADD.t_fdrestart+=	-lrumpnet
+LDADD.t_fdrestart+=	${LIBRUMPBASE}
 
 LDADD.t_mqueue+= -lrt
 
@@ -81,10 +94,8 @@ t_subr_prf.c: gen_t_subr_prf ${NETBSDSRCDIR}/sys/kern/subr_prf.c
 
 CPPFLAGS.t_subr_prf.c=	-Wno-pointer-sign	# XXX platform vs kernel SHA2
 
-.if defined(HAVE_GCC) && ${HAVE_GCC} >= 7 && ${ACTIVE_CC} == "gcc"
 # Test explicitly tests failure modes.
-CPPFLAGS.t_subr_prf.c+=	-Wno-error=format-truncation
-.endif
+CPPFLAGS.t_subr_prf.c+=	${CC_WNO_FORMAT_TRUNCATION}
 
 SANITIZER_RENAME_CLASSES+=		t_subr_prf
 SANITIZER_RENAME_FILES.t_subr_prf+=	t_subr_prf.c

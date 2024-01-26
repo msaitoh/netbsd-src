@@ -1,4 +1,4 @@
-/*	$NetBSD: tprof_top.c,v 1.8 2022/12/23 19:37:06 christos Exp $	*/
+/*	$NetBSD: tprof_top.c,v 1.10 2024/01/02 22:35:26 kre Exp $	*/
 
 /*-
  * Copyright (c) 2022 Ryo Shimizu <ryo@nerv.org>
@@ -28,7 +28,7 @@
 
 #include <sys/cdefs.h>
 #ifndef lint
-__RCSID("$NetBSD: tprof_top.c,v 1.8 2022/12/23 19:37:06 christos Exp $");
+__RCSID("$NetBSD: tprof_top.c,v 1.10 2024/01/02 22:35:26 kre Exp $");
 #endif /* not lint */
 
 #include <sys/param.h>
@@ -46,6 +46,7 @@ __RCSID("$NetBSD: tprof_top.c,v 1.8 2022/12/23 19:37:06 christos Exp $");
 #include <math.h>
 #include <signal.h>
 #include <stdio.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 #include <term.h>
@@ -117,29 +118,6 @@ static uint64_t *sample_n_per_event_cpu[SAMPLE_MODE_NUM];	/* [ncpu] */
 /* raw event counter */
 static uint64_t *counters;	/* counters[2][ncpu][nevent] */
 static u_int counters_i;
-
-static const char *
-cycle_event_name(void)
-{
-	const char *cycleevent;
-
-	switch (tprof_info.ti_ident) {
-	case TPROF_IDENT_INTEL_GENERIC:
-		cycleevent = "unhalted-core-cycles";
-		break;
-	case TPROF_IDENT_AMD_GENERIC:
-		cycleevent = "LsNotHaltedCyc";
-		break;
-	case TPROF_IDENT_ARMV8_GENERIC:
-	case TPROF_IDENT_ARMV7_GENERIC:
-		cycleevent = "CPU_CYCLES";
-		break;
-	default:
-		cycleevent = NULL;
-		break;
-	}
-	return cycleevent;
-}
 
 static void
 reset_cursor_pos(void)
@@ -978,7 +956,7 @@ tprof_top(int argc, char **argv)
 		tprof_top_usage();
 
 	if (nevent == 0) {
-		const char *defaultevent = cycle_event_name();
+		const char *defaultevent = tprof_cycle_event_name();
 		if (defaultevent == NULL)
 			die_errc(EXIT_FAILURE, 0, "cpu not supported");
 

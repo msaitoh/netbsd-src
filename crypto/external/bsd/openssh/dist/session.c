@@ -1,5 +1,6 @@
-/*	$NetBSD: session.c,v 1.36 2022/02/23 19:07:20 christos Exp $	*/
-/* $OpenBSD: session.c,v 1.330 2022/02/08 08:59:12 dtucker Exp $ */
+/*	$NetBSD: session.c,v 1.38 2023/10/25 20:19:57 christos Exp $	*/
+/* $OpenBSD: session.c,v 1.336 2023/08/10 23:05:48 djm Exp $ */
+
 /*
  * Copyright (c) 1995 Tatu Ylonen <ylo@cs.hut.fi>, Espoo, Finland
  *                    All rights reserved
@@ -35,7 +36,7 @@
  */
 
 #include "includes.h"
-__RCSID("$NetBSD: session.c,v 1.36 2022/02/23 19:07:20 christos Exp $");
+__RCSID("$NetBSD: session.c,v 1.38 2023/10/25 20:19:57 christos Exp $");
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/un.h>
@@ -68,7 +69,6 @@ __RCSID("$NetBSD: session.c,v 1.36 2022/02/23 19:07:20 christos Exp $");
 #include "ssherr.h"
 #include "match.h"
 #include "uidswap.h"
-#include "compat.h"
 #include "channels.h"
 #include "sshkey.h"
 #include "cipher.h"
@@ -214,8 +214,7 @@ auth_input_request_forwarding(struct ssh *ssh, struct passwd * pw)
 		goto authsock_err;
 
 	/* Allocate a channel for the authentication agent socket. */
-	/* this shouldn't matter if its hpn or not - cjr */
-	nc = channel_new(ssh, "auth socket",
+	nc = channel_new(ssh, "auth-listener",
 	    SSH_CHANNEL_AUTH_SOCKET, sock, sock, -1,
 	    CHAN_X11_WINDOW_DEFAULT, CHAN_X11_PACKET_DEFAULT,
 	    0, "auth socket", 1);
@@ -988,6 +987,7 @@ do_setup_env(struct ssh *ssh, Session *s, const char *shell)
 		}
 		*value++ = '\0';
 		child_set_env(&env, &envsize, cp, value);
+		free(cp);
 	}
 
 	/* SSH_CLIENT deprecated */
@@ -1781,7 +1781,7 @@ session_subsystem_req(struct ssh *ssh, Session *s)
 {
 	struct stat st;
 	int r, success = 0;
-	char *prog, *cmd;
+	char *prog, *cmd, *type;
 	u_int i;
 
 	if ((r = sshpkt_get_cstring(ssh, &s->subsys, NULL)) != 0 ||
@@ -1804,6 +1804,10 @@ session_subsystem_req(struct ssh *ssh, Session *s)
 				s->is_subsystem = SUBSYSTEM_EXT;
 				debug("subsystem: exec() %s", cmd);
 			}
+			xasprintf(&type, "session:subsystem:%s",
+			    options.subsystem_name[i]);
+			channel_set_xtype(ssh, s->chanid, type);
+			free(type);
 			success = do_exec(ssh, s, cmd) == 0;
 			break;
 		}
@@ -1859,6 +1863,9 @@ session_shell_req(struct ssh *ssh, Session *s)
 
 	if ((r = sshpkt_get_end(ssh)) != 0)
 		sshpkt_fatal(ssh, r, "%s: parse packet", __func__);
+
+	channel_set_xtype(ssh, s->chanid, "session:shell");
+
 	return do_exec(ssh, s, NULL) == 0;
 }
 
@@ -1872,6 +1879,8 @@ session_exec_req(struct ssh *ssh, Session *s)
 	if ((r = sshpkt_get_cstring(ssh, &command, NULL)) != 0 ||
 	    (r = sshpkt_get_end(ssh)) != 0)
 		sshpkt_fatal(ssh, r, "%s: parse packet", __func__);
+
+	channel_set_xtype(ssh, s->chanid, "session:command");
 
 	success = do_exec(ssh, s, command) == 0;
 	free(command);
@@ -2165,7 +2174,7 @@ session_close_x11(struct ssh *ssh, int id)
 }
 
 static void
-session_close_single_x11(struct ssh *ssh, int id, void *arg)
+session_close_single_x11(struct ssh *ssh, int id, int force, void *arg)
 {
 	Session *s;
 	u_int i;
@@ -2201,17 +2210,17 @@ session_exit_message(struct ssh *ssh, Session *s, int status)
 {
 	Channel *c;
 	int r;
+	char *note = NULL;
 
 	if ((c = channel_lookup(ssh, s->chanid)) == NULL)
 		fatal_f("session %d: no channel %d", s->self, s->chanid);
-	debug_f("session %d channel %d pid %ld",
-	    s->self, s->chanid, (long)s->pid);
 
 	if (WIFEXITED(status)) {
 		channel_request_start(ssh, s->chanid, "exit-status", 0);
 		if ((r = sshpkt_put_u32(ssh, WEXITSTATUS(status))) != 0 ||
 		    (r = sshpkt_send(ssh)) != 0)
 			sshpkt_fatal(ssh, r, "%s: exit reply", __func__);
+		xasprintf(&note, "exit %d", WEXITSTATUS(status));
 	} else if (WIFSIGNALED(status)) {
 		channel_request_start(ssh, s->chanid, "exit-signal", 0);
 		if ((r = sshpkt_put_cstring(ssh, sig2name(WTERMSIG(status)))) != 0 ||
@@ -2220,10 +2229,17 @@ session_exit_message(struct ssh *ssh, Session *s, int status)
 		    (r = sshpkt_put_cstring(ssh, "")) != 0 ||
 		    (r = sshpkt_send(ssh)) != 0)
 			sshpkt_fatal(ssh, r, "%s: exit reply", __func__);
+		xasprintf(&note, "signal %d%s", WTERMSIG(status),
+		    WCOREDUMP(status) ? " core dumped" : "");
 	} else {
 		/* Some weird exit cause.  Just exit. */
-		ssh_packet_disconnect(ssh, "wait returned status %04x.", status);
+		ssh_packet_disconnect(ssh, "wait returned status %04x.",
+		    status);
 	}
+
+	debug_f("session %d channel %d pid %ld %s", s->self, s->chanid,
+	    (long)s->pid, note == NULL ? "UNKNOWN" : note);
+	free(note);
 
 	/* disconnect channel */
 	debug_f("release channel %d", s->chanid);
@@ -2296,7 +2312,7 @@ session_close_by_pid(struct ssh *ssh, pid_t pid, int status)
  * the session 'child' itself dies
  */
 void
-session_close_by_channel(struct ssh *ssh, int id, void *arg)
+session_close_by_channel(struct ssh *ssh, int id, int force, void *arg)
 {
 	Session *s = session_by_channel(id);
 	u_int i;
@@ -2309,12 +2325,14 @@ session_close_by_channel(struct ssh *ssh, int id, void *arg)
 	if (s->pid != 0) {
 		debug_f("channel %d: has child, ttyfd %d", id, s->ttyfd);
 		/*
-		 * delay detach of session, but release pty, since
-		 * the fd's to the child are already closed
+		 * delay detach of session (unless this is a forced close),
+		 * but release pty, since the fd's to the child are already
+		 * closed
 		 */
 		if (s->ttyfd != -1)
 			session_pty_cleanup(s);
-		return;
+		if (!force)
+			return;
 	}
 	/* detach by removing callback */
 	channel_cancel_cleanup(ssh, s->chanid);

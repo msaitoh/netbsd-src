@@ -1,4 +1,4 @@
-/*	$NetBSD: util.c,v 1.71 2022/12/15 20:34:46 martin Exp $	*/
+/*	$NetBSD: util.c,v 1.74 2023/11/20 18:03:55 martin Exp $	*/
 
 /*
  * Copyright 1997 Piermont Information Systems Inc.
@@ -398,7 +398,7 @@ static int
 get_iso9660_volname(int dev, int sess, char *volname, size_t volnamelen)
 {
 	int blkno, error, last;
-	char buf[ISO_BLKSIZE];
+	static char buf[ISO_BLKSIZE] __aligned(8);
 	struct iso_volume_descriptor *vd = NULL;
 	struct iso_primary_descriptor *pd = NULL;
 
@@ -1524,8 +1524,13 @@ get_and_unpack_sets(int update, msg setupdone_msg, msg success_msg, msg failure_
 	}
 
 	/* Configure the system */
-	if (set_status[SET_BASE] & SET_INSTALLED)
+	if (set_status[SET_BASE] & SET_INSTALLED) {
 		run_makedev();
+		if (!update) {
+			run_program(RUN_CHROOT|RUN_DISPLAY,
+			    "/usr/sbin/certctl rehash");
+		}
+	}
 
 	if (!update) {
 		struct stat sb1, sb2;
@@ -2130,7 +2135,7 @@ set_menu_select(menudesc *m, void *arg)
 }
 
 /*
- * check wether a binary is available somewhere in PATH,
+ * check whether a binary is available somewhere in PATH,
  * return 1 if found, 0 if not.
  */
 static int

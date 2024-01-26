@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.123 2022/09/27 17:46:58 rillig Exp $
+#	$NetBSD: Makefile,v 1.127 2023/12/19 20:08:27 rillig Exp $
 #	@(#)Makefile	5.2 (Berkeley) 12/28/90
 
 PROG=	make
@@ -80,7 +80,7 @@ COPTS.filemon_dev.c+= \
 .endif
 
 SUBDIR.roff+=	PSD.doc
-.if make(obj) || make(clean)
+.if make(obj) || make(clean) || make(cleandir)
 SUBDIR+=	unit-tests
 .endif
 
@@ -88,11 +88,11 @@ LINTFLAGS+=	-T	# strict bool mode, available since 2021-01-11
 LINTFLAGS+=	-w	# treat warnings as errors
 CLEANFILES+=	*.o	# for filemon objects
 
-COPTS.arch.c+=	${GCC_NO_FORMAT_TRUNCATION}
-COPTS.dir.c+=	${GCC_NO_FORMAT_TRUNCATION}
+COPTS.arch.c+=	${CC_WNO_FORMAT_TRUNCATION}
+COPTS.dir.c+=	${CC_WNO_FORMAT_TRUNCATION}
 COPTS.job.c+=	-Wno-format-nonliteral	# custom shell templates
-COPTS.main.c+=	${GCC_NO_FORMAT_TRUNCATION} ${GCC_NO_STRINGOP_TRUNCATION}
-COPTS.meta.c+=	${GCC_NO_FORMAT_TRUNCATION}
+COPTS.main.c+=	${CC_WNO_FORMAT_TRUNCATION} ${CC_WNO_STRINGOP_TRUNCATION}
+COPTS.meta.c+=	${CC_WNO_FORMAT_TRUNCATION}
 COPTS.var.c+=	-Wno-format-nonliteral	# strftime
 
 CPPFLAGS+=	-DMAKE_NATIVE
@@ -143,8 +143,13 @@ report-coverage: .PHONY
 	@echo 'covered  uncovered  file'
 	@${GCOV} ${GCOV_OPTS} *.gcda \
 	| perl -ne ${GCOV_PERL:Q} \
-	| sort -nr
-	@sed -i 's,^\([^:]*\): *[0-9]*:,\1: ,' *.gcov
+	| sort -r -k4 \
+	| sort -nr -k1
+	@sed -i \
+	    -e '1d' \
+	    -e 's,^\([^:]*\): *[0-9]*:,\1: ,' \
+	    -e 's, *$$,,g' \
+	    *.gcov
 .endif
 
 .include <bsd.prog.mk>

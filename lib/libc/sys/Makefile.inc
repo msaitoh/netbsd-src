@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile.inc,v 1.250 2021/11/01 05:53:45 thorpej Exp $
+#	$NetBSD: Makefile.inc,v 1.253 2023/08/03 12:24:46 nia Exp $
 #	@(#)Makefile.inc	8.3 (Berkeley) 10/24/94
 
 # sys sources
@@ -7,10 +7,10 @@
 # other sources shared with the kernel, used in syscalls
 SRCS+=	cpuset.c
 # glue to offer userland wrappers for some syscalls
-SRCS+=	accept4.c clock_getcpuclockid.c eventfd_read.c eventfd_write.c \
-	posix_fadvise.c posix_madvise.c ppoll.c sched.c sigqueue.c \
-	sigtimedwait.c sigwait.c sigwaitinfo.c statvfs.c swapon.c semctl.c \
-	vadvise.c
+SRCS+=	accept4.c clock_getcpuclockid.c eventfd_read.c \
+	eventfd_write.c posix_fadvise.c posix_madvise.c ppoll.c sched.c \
+	sigqueue.c sigtimedwait.c sigwait.c sigwaitinfo.c statvfs.c swapon.c \
+	semctl.c vadvise.c
 
 .if ${RUMPRUN} != "yes"
 # modules with non-default implementations on at least one architecture:
@@ -134,7 +134,8 @@ ASM=\
 		_lwp_unpark_all.S _lwp_suspend.S _lwp_continue.S \
 		_lwp_wakeup.S _lwp_detach.S _lwp_setprivate.S \
 		_lwp_setname.S _lwp_getname.S _lwp_ctl.S \
-	madvise.S mincore.S minherit.S mkdir.S mkdirat.S mkfifo.S mkfifoat.S \
+	madvise.S memfd_create.S mincore.S minherit.S mkdir.S mkdirat.S \
+		mkfifo.S mkfifoat.S \
 		__mknod50.S mlock.S mlockall.S modctl.S __mount50.S \
 		mprotect.S __msgctl50.S msgget.S munlock.S munlockall.S \
 		munmap.S \
@@ -179,7 +180,7 @@ ASM_MD=	_lwp_getprivate.S mremap.S
 WEAKASM= accept.S __aio_suspend50.S clock_nanosleep.S close.S connect.S \
 	execve.S \
 	fcntl.S fdatasync.S fsync.S \
-	fsync_range.S __kevent50.S \
+	fsync_range.S __kevent100.S \
 	kill.S mq_receive.S mq_send.S __mq_timedreceive50.S __mq_timedsend50.S \
 	msgrcv.S msgsnd.S __msync13.S  __nanosleep50.S open.S openat.S \
 	paccept.S poll.S \
@@ -275,7 +276,7 @@ MAN+=	accept.2 access.2 acct.2 adjtime.2 bind.2 brk.2 chdir.2 \
 	_lwp_suspend.2 _lwp_wakeup.2 _lwp_wait.2 _lwp_kill.2 \
 	_lwp_getname.2 _lwp_getprivate.2 \
 	_lwp_park.2 _lwp_unpark.2 _lwp_unpark_all.2 \
-	mkdir.2 mkfifo.2 mknod.2 \
+	memfd_create.2 mkdir.2 mkfifo.2 mknod.2 \
 	madvise.2 mincore.2 minherit.2 mlock.2 mlockall.2 mmap.2 modctl.2 \
 	mount.2 \
 	mprotect.2 mremap.2 msgctl.2 msgget.2 msgrcv.2 msgsnd.2 msync.2 \

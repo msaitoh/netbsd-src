@@ -1,4 +1,4 @@
-/*	$NetBSD: compat.c,v 1.246 2023/03/18 22:20:11 sjg Exp $	*/
+/*	$NetBSD: compat.c,v 1.252 2024/01/05 23:22:06 rillig Exp $	*/
 
 /*
  * Copyright (c) 1988, 1989, 1990 The Regents of the University of California.
@@ -91,7 +91,7 @@
 #include "pathnames.h"
 
 /*	"@(#)compat.c	8.2 (Berkeley) 3/19/94"	*/
-MAKE_RCSID("$NetBSD: compat.c,v 1.246 2023/03/18 22:20:11 sjg Exp $");
+MAKE_RCSID("$NetBSD: compat.c,v 1.252 2024/01/05 23:22:06 rillig Exp $");
 
 static GNode *curTarg = NULL;
 static pid_t compatChild;
@@ -107,10 +107,8 @@ CompatDeleteTarget(GNode *gn)
 	if (gn != NULL && !GNode_IsPrecious(gn) &&
 	    (gn->type & OP_PHONY) == 0) {
 		const char *file = GNode_VarTarget(gn);
-
-		if (!opts.noExecute && unlink_file(file) == 0) {
+		if (!opts.noExecute && unlink_file(file) == 0)
 			Error("*** %s removed", file);
-		}
 	}
 }
 
@@ -129,14 +127,11 @@ CompatInterrupt(int signo)
 	CompatDeleteTarget(curTarg);
 
 	if (curTarg != NULL && !GNode_IsPrecious(curTarg)) {
-		/*
-		 * Run .INTERRUPT only if hit with interrupt signal
-		 */
+		/* Run .INTERRUPT only if hit with interrupt signal. */
 		if (signo == SIGINT) {
 			GNode *gn = Targ_FindNode(".INTERRUPT");
-			if (gn != NULL) {
+			if (gn != NULL)
 				Compat_Make(gn, gn);
-			}
 		}
 	}
 
@@ -221,7 +216,7 @@ bool
 Compat_RunCommand(const char *cmdp, GNode *gn, StringListNode *ln)
 {
 	char *cmdStart;		/* Start of expanded command */
-	char *bp;
+	char *volatile bp;
 	bool silent;		/* Don't print command */
 	bool doIt;		/* Execute even if -n */
 	volatile bool errCheck;	/* Check errors */
@@ -277,11 +272,9 @@ Compat_RunCommand(const char *cmdp, GNode *gn, StringListNode *ln)
 			silent = !DEBUG(LOUD);
 		else if (*cmd == '-')
 			errCheck = false;
-		else if (*cmd == '+') {
+		else if (*cmd == '+')
 			doIt = true;
-			if (shellName == NULL)	/* we came here from jobs */
-				Shell_Init();
-		} else if (!ch_isspace(*cmd))
+		else if (!ch_isspace(*cmd))
 			/* Ignore whitespace for compatibility with gnu make */
 			break;
 		cmd++;
@@ -289,37 +282,25 @@ Compat_RunCommand(const char *cmdp, GNode *gn, StringListNode *ln)
 
 	while (ch_isspace(*cmd))
 		cmd++;
-
-	/*
-	 * If we did not end up with a command, just skip it.
-	 */
 	if (cmd[0] == '\0')
 		return true;
 
 	useShell = UseShell(cmd);
-	/*
-	 * Print the command before echoing if we're not supposed to be quiet
-	 * for this one. We also print the command if -n given.
-	 */
+
 	if (!silent || !GNode_ShouldExecute(gn)) {
 		printf("%s\n", cmd);
 		fflush(stdout);
 	}
 
-	/*
-	 * If we're not supposed to execute any commands, this is as far as
-	 * we go...
-	 */
 	if (!doIt && !GNode_ShouldExecute(gn))
 		return true;
 
 	DEBUG1(JOB, "Execute: '%s'\n", cmd);
 
+	if (useShell && shellPath == NULL)
+		Shell_Init();		/* we need shellPath */
+
 	if (useShell) {
-		/*
-		 * We need to pass the command off to the shell, typically
-		 * because the command contains a "meta" character.
-		 */
 		static const char *shargv[5];
 
 		/* The following work for any of the builtin shell specs. */
@@ -334,11 +315,6 @@ Compat_RunCommand(const char *cmdp, GNode *gn, StringListNode *ln)
 		bp = NULL;
 		mav = NULL;
 	} else {
-		/*
-		 * No meta-characters, so no need to exec a shell. Break the
-		 * command into words to form an argument vector we can
-		 * execute.
-		 */
 		Words words = Str_Words(cmd, false);
 		mav = words.words;
 		bp = words.freeIt;
@@ -377,24 +353,21 @@ Compat_RunCommand(const char *cmdp, GNode *gn, StringListNode *ln)
 		meta_compat_parent(cpid);
 #endif
 
-	/*
-	 * The child is off and running. Now all we can do is wait...
-	 */
+	/* The child is off and running. Now all we can do is wait... */
 	while ((retstat = wait(&reason)) != cpid) {
 		if (retstat > 0)
 			JobReapChild(retstat, reason, false); /* not ours? */
-		if (retstat == -1 && errno != EINTR) {
+		if (retstat == -1 && errno != EINTR)
 			break;
-		}
 	}
 
 	if (retstat < 0)
 		Fatal("error in wait: %d: %s", retstat, strerror(errno));
 
 	if (WIFSTOPPED(reason)) {
-		status = WSTOPSIG(reason);	/* stopped */
+		status = WSTOPSIG(reason);
 	} else if (WIFEXITED(reason)) {
-		status = WEXITSTATUS(reason);	/* exited */
+		status = WEXITSTATUS(reason);
 #if defined(USE_META) && defined(USE_FILEMON_ONCE)
 		if (useMeta)
 			meta_cmd_finish(NULL);
@@ -405,7 +378,7 @@ Compat_RunCommand(const char *cmdp, GNode *gn, StringListNode *ln)
 			printf("*** Error code %d", status);
 		}
 	} else {
-		status = WTERMSIG(reason);	/* signaled */
+		status = WTERMSIG(reason);
 		printf("*** Signal %d", status);
 	}
 
@@ -436,6 +409,7 @@ Compat_RunCommand(const char *cmdp, GNode *gn, StringListNode *ln)
 			printf(" (ignored)\n");
 			status = 0;
 		}
+		fflush(stdout);
 	}
 
 	free(cmdStart);
@@ -591,10 +565,6 @@ MakeUnmade(GNode *gn, GNode *pgn)
 		gn->type |= OP_SILENT;
 
 	if (Job_CheckCommands(gn, Fatal)) {
-		/*
-		 * Our commands are ok, but we still have to worry about
-		 * the -t flag.
-		 */
 		if (!opts.touch || (gn->type & OP_MAKE)) {
 			curTarg = gn;
 #ifdef USE_META
@@ -778,7 +748,6 @@ Compat_MakeAll(GNodeList *targs)
 			errorNode = gn;
 	}
 
-	/* If the user has defined a .END target, run its commands. */
 	if (errorNode == NULL) {
 		GNode *endNode = Targ_GetEndNode();
 		Compat_Make(endNode, endNode);

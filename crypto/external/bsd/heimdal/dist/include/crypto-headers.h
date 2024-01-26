@@ -1,4 +1,4 @@
-/*	$NetBSD: crypto-headers.h,v 1.3 2018/02/05 16:00:52 christos Exp $	*/
+/*	$NetBSD: crypto-headers.h,v 1.7 2023/09/11 15:12:12 christos Exp $	*/
 
 #ifndef __crypto_header__
 #define __crypto_header__
@@ -34,6 +34,8 @@
 #  define BN_is_negative(bn) ((bn)->neg != 0)
 # endif
 #endif
+
+#include <hcrypto/ui.h>
 
 #else /* !HAVE_HCRYPTO_W_OPENSSL */
 

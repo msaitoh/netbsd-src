@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.6 2023/02/20 02:12:28 mrg Exp $
+#	$NetBSD: Makefile,v 1.8 2023/10/07 12:15:50 rin Exp $
 
 UNSUPPORTED_COMPILER.clang=	# defined
 LIBISCXX = yes
@@ -26,10 +26,6 @@ UBSAN_SRCS= \
 COPTS.${_s}.cc+=-frtti
 .endfor
 
-.if ${MACHINE_ARCH} == "vax"
-COPTS.sanitizer_file.cc += -O1
-.endif
-
 LIB=	ubsan
 SRCS+=	${UBSAN_SRCS}
 LIBDPLIBS+= m ${NETBSDSRCDIR}/lib/libm
@@ -38,6 +34,6 @@ LIBDPLIBS+= pthread ${NETBSDSRCDIR}/lib/libpthread
 CPPFLAGS+=-DCAN_SANITIZE_UB=1
 
 # XXX
-COPTS.ubsan_handlers.cc+=-Wno-error=maybe-uninitialized
+COPTS.ubsan_handlers.cc+=${CC_WNO_MAYBE_UNINITIALIZED}
 
 .include <bsd.lib.mk>

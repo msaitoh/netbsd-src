@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.144 2021/12/04 08:45:56 skrll Exp $
+#	$NetBSD: Makefile,v 1.149 2024/01/19 19:21:34 christos Exp $
 #
 # NOTE: when changing ld.so, ensure that ldd still compiles.
 #
@@ -72,9 +72,23 @@ PROG=		ld.elf_so
 
 CLIBOBJ!=	cd ${NETBSDSRCDIR}/lib/libc && ${PRINTOBJDIR}
 
-SRCS+=		rtld.c reloc.c symbol.c xmalloc.c xprintf.c debug.c \
-		map_object.c load.c search.c headers.c paths.c expand.c \
-		tls.c symver.c diagassert.c compat.c
+SRCS+=		compat.c
+SRCS+=		debug.c
+SRCS+=		diagassert.c
+SRCS+=		expand.c
+SRCS+=		hash.c
+SRCS+=		headers.c
+SRCS+=		load.c
+SRCS+=		map_object.c
+SRCS+=		paths.c
+SRCS+=		reloc.c
+SRCS+=		rtld.c
+SRCS+=		search.c
+SRCS+=		symbol.c
+SRCS+=		symver.c
+SRCS+=		tls.c
+SRCS+=		xmalloc.c
+SRCS+=		xprintf.c
 
 .if ${USE_FORT} == "yes"
 .PATH.c: ${NETBSDSRCDIR}/lib/libc/misc
@@ -97,7 +111,7 @@ BINDIR=		${SHLINKINSTALLDIR}
 CPPFLAGS.tls.c+=	-std=gnu11
 CPPFLAGS+=	-DLIBDIR=\"${LIBDIR}\" -D_PATH_RTLD=\"${BINDIR}/${PROG}\"
 CPPFLAGS+=	-I${.CURDIR} -I. -D_KERNTYPES
-CPPFLAGS+=	-DRTLD_LOADER
+CPPFLAGS+=	-DRTLD_LOADER -D_LIBC_INTERNAL
 CPPFLAGS+=	-DGNU_RELRO
 CPPFLAGS+=	-D_RTLD_SOURCE
 CPPFLAGS+=	-DHAVE_INITFINI_ARRAY
@@ -126,10 +140,6 @@ CPPFLAGS+=	-DRTLD_DEFAULT_LIBRARY_PATH=\"${SHLIBDIR}:${LIBDIR}\"
 # rtld.c and symbol.c use alloca, so disable SSP warnings.
 COPTS.rtld.c+=	-Wno-stack-protector
 COPTS.symbol.c+=-Wno-stack-protector
-
-.if ${MACHINE_CPU} == "vax"
-COPTS.rtld.c+=	-O0
-.endif
 
 LDADD+=		-Wl,--version-script=${.CURDIR}/symbols.map
 LDADD+=		-L${CLIBOBJ} -L${DESTDIR}${LIBDIR}

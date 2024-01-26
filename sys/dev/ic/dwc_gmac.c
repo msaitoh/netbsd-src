@@ -1,4 +1,4 @@
-/* $NetBSD: dwc_gmac.c,v 1.78 2022/09/18 18:26:53 thorpej Exp $ */
+/* $NetBSD: dwc_gmac.c,v 1.80 2023/12/20 18:09:19 skrll Exp $ */
 
 /*-
  * Copyright (c) 2013, 2014 The NetBSD Foundation, Inc.
@@ -41,13 +41,12 @@
 
 #include <sys/cdefs.h>
 
-__KERNEL_RCSID(1, "$NetBSD: dwc_gmac.c,v 1.78 2022/09/18 18:26:53 thorpej Exp $");
+__KERNEL_RCSID(1, "$NetBSD: dwc_gmac.c,v 1.80 2023/12/20 18:09:19 skrll Exp $");
 
 /* #define	DWC_GMAC_DEBUG	1 */
 
 #ifdef _KERNEL_OPT
 #include "opt_inet.h"
-#include "opt_net_mpsafe.h"
 #endif
 
 #include <sys/param.h>
@@ -77,7 +76,7 @@ static int dwc_gmac_miibus_write_reg(device_t, int, int, uint16_t);
 static void dwc_gmac_miibus_statchg(struct ifnet *);
 
 static int dwc_gmac_reset(struct dwc_gmac_softc *);
-static void dwc_gmac_write_hwaddr(struct dwc_gmac_softc *, uint8_t *);
+static void dwc_gmac_write_hwaddr(struct dwc_gmac_softc *, uint8_t[ETHER_ADDR_LEN]);
 static int dwc_gmac_alloc_dma_rings(struct dwc_gmac_softc *);
 static void dwc_gmac_free_dma_rings(struct dwc_gmac_softc *);
 static int dwc_gmac_alloc_rx_ring(struct dwc_gmac_softc *, struct dwc_gmac_rx_ring *);

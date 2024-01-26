@@ -9,15 +9,15 @@
 
 void func(int a, int b, int c);
 
-/* expect+4: warning: argument 'num' unused in function 'func' [231] */
-/* expect+3: warning: argument 'ptr' unused in function 'func' [231] */
-/* expect+2: warning: argument 'dbl' unused in function 'func' [231] */
-/* expect+1: warning: argument 'def' unused in function 'func' [231] */
+/* expect+4: warning: parameter 'num' unused in function 'func' [231] */
+/* expect+3: warning: parameter 'ptr' unused in function 'func' [231] */
+/* expect+2: warning: parameter 'dbl' unused in function 'func' [231] */
+/* expect+1: warning: parameter 'def' unused in function 'func' [231] */
 void func(num, ptr, dbl, def)
     int num;
     char *ptr;
     double dbl;
 {
-	/* expect-1: warning: type of argument 'def' defaults to 'int' [32] */
+	/* expect-1: warning: type of parameter 'def' defaults to 'int' [32] */
 	/* expect-2: error: parameter mismatch: 3 declared, 4 defined [51] */
 }

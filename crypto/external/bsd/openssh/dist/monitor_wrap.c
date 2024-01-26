@@ -1,5 +1,5 @@
-/*	$NetBSD: monitor_wrap.c,v 1.31 2022/10/05 22:39:36 christos Exp $	*/
-/* $OpenBSD: monitor_wrap.c,v 1.125 2022/06/15 16:08:25 djm Exp $ */
+/*	$NetBSD: monitor_wrap.c,v 1.34 2023/12/20 17:15:20 christos Exp $	*/
+/* $OpenBSD: monitor_wrap.c,v 1.129 2023/12/18 14:45:49 djm Exp $ */
 
 /*
  * Copyright 2002 Niels Provos <provos@citi.umich.edu>
@@ -28,7 +28,7 @@
  */
 
 #include "includes.h"
-__RCSID("$NetBSD: monitor_wrap.c,v 1.31 2022/10/05 22:39:36 christos Exp $");
+__RCSID("$NetBSD: monitor_wrap.c,v 1.34 2023/12/20 17:15:20 christos Exp $");
 #include <sys/types.h>
 #include <sys/uio.h>
 #include <sys/queue.h>
@@ -335,8 +335,9 @@ out:
 	for (i = 0; i < options.num_log_verbose; i++)
 		log_verbose_add(options.log_verbose[i]);
 	process_permitopen(ssh, &options);
+	process_channel_timeouts(ssh, &options);
+	kex_set_server_sig_algs(ssh, options.pubkey_accepted_algos);
 	free(newopts);
-
 	sshbuf_free(m);
 
 	return (pw);
@@ -563,10 +564,8 @@ mm_pty_allocate(int *ptyfd, int *ttyfd, char *namebuf, size_t namebuflen)
 	if ((tmp1 = dup(pmonitor->m_recvfd)) == -1 ||
 	    (tmp2 = dup(pmonitor->m_recvfd)) == -1) {
 		error_f("cannot allocate fds for pty");
-		if (tmp1 > 0)
+		if (tmp1 >= 0)
 			close(tmp1);
-		if (tmp2 > 0)
-			close(tmp2);
 		return 0;
 	}
 	close(tmp1);

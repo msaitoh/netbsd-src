@@ -1,4 +1,4 @@
-[//]: # ($NetBSD: README.md,v 1.12 2023/02/22 23:55:05 rillig Exp $)
+[//]: # ($NetBSD: README.md,v 1.14 2023/09/14 21:08:12 rillig Exp $)
 
 # Introduction
 
@@ -71,7 +71,7 @@ Lint operates on the level of individual expressions.
 * It does not build an AST of the statements of a function, therefore it
   cannot reliably analyze the control flow in a single function.
 * It does not store the control flow properties of functions, therefore it
-  cannot relate argument nullability with the return value.
+  cannot relate parameter nullability with the return value.
 * It does not have information about functions, except for their prototypes,
   therefore it cannot relate them across translation units.
 * It does not store detailed information about complex data types, therefore
@@ -105,7 +105,7 @@ it needs to be copied using `block_dup_type` or `expr_dup_type`.
 When lint parses an expression,
 it builds a tree of nodes representing the AST.
 Each node has an operator that defines which other members may be accessed.
-The operators and their properties are defined in `ops.def`.
+The operators and their properties are defined in `oper.c`.
 Some examples for operators:
 
 | Operator | Meaning                                    |
@@ -197,14 +197,14 @@ See `expr_free_all`.
 
 # Abbreviations in variable names
 
-| Abbr | Expanded                                    |
-|------|---------------------------------------------|
-| l    | left                                        |
-| r    | right                                       |
-| o    | old (during type conversions)               |
-| n    | new (during type conversions)               |
-| op   | operator                                    |
-| arg  | the number of the argument, for diagnostics |
+| Abbr | Expanded                                     |
+|------|----------------------------------------------|
+| l    | left                                         |
+| r    | right                                        |
+| o    | old (during type conversions)                |
+| n    | new (during type conversions)                |
+| op   | operator                                     |
+| arg  | the number of the parameter, for diagnostics |
 
 # Debugging
 

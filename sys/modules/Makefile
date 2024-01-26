@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.277 2023/04/13 07:03:31 riastradh Exp $
+#	$NetBSD: Makefile,v 1.281 2023/12/26 16:20:01 pgoyette Exp $
 
 .include <bsd.own.mk>
 
@@ -138,6 +138,7 @@ SUBDIR+=	null
 SUBDIR+=	onewire
 SUBDIR+=	opencrypto
 SUBDIR+=	overlay
+SUBDIR+=	owtemp
 SUBDIR+=	pad
 SUBDIR+=	pciverbose
 SUBDIR+=	pf
@@ -217,6 +218,7 @@ SUBDIR+=	exec_elf32
 .if ${MACHINE_CPU} == "aarch64" || \
     ${MACHINE_ARCH} == "alpha" || \
     ${MACHINE_ARCH} == "ia64" || \
+    ${MACHINE_ARCH} == "riscv64" || \
     ${MACHINE_ARCH} == "sparc64" || \
     ${MACHINE_ARCH} == "x86_64"
 SUBDIR+=	exec_elf64
@@ -341,12 +343,11 @@ SUBDIR+=	mgadrm
 SUBDIR+=	nsclpcsio
 SUBDIR+=	padlock
 SUBDIR+=	r128drm
-SUBDIR+=	radeondrm
+#SUBDIR+=	radeondrm
 SUBDIR+=	savagedrm
 SUBDIR+=	sisdrm
 SUBDIR+=	tdfxdrm
 SUBDIR+=	viac7temp
-SUBDIR+=	viadrmums
 .endif
 
 .if ${MACHINE_ARCH} == "i386" || \
@@ -367,6 +368,7 @@ SUBDIR+=	compat_linux
 SUBDIR+=	drmkms_agp
 SUBDIR+=	i915drm
 SUBDIR+=	i915drmkms
+SUBDIR+=	viadrmums
 #
 # ISA modules
 #

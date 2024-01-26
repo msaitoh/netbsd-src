@@ -1,4 +1,4 @@
-# $NetBSD: Makefile,v 1.333 2023/02/25 19:30:32 sjg Exp $
+# $NetBSD: Makefile,v 1.342 2024/01/07 02:07:44 sjg Exp $
 #
 # Unit tests for make(1)
 #
@@ -196,6 +196,7 @@ TESTS+=		directive-ifndef
 TESTS+=		directive-ifnmake
 TESTS+=		directive-include
 TESTS+=		directive-include-fatal
+TESTS+=		directive-include-guard
 TESTS+=		directive-info
 TESTS+=		directive-misspellings
 TESTS+=		directive-sinclude
@@ -212,8 +213,6 @@ TESTS+=		export
 TESTS+=		export-all
 TESTS+=		export-env
 TESTS+=		export-variants
-TESTS+=		forloop
-TESTS+=		forsubst
 TESTS+=		gnode-submake
 TESTS+=		hanoi-include
 TESTS+=		impsrc
@@ -230,7 +229,6 @@ TESTS+=		lint
 TESTS+=		make-exported
 TESTS+=		meta-cmd-cmp
 TESTS+=		moderrs
-TESTS+=		modmatch
 TESTS+=		modmisc
 .if ${.MAKE.UID} > 0
 TESTS+=		objdir-writable
@@ -374,6 +372,7 @@ TESTS+=		varmod-loop-delete
 TESTS+=		varmod-loop-varname
 TESTS+=		varmod-match
 TESTS+=		varmod-match-escape
+TESTS+=		varmod-mtime
 TESTS+=		varmod-no-match
 TESTS+=		varmod-order
 TESTS+=		varmod-order-numeric
@@ -506,6 +505,12 @@ FLAGS.varname-empty=		-dv '$${:U}=cmdline-u' '=cmdline-plain'
 # Some tests need extra postprocessing.
 SED_CMDS.deptgt-phony=	${STD_SED_CMDS.dd}
 SED_CMDS.dir=		${STD_SED_CMDS.dd}
+SED_CMDS.directive-include-guard= \
+	-e '/\.MAKEFLAGS/d' \
+	-e '/^Parsing line/d' \
+	-e '/^SetFilenameVars:/d' \
+	-e '/^ParseDependency/d' \
+	-e '/^ParseEOF:/d'
 SED_CMDS.export=	-e '/^[^=_A-Za-z0-9]*=/d'
 SED_CMDS.export-all=	${SED_CMDS.export}
 SED_CMDS.export-env=	${SED_CMDS.export}
@@ -554,6 +559,7 @@ SED_CMDS.suff-transform-debug+=	${STD_SED_CMDS.dg1}
 SED_CMDS.var-op-shell+=		${STD_SED_CMDS.shell}
 SED_CMDS.var-op-shell+=		-e '/command/s,No such.*,not found,'
 SED_CMDS.vardebug+=		-e 's,${.SHELL},</path/to/shell>,'
+SED_CMDS.varmod-mtime+=		-e "s,': .*,': <ENOENT>,"
 SED_CMDS.varmod-subst-regex+=	${STD_SED_CMDS.regex}
 SED_CMDS.varparse-errors+=	${STD_SED_CMDS.timestamp}
 SED_CMDS.varname-dot-make-meta-ignore_filter+= ${SED_CMDS.meta-ignore}
@@ -591,6 +597,7 @@ STD_SED_CMDS.dg1=	-e 's,${.CURDIR}$$,<curdir>,'
 STD_SED_CMDS.dg1+=	-e 's,  ${DEFSYSPATH:U/usr/share/mk}$$,  <defsyspath>,'
 STD_SED_CMDS.dg1+=	-e 's,^\(\.MAKE *=\) .*,\1 <details omitted>,'
 STD_SED_CMDS.dg1+=	-e 's,^\(\.MAKE\.[A-Z_]* *=\) .*,\1 <details omitted>,'
+STD_SED_CMDS.dg1+=	-e 's,^\(\.MAKE\.JOBS\.C *=\) .*,\1 <details omitted>,'
 STD_SED_CMDS.dg1+=	-e 's,^\(MACHINE[_ARCH]* *=\) .*,\1 <details omitted>,'
 STD_SED_CMDS.dg1+=	-e 's,^\(MAKE *=\) .*,\1 <details omitted>,'
 STD_SED_CMDS.dg1+=	-e 's,^\(\.SHELL *=\) .*,\1 <details omitted>,'
@@ -740,6 +747,7 @@ _SED_CMDS+=	-e 's,${.OBJDIR},<curdir>,g' -e 's,${.OBJDIR:tA},<curdir>,g'
 _SED_CMDS+=	-e 's,^${TEST_MAKE:T:S,.,\\.,g}[][0-9]*:,make:,'
 _SED_CMDS+=	-e 's,${TEST_MAKE:S,.,\\.,g},make,'
 _SED_CMDS+=	-e 's,^usage: ${TEST_MAKE:T:S,.,\\.,g} ,usage: make ,'
+_SED_CMDS+=	-e 's,${TEST_MAKE:T:S,.,\\.,g}\(\[[1-9][0-9]*\]:\),make\1,'
 _SED_CMDS+=	-e 's,<curdir>/,,g'
 _SED_CMDS+=	-e 's,${UNIT_TESTS:S,.,\\.,g}/,,g'
 _SED_CMDS+=	-e '/MAKE_VERSION/d'

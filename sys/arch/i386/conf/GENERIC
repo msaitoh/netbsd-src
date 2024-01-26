@@ -1,4 +1,4 @@
-# $NetBSD: GENERIC,v 1.1246 2023/02/09 14:09:48 abs Exp $
+# $NetBSD: GENERIC,v 1.1252 2023/10/23 01:43:55 msaitoh Exp $
 #
 # GENERIC machine description file
 #
@@ -22,7 +22,7 @@ include 	"arch/i386/conf/std.i386"
 
 options 	INCLUDE_CONFIG_FILE	# embed config file in kernel binary
 
-#ident		"GENERIC-$Revision: 1.1246 $"
+#ident		"GENERIC-$Revision: 1.1252 $"
 
 maxusers	64		# estimated number of users
 
@@ -139,6 +139,10 @@ options 	KDTRACE_HOOKS	# kernel DTrace hooks
 # Kernel Code Coverage Driver.
 #makeoptions	KCOV=1
 #options 	KCOV
+
+# Heartbeat checks
+options 	HEARTBEAT
+options 	HEARTBEAT_MAX_PERIOD_DEFAULT=15
 
 # Compatibility options
 include 	"conf/compat_netbsd09.config"
@@ -978,6 +982,7 @@ bwfm*	at pci? dev ? function ?	# Broadcom FullMAC
 dge*	at pci? dev ? function ?	# Intel 82597 10GbE LR
 ep*	at pci? dev ? function ?	# 3Com 3c59x
 epic*	at pci? dev ? function ?	# SMC EPIC/100 Ethernet
+#eqos*	at pci? dev ? function ?	# DesignWare Ethernet QoS
 et*	at pci? dev ? function ?	# Agere/LSI ET1310/ET1301 Gigabit
 ex*	at pci? dev ? function ?	# 3Com 3c90x[BC]
 fxp*	at pci? dev ? function ?	# Intel EtherExpress PRO 10+/100B
@@ -1504,9 +1509,9 @@ pseudo-device	cmos
 # userland interface to drivers, including autoconf and properties retrieval
 pseudo-device	drvctl
 
-# EFI runtime support -- not yet tested
-#options 	EFI_RUNTIME
-#pseudo-device 	efi			# /dev/efi
+# EFI runtime support
+options 	EFI_RUNTIME
+pseudo-device 	efi			# /dev/efi
 
 include "dev/veriexec.config"
 

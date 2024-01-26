@@ -1,5 +1,5 @@
-/*	$NetBSD: monitor.c,v 1.41 2022/10/05 22:39:36 christos Exp $	*/
-/* $OpenBSD: monitor.c,v 1.234 2022/06/15 16:08:25 djm Exp $ */
+/*	$NetBSD: monitor.c,v 1.43 2023/10/25 20:19:57 christos Exp $	*/
+/* $OpenBSD: monitor.c,v 1.237 2023/08/16 16:14:11 djm Exp $ */
 
 /*
  * Copyright 2002 Niels Provos <provos@citi.umich.edu>
@@ -28,7 +28,7 @@
  */
 
 #include "includes.h"
-__RCSID("$NetBSD: monitor.c,v 1.41 2022/10/05 22:39:36 christos Exp $");
+__RCSID("$NetBSD: monitor.c,v 1.43 2023/10/25 20:19:57 christos Exp $");
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/socket.h>
@@ -117,9 +117,6 @@ int mm_answer_keyverify(struct ssh *, int, struct sshbuf *);
 int mm_answer_pty(struct ssh *, int, struct sshbuf *);
 int mm_answer_pty_cleanup(struct ssh *, int, struct sshbuf *);
 int mm_answer_term(struct ssh *, int, struct sshbuf *);
-int mm_answer_rsa_keyallowed(struct ssh *, int, struct sshbuf *);
-int mm_answer_rsa_challenge(struct ssh *, int, struct sshbuf *);
-int mm_answer_rsa_response(struct ssh *, int, struct sshbuf *);
 int mm_answer_sesskey(struct ssh *, int, struct sshbuf *);
 int mm_answer_sessid(struct ssh *, int, struct sshbuf *);
 
@@ -328,6 +325,11 @@ monitor_child_preauth(struct ssh *ssh, struct monitor *pmonitor)
 				auth2_update_session_info(authctxt,
 				    auth_method, auth_submethod);
 			}
+		}
+		if (authctxt->failures > options.max_authtries) {
+			/* Shouldn't happen */
+			fatal_f("privsep child made too many authentication "
+			    "attempts");
 		}
 	}
 
@@ -1156,11 +1158,6 @@ mm_answer_keyallowed(struct ssh *ssh, int sock, struct sshbuf *m)
 		fatal_fr(r, "parse");
 
 	if (key != NULL && authctxt->valid) {
-		/* These should not make it past the privsep child */
-		if (sshkey_type_plain(key->type) == KEY_RSA &&
-		    (ssh->compat & SSH_BUG_RSASIGMD5) != 0)
-			fatal_f("passed a SSH_BUG_RSASIGMD5 key");
-
 		switch (type) {
 		case MM_USERKEY:
 			auth_method = "publickey";

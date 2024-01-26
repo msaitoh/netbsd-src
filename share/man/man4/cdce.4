@@ -1,3 +1,5 @@
+.\" $NetBSD: cdce.4,v 1.19 2023/11/05 17:52:09 mrg Exp $
+.\"
 .\" Copyright (c) 2004 Daniel Hartmeier
 .\" All rights reserved.
 .\"
@@ -25,9 +27,7 @@
 .\" ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 .\" POSSIBILITY OF SUCH DAMAGE.
 .\"
-.\" $NetBSD: cdce.4,v 1.17 2019/08/30 09:22:17 wiz Exp $
-.\"
-.Dd August 24, 2019
+.Dd November 5, 2023
 .Dt CDCE 4
 .Os
 .Sh NAME
@@ -49,6 +49,8 @@ Acer Labs USB 2.0 Data Link
 .It
 Anker A7611
 .It
+Club 3D Adapter LAN-Adapter (CAC-1420)
+.It
 DIEWU USB-DW8152
 .It
 G.Mate YP3X00
@@ -61,7 +63,7 @@ NetChip EthernetGadget
 .It
 Prolific PL-2501
 .It
-Realtek RTL8152B Ethernet controller
+Realtek RTL8152B, RTL8156, and RTL8156B Ethernet controllers
 .It
 Sharp Zaurus
 .El
@@ -72,8 +74,8 @@ transporting Ethernet frames.
 For more information on configuring this device, see
 .Xr ifconfig 8 .
 .Pp
-USB 1.x bridges support speeds of up to 12Mbps, and USB 2.0 speeds of
-up to 480Mbps.
+USB 1.x bridges support speeds of up to 12Mbps, USB 2.0 speeds of
+up to 480Mbps, and USB 3.0 speeds of up to 5Gbps.
 .Pp
 Packets are
 received and transmitted over separate USB bulk transfer endpoints.

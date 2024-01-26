@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.120 2021/10/10 08:35:34 rillig Exp $
+#	$NetBSD: Makefile,v 1.123 2023/10/19 04:27:24 mrg Exp $
 #	@(#)Makefile	8.4 (Berkeley) 5/5/95
 
 .include <bsd.own.mk>
@@ -92,6 +92,9 @@ SUBDIR.roff+=USD.doc
 COPTS.printf.c = -Wno-format-nonliteral
 COPTS.jobs.c = -Wno-format-nonliteral
 COPTS.var.c = -Wno-format-nonliteral
+
+# XXXGCC12 - only on some targets
+COPTS.parser.c+=	${${ACTIVE_CC} == "gcc" && ${HAVE_GCC:U0} >= 12:? -Wno-error=clobbered :}
 
 .include <bsd.prog.mk>
 .include <bsd.subdir.mk>

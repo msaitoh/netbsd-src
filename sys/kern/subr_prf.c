@@ -1,4 +1,4 @@
-/*	$NetBSD: subr_prf.c,v 1.200 2023/04/12 06:35:26 riastradh Exp $	*/
+/*	$NetBSD: subr_prf.c,v 1.203 2023/08/29 21:23:14 andvar Exp $	*/
 
 /*-
  * Copyright (c) 1986, 1988, 1991, 1993
@@ -37,7 +37,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: subr_prf.c,v 1.200 2023/04/12 06:35:26 riastradh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: subr_prf.c,v 1.203 2023/08/29 21:23:14 andvar Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_ddb.h"
@@ -282,10 +282,6 @@ vpanic(const char *fmt, va_list ap)
 #ifdef KGDB
 	kgdb_panic();
 #endif
-#ifdef KADB
-	if (boothowto & RB_KDB)
-		kdbpanic();
-#endif
 #ifdef DDB
 	db_panic();
 #endif
@@ -521,7 +517,7 @@ putchar(int c, int flags, struct tty *tp)
 #ifdef RND_PRINTF
 	if (__predict_true(kprintf_inited)) {
 		unsigned char ch = c;
-		rnd_add_data(&rnd_printf_source, &ch, 1, 0);
+		rnd_add_data_intr(&rnd_printf_source, &ch, 1, 0);
 	}
 #endif
 }
@@ -1241,11 +1237,12 @@ device_printf(device_t dev, const char *fmt, ...)
 {
 	va_list ap;
 
+	kprintf_lock();
+	kprintf_internal("%s: ", TOCONS|TOLOG, NULL, NULL, device_xname(dev));
 	va_start(ap, fmt);
-	printf("%s: ", device_xname(dev));
-	vprintf(fmt, ap);
+	kprintf(fmt, TOCONS|TOLOG, NULL, NULL, ap);
 	va_end(ap);
-	return;
+	kprintf_unlock();
 }
 
 /*
@@ -1623,7 +1620,7 @@ done:
 
 #ifdef RND_PRINTF
 	if (__predict_true(kprintf_inited))
-		rnd_add_data(&rnd_printf_source, NULL, 0, 0);
+		rnd_add_data_intr(&rnd_printf_source, NULL, 0, 0);
 #endif
 	return ret;
 }

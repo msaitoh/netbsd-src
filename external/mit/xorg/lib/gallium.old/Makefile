@@ -1,4 +1,4 @@
-# $NetBSD: Makefile,v 1.5 2023/02/07 06:19:03 mrg Exp $
+# $NetBSD: Makefile,v 1.8 2023/10/07 12:15:52 rin Exp $
 
 # Transparent struct/union broken
 NOLINT=yes
@@ -1133,7 +1133,7 @@ CPPFLAGS+=	${CPPFLAGS.${XORG_MACHINE_ARCH:U${MACHINE_ARCH}}}
 CPPFLAGS.r600_pipe_common.c+=	-DMESA_LLVM_VERSION_STRING=\"${LLVM_VERSION}\"
 CPPFLAGS.si_get.c+=	-DMESA_LLVM_VERSION_STRING=\"${LLVM_VERSION}\"
 
-.include "../driver.mk"
+.include "../driver${OLD_SUFFIX}.mk"
 
 
 .PATH: ${X11SRCDIR.Mesa}/src/gallium/targets/dri
@@ -1211,11 +1211,16 @@ SYMLINKS+= gallium_dri.so.${SHLIB_MAJOR}.debug ${DRIDEBUGDIR}/${_d}_dri.so.${SHL
 COPTS+=	${${ACTIVE_CC} == "clang":? -Wa,-Av8plus  :}
 .endif
 
-.if ${MACHINE_ARCH} == "vax"
-COPTS.nir.c += -O1
+# XXXGCC12
+.if ${MACHINE_ARCH} == "m68k"
+COPTS.st_glsl_to_tgsi.cpp += -O1
+COPTS.vl_bicubic_filter.c += -O1
+COPTS.nir_opt_algebraic.c += -Os -fno-jump-tables
 .endif
 
 COPTS.u_atomic.c+=	${${ACTIVE_CC} == "gcc" && ${HAVE_GCC:U0} >= 10:? -Wno-builtin-declaration-mismatch :}
+
+COPTS.prog_opt_constant_fold.c+=	${CC_WNO_STRINGOP_OVERREAD}
 
 .include <bsd.lib.mk>
 # Don't regenerate c files

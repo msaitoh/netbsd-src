@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# $NetBSD: iscsid_volumes,v 1.3 2023/02/18 07:51:52 mlelstv Exp $
+# $NetBSD: iscsid_volumes,v 1.5 2023/12/25 08:29:05 kre Exp $
 #
 
 # PROVIDE: iscsid_volumes
@@ -35,6 +35,16 @@ iscsid_volumes_start()
 
 			if [ -f /etc/iscsi/auths ]; then
 				while read entry dummy; do
+
+					case $entry in
+					*:chap:*|\
+					*:CHAP:*|\
+					*:none:*)
+						dummy=${entry#*:}
+						entry=${entry%%:*}:${dummy#*:}
+						;;
+					esac
+
 					case $entry in
 					\#*|"") ;;
 					"$user":*) pass=${entry#*:} ;;
@@ -63,7 +73,7 @@ iscsid_volumes_start()
 				-u "$user" \
 				-s "$pass" \
 				-S "$mpass" \
-				-N "${alias:--}")
+				${alias:+-N} ${alias:+"$alias"})
 			echo "$out"
 
 			case $out in
@@ -88,17 +98,19 @@ iscsid_volumes_stop()
 		*)
 			echo "Remove target ${alias:-$target}"
 
-			/sbin/iscsictl list_sessions \
-			| while read key1 num key2 sesstarget; do
-				if [ x"$key1" = x"Session" -a \
-				     x"$key2" = x"Target" -a \
-				     x"$sesstarget" = x"$target" ]; then
-					/sbin/iscsictl logout -I "$num" | grep -v '^OK$'
+			/sbin/iscsictl list_sessions |
+			    while read key1 num key2 sesstarget; do
+				if [ x"$key1" = x"Session" ] &&
+				   [ x"$key2" = x"Target"  ] &&
+				   [ x"$sesstarget" = x"$target" ]
+				then
+					/sbin/iscsictl logout -I "$num" |
+					    grep -v '^OK$'
 				fi
 			done
 
-			/sbin/iscsictl list_targets \
-			| while read num talias ttarget; do
+			/sbin/iscsictl list_targets |
+			    while read num talias ttarget; do
 				if [ x"$ttarget" = x"$target" ]; then
 					/sbin/iscsictl remove_target -I "$num"
 				fi

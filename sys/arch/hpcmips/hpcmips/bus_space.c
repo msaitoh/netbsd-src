@@ -1,4 +1,4 @@
-/*	$NetBSD: bus_space.c,v 1.32 2016/07/11 16:18:56 matt Exp $	*/
+/*	$NetBSD: bus_space.c,v 1.34 2023/12/20 14:50:02 thorpej Exp $	*/
 
 /*-
  * Copyright (c) 1998 The NetBSD Foundation, Inc.
@@ -31,11 +31,10 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: bus_space.c,v 1.32 2016/07/11 16:18:56 matt Exp $");
+__KERNEL_RCSID(0, "$NetBSD: bus_space.c,v 1.34 2023/12/20 14:50:02 thorpej Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
-#include <sys/malloc.h>
 #include <sys/extent.h>
 #include <sys/bus.h>
 
@@ -337,15 +336,15 @@ __bs_alloc(bus_space_tag_t tx, bus_addr_t rstart, bus_addr_t rend,
 	if (!t->extent)
 		panic("bus_space_alloc: no extent");
 
-	DPRINTF(("\tbus_space_alloc:%#lx(%#lx)+%#lx\n", bpa,
-	    bpa - t->base, size));
-
 	rstart += t->base;
 	rend += t->base;
 	if ((err = extent_alloc_subregion(t->extent, rstart, rend, size,
 	    alignment, boundary, EX_FAST|EX_NOWAIT|EX_MALLOCOK, &bpa))) {
 		return (err);
 	}
+
+	DPRINTF(("\tbus_space_alloc:%#lx(%#lx)+%#lx\n", bpa,
+	    bpa - t->base, size));
 
 	*bshp = __hpcmips_cacheable(t, bpa, size, cacheable);
 

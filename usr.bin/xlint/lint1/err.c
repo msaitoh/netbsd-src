@@ -1,4 +1,4 @@
-/*	$NetBSD: err.c,v 1.193 2023/04/15 11:34:45 rillig Exp $	*/
+/*	$NetBSD: err.c,v 1.223 2024/01/20 10:02:31 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -14,7 +14,7 @@
  *    documentation and/or other materials provided with the distribution.
  * 3. All advertising materials mentioning features or use of this software
  *    must display the following acknowledgement:
- *      This product includes software developed by Jochen Pohl for
+ *	This product includes software developed by Jochen Pohl for
  *	The NetBSD Project.
  * 4. The name of the author may not be used to endorse or promote products
  *    derived from this software without specific prior written permission.
@@ -37,7 +37,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID)
-__RCSID("$NetBSD: err.c,v 1.193 2023/04/15 11:34:45 rillig Exp $");
+__RCSID("$NetBSD: err.c,v 1.223 2024/01/20 10:02:31 rillig Exp $");
 #endif
 
 #include <limits.h>
@@ -47,24 +47,24 @@ __RCSID("$NetBSD: err.c,v 1.193 2023/04/15 11:34:45 rillig Exp $");
 
 #include "lint1.h"
 
-/* number of errors found */
-int	nerr;
+bool seen_error;
+bool seen_warning;
 
 /* number of syntax errors */
-int	sytxerr;
+int sytxerr;
 
 
 static const char *const msgs[] = {
 	"empty declaration",					      /* 0 */
 	"old-style declaration; add 'int'",			      /* 1 */
 	"empty declaration",					      /* 2 */
-	"'%s' declared in argument declaration list",		      /* 3 */
+	"'%s' declared in parameter declaration list",		      /* 3 */
 	"illegal type combination",				      /* 4 */
 	"modifying typedef with '%s'; only qualifiers allowed",	      /* 5 */
 	"use 'double' instead of 'long float'",			      /* 6 */
 	"only one storage class allowed",			      /* 7 */
 	"illegal storage class",				      /* 8 */
-	"only register valid as formal parameter storage class",      /* 9 */
+	"only 'register' is valid as storage class in parameter",     /* 9 */
 	"duplicate '%s'",					      /* 10 */
 	"bit-field initializer out of range",			      /* 11 */
 	"compiler takes size of function",			      /* 12 */
@@ -85,31 +85,31 @@ static const char *const msgs[] = {
 	"redeclaration of '%s'",				      /* 27 */
 	"redefinition of '%s'",					      /* 28 */
 	"'%s' was previously declared extern, becomes static",	      /* 29 */
-	"redeclaration of '%s'; ANSI C requires static",	      /* 30 */
+	"redeclaration of '%s'; C90 or later require static",	      /* 30 */
 	"'%s' has incomplete type '%s'",			      /* 31 */
-	"type of argument '%s' defaults to 'int'",		      /* 32 */
+	"type of parameter '%s' defaults to 'int'",		      /* 32 */
 	"duplicate member name '%s'",				      /* 33 */
 	"nonportable bit-field type '%s'",			      /* 34 */
 	"illegal bit-field type '%s'",				      /* 35 */
 	"illegal bit-field size: %d",				      /* 36 */
 	"zero size bit-field",					      /* 37 */
 	"function illegal in structure or union",		      /* 38 */
-	"zero-sized array '%s' in struct is a C99 extension",	      /* 39 */
+	"zero-sized array '%s' in struct requires C99 or later",      /* 39 */
 	"",			/* never used */		      /* 40 */
 	"bit-field in union is very unusual",			      /* 41 */
 	"forward reference to enum type",			      /* 42 */
 	"redefinition of '%s' hides earlier one",		      /* 43 */
-	"declaration of '%s %s' introduces new type in ANSI C",	      /* 44 */
+	"declaration of '%s %s' introduces new type in C90 or later", /* 44 */
 	"base type is really '%s %s'",				      /* 45 */
 	"%s tag '%s' redeclared as %s",				      /* 46 */
 	"zero sized %s is a C99 feature",			      /* 47 */
 	"enumeration value '%s' overflows",			      /* 48 */
 	"anonymous struct/union members is a C11 feature",	      /* 49 */
-	"argument '%s' has function type, should be pointer",	      /* 50 */
+	"parameter '%s' has function type, should be pointer",	      /* 50 */
 	"parameter mismatch: %d declared, %d defined",		      /* 51 */
 	"cannot initialize parameter '%s'",			      /* 52 */
-	"declared argument '%s' is missing",			      /* 53 */
-	"trailing ',' prohibited in enum declaration",		      /* 54 */
+	"declared parameter '%s' is missing",			      /* 53 */
+	"trailing ',' in enum declaration requires C99 or later",     /* 54 */
 	"integral constant expression expected",		      /* 55 */
 	"integral constant too large",				      /* 56 */
 	"enumeration constant '%s' hides parameter",		      /* 57 */
@@ -132,14 +132,14 @@ static const char *const msgs[] = {
 	"no hex digits follow \\x",				      /* 74 */
 	"overflow in hex escape",				      /* 75 */
 	"character escape does not fit in character",		      /* 76 */
-	"bad octal digit %c",					      /* 77 */
+	"bad octal digit '%c'",					      /* 77 */
 	"",			/* unused */			      /* 78 */
 	"dubious escape \\%c",					      /* 79 */
 	"dubious escape \\%o",					      /* 80 */
 	"\\a undefined in traditional C",			      /* 81 */
 	"\\x undefined in traditional C",			      /* 82 */
 	"storage class after type is obsolescent",		      /* 83 */
-	"ANSI C requires formal parameter before '...'",	      /* 84 */
+	"C90 to C17 require formal parameter before '...'",	      /* 84 */
 	"dubious tag declaration '%s %s'",			      /* 85 */
 	"automatic '%s' hides external declaration",		      /* 86 */
 	"static '%s' hides external declaration",		      /* 87 */
@@ -152,8 +152,8 @@ static const char *const msgs[] = {
 	"function '%s' has illegal storage class",		      /* 94 */
 	"declaration of '%s' hides earlier one",		      /* 95 */
 	"cannot dereference non-pointer type '%s'",		      /* 96 */
-	"suffix U is illegal in traditional C",			      /* 97 */
-	"suffixes F and L are illegal in traditional C",	      /* 98 */
+	"suffix 'U' is illegal in traditional C",		      /* 97 */
+	"suffixes 'F' and 'L' are illegal in traditional C",	      /* 98 */
 	"'%s' undefined",					      /* 99 */
 	"unary '+' is illegal in traditional C",		      /* 100 */
 	"type '%s' does not have member '%s'",			      /* 101 */
@@ -173,14 +173,14 @@ static const char *const msgs[] = {
 	"%soperand of '%s' must be modifiable lvalue",		      /* 115 */
 	"illegal pointer subtraction",				      /* 116 */
 	"bitwise '%s' on signed value possibly nonportable",	      /* 117 */
-	"semantics of '%s' change in ANSI C; use explicit cast",      /* 118 */
+	"semantics of '%s' change in C90; use explicit cast",	      /* 118 */
 	"conversion of '%s' to '%s' is out of range",		      /* 119 */
 	"bitwise '%s' on signed value nonportable",		      /* 120 */
 	"negative shift",					      /* 121 */
 	"shift amount %llu is greater than bit-size %llu of '%s'",    /* 122 */
 	"illegal combination of %s '%s' and %s '%s', op '%s'",	      /* 123 */
 	"illegal combination of '%s' and '%s', op '%s'",	      /* 124 */
-	"ANSI C forbids ordered comparisons of pointers to functions",/* 125 */
+	"pointers to functions can only be compared for equality",    /* 125 */
 	"incompatible types '%s' and '%s' in conditional",	      /* 126 */
 	"'&' before array or function: ignored",		      /* 127 */
 	"operands of '%s' have incompatible pointer types to '%s' and '%s'", /* 128 */
@@ -196,8 +196,8 @@ static const char *const msgs[] = {
 	"unknown operand size, op '%s'",			      /* 138 */
 	"division by 0",					      /* 139 */
 	"modulus by 0",						      /* 140 */
-	"integer overflow detected, op '%s'",			      /* 141 */
-	"floating point overflow on operator '%s'",		      /* 142 */
+	"operator '%s' produces integer overflow",		      /* 141 */
+	"operator '%s' produces floating point overflow",	      /* 142 */
 	"cannot take size/alignment of incomplete type",	      /* 143 */
 	"cannot take size/alignment of function type '%s'",	      /* 144 */
 	"cannot take size/alignment of bit-field",		      /* 145 */
@@ -212,7 +212,7 @@ static const char *const msgs[] = {
 	"illegal combination of %s '%s' and %s '%s', arg #%d",	      /* 154 */
 	"passing '%s' to incompatible '%s', arg #%d",		      /* 155 */
 	"function expects '%s', passing '%s' for arg #%d",	      /* 156 */
-	"ANSI C treats constant as unsigned",			      /* 157 */
+	"C90 treats constant as unsigned",			      /* 157 */
 	"'%s' may be used before set",				      /* 158 */
 	"assignment in conditional context",			      /* 159 */
 	"operator '==' found where '=' was expected",		      /* 160 */
@@ -225,7 +225,7 @@ static const char *const msgs[] = {
 	"array subscript cannot be negative: %ld",		      /* 167 */
 	"array subscript cannot be > %d: %ld",			      /* 168 */
 	"precedence confusion possible: parenthesize!",		      /* 169 */
-	"first operand must have scalar type, op ? :",		      /* 170 */
+	"first operand of '?' must have scalar type",		      /* 170 */
 	"cannot assign to '%s' from '%s'",			      /* 171 */
 	"too many struct/union initializers",			      /* 172 */
 	"too many array initializers, expected %d",		      /* 173 */
@@ -236,7 +236,7 @@ static const char *const msgs[] = {
 	"initializer does not fit",				      /* 178 */
 	"cannot initialize struct/union with no named member",	      /* 179 */
 	"bit-field initializer does not fit",			      /* 180 */
-	"{}-enclosed initializer required",			      /* 181 */
+	"{}-enclosed or constant initializer of type '%s' required",  /* 181 */
 	"incompatible pointer types to '%s' and '%s'",		      /* 182 */
 	"illegal combination of %s '%s' and %s '%s'",		      /* 183 */
 	"illegal combination of '%s' and '%s'",			      /* 184 */
@@ -254,8 +254,8 @@ static const char *const msgs[] = {
 	"case label affected by conversion",			      /* 196 */
 	"non-constant case expression",				      /* 197 */
 	"non-integral case expression",				      /* 198 */
-	"duplicate case in switch: %ld",			      /* 199 */
-	"duplicate case in switch: %lu",			      /* 200 */
+	"duplicate case '%ld' in switch",			      /* 199 */
+	"duplicate case '%lu' in switch",			      /* 200 */
 	"default outside switch",				      /* 201 */
 	"duplicate default in switch",				      /* 202 */
 	"case label must be of type 'int' in traditional C",	      /* 203 */
@@ -273,7 +273,7 @@ static const char *const msgs[] = {
 	"function '%s' implicitly declared to return int",	      /* 215 */
 	"function '%s' has 'return expr' and 'return'",		      /* 216 */
 	"function '%s' falls off bottom without returning value",     /* 217 */
-	"ANSI C treats constant as unsigned, op '%s'",		      /* 218 */
+	"C90 treats constant as unsigned, op '%s'",		      /* 218 */
 	"concatenated strings are illegal in traditional C",	      /* 219 */
 	"fallthrough on case statement",			      /* 220 */
 	"initialization of unsigned with negative constant",	      /* 221 */
@@ -286,7 +286,7 @@ static const char *const msgs[] = {
 	"function cannot return const or volatile object",	      /* 228 */
 	"converting '%s' to '%s' is questionable",		      /* 229 */
 	"nonportable character comparison '%s'",		      /* 230 */
-	"argument '%s' unused in function '%s'",		      /* 231 */
+	"parameter '%s' unused in function '%s'",		      /* 231 */
 	"label '%s' unused in function '%s'",			      /* 232 */
 	"struct '%s' never defined",				      /* 233 */
 	"union '%s' never defined",				      /* 234 */
@@ -294,11 +294,11 @@ static const char *const msgs[] = {
 	"static function '%s' unused",				      /* 236 */
 	"redeclaration of formal parameter '%s'",		      /* 237 */
 	"initialization of union is illegal in traditional C",	      /* 238 */
-	"constant argument to '!'",				      /* 239 */
+	"constant operand to '!'",				      /* 239 */
 	"",			/* unused */			      /* 240 */
-	"dubious operation on enum, op '%s'",			      /* 241 */
+	"dubious operation '%s' on enum",			      /* 241 */
 	"combination of '%s' and '%s', op '%s'",		      /* 242 */
-	"dubious comparison of enums, op '%s'",			      /* 243 */
+	"operator '%s' assumes that '%s' is ordered",		      /* 243 */
 	"illegal structure pointer combination",		      /* 244 */
 	"incompatible structure pointers: '%s' '%s' '%s'",	      /* 245 */
 	"dubious conversion of enum to '%s'",			      /* 246 */
@@ -310,11 +310,11 @@ static const char *const msgs[] = {
 	"integer constant out of range",			      /* 252 */
 	"unterminated character constant",			      /* 253 */
 	"newline in string or char constant",			      /* 254 */
-	"undefined or invalid # directive",			      /* 255 */
+	"undefined or invalid '#' directive",			      /* 255 */
 	"unterminated comment",					      /* 256 */
 	"extra characters in lint comment",			      /* 257 */
 	"unterminated string constant",				      /* 258 */
-	"argument #%d is converted from '%s' to '%s' due to prototype", /* 259 */
+	"argument %d is converted from '%s' to '%s' due to prototype", /* 259 */
 	"previous declaration of '%s'",				      /* 260 */
 	"previous definition of '%s'",				      /* 261 */
 	"\\\" inside character constants undefined in traditional C", /* 262 */
@@ -324,12 +324,12 @@ static const char *const msgs[] = {
 	"'long double' is illegal in traditional C",		      /* 266 */
 	"shift amount %u equals bit-size of '%s'",		      /* 267 */
 	"variable '%s' declared inline",			      /* 268 */
-	"argument '%s' declared inline",			      /* 269 */
+	"parameter '%s' declared inline",			      /* 269 */
 	"function prototypes are illegal in traditional C",	      /* 270 */
 	"switch expression must be of type 'int' in traditional C",   /* 271 */
 	"empty translation unit",				      /* 272 */
-	"bit-field type '%s' invalid in ANSI C",		      /* 273 */
-	"ANSI C forbids comparison of %s with %s",		      /* 274 */
+	"bit-field type '%s' invalid in C90 or later",		      /* 273 */
+	"C90 or later forbid comparison of %s with %s",		      /* 274 */
 	"cast discards 'const' from type '%s'",			      /* 275 */
 	"'__%s__' is illegal for type '%s'",			      /* 276 */
 	"initialization of '%s' with '%s'",			      /* 277 */
@@ -338,17 +338,17 @@ static const char *const msgs[] = {
 	"comment /* %s */ must be outside function",		      /* 280 */
 	"duplicate comment /* %s */",				      /* 281 */
 	"comment /* %s */ must precede function definition",	      /* 282 */
-	"argument number mismatch with directive /* %s */",	      /* 283 */
+	"parameter number mismatch in comment /* %s */",	      /* 283 */
 	"fallthrough on default statement",			      /* 284 */
 	"prototype declaration",				      /* 285 */
 	"function definition is not a prototype",		      /* 286 */
 	"function declaration is not a prototype",		      /* 287 */
 	"dubious use of /* VARARGS */ with /* %s */",		      /* 288 */
-	"can't be used together: /* PRINTFLIKE */ /* SCANFLIKE */",   /* 289 */
+	"/* PRINTFLIKE */ and /* SCANFLIKE */ cannot be combined",    /* 289 */
 	"static function '%s' declared but not defined",	      /* 290 */
 	"invalid multibyte character",				      /* 291 */
 	"cannot concatenate wide and regular string literals",	      /* 292 */
-	"argument %d must be 'char *' for PRINTFLIKE/SCANFLIKE",      /* 293 */
+	"parameter %d must be 'char *' for PRINTFLIKE/SCANFLIKE",     /* 293 */
 	"multi-character character constant",			      /* 294 */
 	"conversion of '%s' to '%s' is out of range, arg #%d",	      /* 295 */
 	"conversion of negative constant to unsigned type, arg #%d",  /* 296 */
@@ -358,16 +358,16 @@ static const char *const msgs[] = {
 	"old-style definition",					      /* 300 */
 	"array of incomplete type",				      /* 301 */
 	"'%s' returns pointer to automatic object",		      /* 302 */
-	"ANSI C forbids conversion of %s to %s",		      /* 303 */
-	"ANSI C forbids conversion of %s to %s, arg #%d",	      /* 304 */
-	"ANSI C forbids conversion of %s to %s, op %s",		      /* 305 */
+	"conversion of %s to %s requires a cast",		      /* 303 */
+	"conversion of %s to %s requires a cast, arg #%d",	      /* 304 */
+	"conversion of %s to %s requires a cast, op %s",	      /* 305 */
 	"constant truncated by conversion, op '%s'",		      /* 306 */
 	"static variable '%s' set but not used",		      /* 307 */
 	"invalid type for _Complex",				      /* 308 */
 	"extra bits set to 0 in conversion of '%s' to '%s', op '%s'", /* 309 */
-	"symbol renaming can't be used on function arguments",	      /* 310 */
+	"symbol renaming can't be used on function parameters",	      /* 310 */
 	"symbol renaming can't be used on automatic variables",	      /* 311 */
-	"%s does not support // comments",			      /* 312 */
+	"%s does not support '//' comments",			      /* 312 */
 	"struct or union member name in initializer is a C99 feature",/* 313 */
 	"",		/* never used */			      /* 314 */
 	"GCC style struct or union member name in initializer",	      /* 315 */
@@ -375,9 +375,9 @@ static const char *const msgs[] = {
 	"__func__ is a C99 feature",				      /* 317 */
 	"variable array dimension is a C99/GCC extension",	      /* 318 */
 	"compound literals are a C99/GCC extension",		      /* 319 */
-	"({ }) is a GCC extension",				      /* 320 */
+	"'({ ... })' is a GCC extension",			      /* 320 */
 	"array initializer with designators is a C99 feature",	      /* 321 */
-	"zero sized array is a C99 extension",			      /* 322 */
+	"zero sized array requires C99 or later",		      /* 322 */
 	"continue in 'do ... while (0)' loop",			      /* 323 */
 	"suggest cast from '%s' to '%s' on op '%s' to avoid overflow", /* 324 */
 	"variable declaration in for loop",			      /* 325 */
@@ -389,7 +389,7 @@ static const char *const msgs[] = {
 	"left operand of '%s' must be bool, not '%s'",		      /* 331 */
 	"right operand of '%s' must be bool, not '%s'",		      /* 332 */
 	"controlling expression must be bool, not '%s'",	      /* 333 */
-	"argument #%d expects '%s', gets passed '%s'",		      /* 334 */
+	"parameter %d expects '%s', gets passed '%s'",		      /* 334 */
 	"operand of '%s' must not be bool",			      /* 335 */
 	"left operand of '%s' must not be bool",		      /* 336 */
 	"right operand of '%s' must not be bool",		      /* 337 */
@@ -398,7 +398,7 @@ static const char *const msgs[] = {
 	"initialization with '[a...b]' is a GCC extension",	      /* 340 */
 	"argument to '%s' must be 'unsigned char' or EOF, not '%s'",  /* 341 */
 	"argument to '%s' must be cast to 'unsigned char', not to '%s'", /* 342 */
-	"static array size is a C11 extension",			      /* 343 */
+	"static array size requires C11 or later",		      /* 343 */
 	"bit-field of type plain 'int' has implementation-defined signedness", /* 344 */
 	"generic selection requires C11 or later",		      /* 345 */
 	"call to '%s' effectively discards 'const' from argument",    /* 346 */
@@ -406,11 +406,14 @@ static const char *const msgs[] = {
 	"maximum value %d of '%s' does not match maximum array index %d", /* 348 */
 	"non type argument to alignof is a GCC extension",	      /* 349 */
 	"'_Atomic' requires C11 or later",			      /* 350 */
-	"'extern' declaration of '%s' outside a header",	      /* 351 */
+	"missing%s header declaration for '%s'",		      /* 351 */
 	"nested 'extern' declaration of '%s'",			      /* 352 */
+	"empty initializer braces require C23 or later",	      /* 353 */
+	"'_Static_assert' requires C11 or later",		      /* 354 */
+	"'_Static_assert' without message requires C23 or later",     /* 355 */
 };
 
-static bool	is_suppressed[sizeof(msgs) / sizeof(msgs[0])];
+static bool is_suppressed[sizeof(msgs) / sizeof(msgs[0])];
 
 static struct include_level {
 	const char *filename;
@@ -419,18 +422,23 @@ static struct include_level {
 } *includes;
 
 void
-suppress_messages(char *ids)
+suppress_messages(const char *p)
 {
-	char *ptr, *end;
-	unsigned long id;
+	char *end;
 
-	for (ptr = strtok(ids, ","); ptr != NULL; ptr = strtok(NULL, ",")) {
-		id = strtoul(ptr, &end, 10);
-		if (*end != '\0' || ptr == end ||
-		    id >= sizeof(msgs) / sizeof(msgs[0]))
-			errx(1, "invalid error message id '%s'", ptr);
+	for (; ch_isdigit(*p); p = end + 1) {
+		unsigned long id = strtoul(p, &end, 10);
+		if ((*end != '\0' && *end != ',') ||
+		    id >= sizeof(msgs) / sizeof(msgs[0]) ||
+		    msgs[id][0] == '\0')
+			break;
+
 		is_suppressed[id] = true;
+
+		if (*end == '\0')
+			return;
 	}
+	errx(1, "invalid message ID '%.*s'", (int)strcspn(p, ","), p);
 }
 
 void
@@ -478,22 +486,6 @@ print_stack_trace(void)
 }
 
 /*
- * print a list of the messages with their ids
- */
-void
-msglist(void)
-{
-	size_t i;
-
-	for (i = 0; i < sizeof(msgs) / sizeof(msgs[0]); i++) {
-		if (msgs[i][0] != '\0')
-			printf("%zu\t%s\n", i, msgs[i]);
-		else
-			printf("---\t(no longer used)\n");
-	}
-}
-
-/*
  * If Fflag is not set, lbasename() returns a pointer to the last
  * component of the path, otherwise it returns the argument.
  */
@@ -511,26 +503,31 @@ lbasename(const char *path)
 	return base;
 }
 
+static FILE *
+output_channel(void)
+{
+	return yflag ? stderr : stdout;
+}
+
 static void
 verror_at(int msgid, const pos_t *pos, va_list ap)
 {
-	const	char *fn;
 
 	if (is_suppressed[msgid])
 		return;
 
-	fn = lbasename(pos->p_file);
-	(void)printf("%s(%d): error: ", fn, pos->p_line);
-	(void)vprintf(msgs[msgid], ap);
-	(void)printf(" [%d]\n", msgid);
-	nerr++;
+	FILE *out = output_channel();
+	(void)fprintf(out, "%s(%d): error: ",
+	    lbasename(pos->p_file), pos->p_line);
+	(void)vfprintf(out, msgs[msgid], ap);
+	(void)fprintf(out, " [%d]\n", msgid);
+	seen_error = true;
 	print_stack_trace();
 }
 
 static void
 vwarning_at(int msgid, const pos_t *pos, va_list ap)
 {
-	const	char *fn;
 
 	if (is_suppressed[msgid])
 		return;
@@ -540,34 +537,34 @@ vwarning_at(int msgid, const pos_t *pos, va_list ap)
 		/* this warning is suppressed by a LINTED comment */
 		return;
 
-	fn = lbasename(pos->p_file);
-	(void)printf("%s(%d): warning: ", fn, pos->p_line);
-	(void)vprintf(msgs[msgid], ap);
-	(void)printf(" [%d]\n", msgid);
-	if (wflag)
-		nerr++;
+	FILE *out = output_channel();
+	(void)fprintf(out, "%s(%d): warning: ",
+	    lbasename(pos->p_file), pos->p_line);
+	(void)vfprintf(out, msgs[msgid], ap);
+	(void)fprintf(out, " [%d]\n", msgid);
+	seen_warning = true;
 	print_stack_trace();
 }
 
 static void
 vmessage_at(int msgid, const pos_t *pos, va_list ap)
 {
-	const char *fn;
 
 	if (is_suppressed[msgid])
 		return;
 
-	fn = lbasename(pos->p_file);
-	(void)printf("%s(%d): ", fn, pos->p_line);
-	(void)vprintf(msgs[msgid], ap);
-	(void)printf(" [%d]\n", msgid);
+	FILE *out = output_channel();
+	(void)fprintf(out, "%s(%d): ",
+	    lbasename(pos->p_file), pos->p_line);
+	(void)vfprintf(out, msgs[msgid], ap);
+	(void)fprintf(out, " [%d]\n", msgid);
 	print_stack_trace();
 }
 
 void
 (error_at)(int msgid, const pos_t *pos, ...)
 {
-	va_list	ap;
+	va_list ap;
 
 	va_start(ap, pos);
 	verror_at(msgid, pos, ap);
@@ -577,7 +574,7 @@ void
 void
 (error)(int msgid, ...)
 {
-	va_list	ap;
+	va_list ap;
 
 	va_start(ap, msgid);
 	verror_at(msgid, &curr_pos, ap);
@@ -587,26 +584,25 @@ void
 void
 assert_failed(const char *file, int line, const char *func, const char *cond)
 {
-	const	char *fn;
 
 	/*
-	 * After encountering a parse error in the grammar, lint often does
-	 * not properly clean up its data structures, especially in 'dcs',
-	 * the stack of declaration levels.  This often leads to assertion
-	 * failures.  These cases are not interesting though, as the purpose
-	 * of lint is to check syntactically valid code.  In such a case,
-	 * exit gracefully.  This allows a fuzzer like afl to focus on more
+	 * After encountering a parse error in the grammar, lint often does not
+	 * properly clean up its data structures, especially in 'dcs', the
+	 * stack of declaration levels.  This often leads to assertion
+	 * failures.  These cases are not interesting though, as the purpose of
+	 * lint is to check syntactically valid code.  In such a case, exit
+	 * gracefully.  This allows a fuzzer like afl to focus on more
 	 * interesting cases instead of reporting nonsense translation units
 	 * like 'f=({e:;}' or 'v(const(char););e(v){'.
 	 */
 	if (sytxerr > 0)
 		norecover();
 
-	fn = lbasename(curr_pos.p_file);
 	(void)fflush(stdout);
 	(void)fprintf(stderr,
 	    "lint: assertion \"%s\" failed in %s at %s:%d near %s:%d\n",
-	    cond, func, file, line, fn, curr_pos.p_line);
+	    cond, func, file, line,
+	    lbasename(curr_pos.p_file), curr_pos.p_line);
 	print_stack_trace();
 	(void)fflush(stdout);
 	abort();
@@ -615,7 +611,7 @@ assert_failed(const char *file, int line, const char *func, const char *cond)
 void
 (warning_at)(int msgid, const pos_t *pos, ...)
 {
-	va_list	ap;
+	va_list ap;
 
 	va_start(ap, pos);
 	vwarning_at(msgid, pos, ap);
@@ -625,7 +621,7 @@ void
 void
 (warning)(int msgid, ...)
 {
-	va_list	ap;
+	va_list ap;
 
 	va_start(ap, msgid);
 	vwarning_at(msgid, &curr_pos, ap);
@@ -645,7 +641,7 @@ void
 void
 (c99ism)(int msgid, ...)
 {
-	va_list	ap;
+	va_list ap;
 
 	if (allow_c99)
 		return;
@@ -662,7 +658,7 @@ void
 void
 (c11ism)(int msgid, ...)
 {
-	va_list	ap;
+	va_list ap;
 
 	/* FIXME: C11 mode has nothing to do with GCC mode. */
 	if (allow_c11 || allow_gcc)
@@ -672,10 +668,22 @@ void
 	va_end(ap);
 }
 
+void
+(c23ism)(int msgid, ...)
+{
+	va_list ap;
+
+	if (allow_c23)
+		return;
+	va_start(ap, msgid);
+	verror_at(msgid, &curr_pos, ap);
+	va_end(ap);
+}
+
 bool
 (gnuism)(int msgid, ...)
 {
-	va_list	ap;
+	va_list ap;
 	int severity = (!allow_gcc ? 1 : 0) +
 	    (!allow_trad && !allow_c99 ? 1 : 0);
 
@@ -700,46 +708,55 @@ static const char *queries[] = {
 	"redundant cast from '%s' to '%s' before assignment",	      /* Q7 */
 	"octal number '%.*s'",					      /* Q8 */
 	"parenthesized return value",				      /* Q9 */
+	"chained assignment with '%s' and '%s'",		      /* Q10 */
+	"static variable '%s' in function",			      /* Q11 */
+	"comma operator with types '%s' and '%s'",		      /* Q12 */
+	"redundant 'extern' in function declaration of '%s'",	      /* Q13 */
+	"comparison '%s' of 'char' with plain integer %d",	      /* Q14 */
+	"implicit conversion from integer 0 to pointer '%s'",	      /* Q15 */
+	"'%s' was declared 'static', now non-'static'",		      /* Q16 */
+	"invisible character U+%04X in %s",			      /* Q17 */
+	"const automatic variable '%s'",					      /* Q18 */
 };
 
 bool any_query_enabled;		/* for optimizing non-query scenarios */
-static bool is_query_enabled[sizeof(queries) / sizeof(queries[0])];
+bool is_query_enabled[sizeof(queries) / sizeof(queries[0])];
 
 void
 (query_message)(int query_id, ...)
 {
-	va_list ap;
 
 	if (!is_query_enabled[query_id])
 		return;
 
-	(void)printf("%s(%d): ", lbasename(curr_pos.p_file), curr_pos.p_line);
+	va_list ap;
+	FILE *out = output_channel();
+	(void)fprintf(out, "%s(%d): ",
+	    lbasename(curr_pos.p_file), curr_pos.p_line);
 	va_start(ap, query_id);
-	(void)vprintf(queries[query_id], ap);
+	(void)vfprintf(out, queries[query_id], ap);
 	va_end(ap);
-	(void)printf(" [Q%d]\n", query_id);
+	(void)fprintf(out, " [Q%d]\n", query_id);
 	print_stack_trace();
 }
 
 void
-enable_queries(const char *arg)
+enable_queries(const char *p)
 {
+	char *end;
 
-	for (const char *s = arg;;) {
-		const char *e = s + strcspn(s, ",");
-
-		char *end;
-		unsigned long id = strtoul(s, &end, 10);
-		if (!(ch_isdigit(s[0]) && end == e &&
-		      id < sizeof(queries) / sizeof(queries[0]) &&
-		      queries[id][0] != '\0'))
-			errx(1, "invalid query ID '%.*s'", (int)(e - s), s);
+	for (; ch_isdigit(*p); p = end + 1) {
+		unsigned long id = strtoul(p, &end, 10);
+		if ((*end != '\0' && *end != ',') ||
+		    id >= sizeof(queries) / sizeof(queries[0]) ||
+		    queries[id][0] == '\0')
+			break;
 
 		any_query_enabled = true;
 		is_query_enabled[id] = true;
 
-		if (*e == '\0')
-			break;
-		s = e + 1;
+		if (*end == '\0')
+			return;
 	}
+	errx(1, "invalid query ID '%.*s'", (int)strcspn(p, ","), p);
 }

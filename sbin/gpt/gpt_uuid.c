@@ -1,4 +1,4 @@
-/*	$NetBSD: gpt_uuid.c,v 1.19 2020/03/30 10:41:53 martin Exp $	*/
+/*	$NetBSD: gpt_uuid.c,v 1.21 2023/09/27 09:44:10 riastradh Exp $	*/
 
 /*-
  * Copyright (c) 2014 The NetBSD Foundation, Inc.
@@ -32,7 +32,7 @@
 
 #include <sys/cdefs.h>
 #ifdef __RCSID
-__RCSID("$NetBSD: gpt_uuid.c,v 1.19 2020/03/30 10:41:53 martin Exp $");
+__RCSID("$NetBSD: gpt_uuid.c,v 1.21 2023/09/27 09:44:10 riastradh Exp $");
 #endif
 
 #include <err.h>
@@ -65,6 +65,7 @@ static const struct {
 	const char *n;
 	const char *d;
 } gpt_nv[] = {
+	/* Must match the gpt_type_t enum in gpt_uuid.h */
 	{ GPT_ENT_TYPE_APPLE_HFS, "apple", "Apple HFS" },
 	{ GPT_ENT_TYPE_APPLE_UFS, "apple-ufs", "Apple UFS" },
 	{ GPT_ENT_TYPE_BIOS, "bios", "BIOS Boot" },
@@ -80,6 +81,7 @@ static const struct {
 	{ GPT_ENT_TYPE_LINUX_LVM, "linux-lvm", "Linux LVM" },
 	{ GPT_ENT_TYPE_MS_BASIC_DATA, "windows", "Windows basic data" },
 	{ GPT_ENT_TYPE_MS_RESERVED, "windows-reserved", "Windows reserved" },
+	{ GPT_ENT_TYPE_MS_RECOVERY, "windows-recovery", "Windows recovery" },
 	{ GPT_ENT_TYPE_NETBSD_CCD, "ccd", "NetBSD ccd component" },
 	{ GPT_ENT_TYPE_NETBSD_CGD, "cgd", "NetBSD Cryptographic Disk" },
 	{ GPT_ENT_TYPE_NETBSD_FFS, "ffs", "NetBSD FFSv1/FFSv2" },

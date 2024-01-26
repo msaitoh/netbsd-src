@@ -1,7 +1,17 @@
-/*	$NetBSD: msg_247.c,v 1.27 2023/03/28 14:44:35 rillig Exp $	*/
+/*	$NetBSD: msg_247.c,v 1.33 2023/08/07 22:30:39 rillig Exp $	*/
 # 3 "msg_247.c"
 
 // Test for message: pointer cast from '%s' to '%s' may be troublesome [247]
+
+//
+// The word 'may' in the message text means that the trouble is not necessarily
+// on this platform with its specific type sizes, but on other platforms.
+//
+// See also:
+//	msg_247_ilp32_ldbl64.c
+//	msg_247_lp64_ldbl128.c
+//	msg_247_portable.c
+//	msg_247_portable_int.c
 
 /* lint1-extra-flags: -c -X 351 */
 
@@ -50,7 +60,7 @@ cast_to_char_pointer(struct Other *arg)
 }
 
 /*
- * In traditional C there was 'unsigned char' as well, so the same reasoning
+ * In traditional C, there was 'unsigned char' as well, so the same reasoning
  * as for plain 'char' applies here.
  */
 unsigned char *
@@ -166,7 +176,7 @@ lh_OPENSSL_STRING_new(void)
 	 */
 	return (struct lhash_st_OPENSSL_STRING *)OPENSSL_LH_new();
 }
-# 170 "msg_247.c" 2
+# 180 "msg_247.c" 2
 
 void sink(const void *);
 
@@ -299,6 +309,7 @@ void *
 cast_between_first_member_struct(void *ptr)
 {
 	/* Before tree.c 1.462 from 2022-06-24, lint warned about this cast. */
+	/* expect+1: warning: 't1' set but not used in function 'cast_between_first_member_struct' [191] */
 	void *t1 = (ctl_node_t *)(ctl_named_node_t *)ptr;
 
 	void *t2 = (ctl_named_node_t *)(ctl_node_t *)ptr;
@@ -331,4 +342,60 @@ unnecessary_cast_from_array_to_pointer(int dim)
 		return storage_2d[0];
 
 	return (double *)storage_2d;
+}
+
+
+typedef void (*function)(void);
+
+typedef struct {
+	function m_function_array[5];
+} struct_function_array;
+
+typedef union {
+	int um_int;
+	double um_double;
+	struct_function_array um_function_array;
+} anything;
+
+static int *p_int;
+static double *p_double;
+static function p_function;
+static struct_function_array *p_function_array;
+static anything *p_anything;
+
+void
+conversions_from_and_to_union(void)
+{
+	/* Self-assignment, disguised by a cast to its own type. */
+	p_int = (int *)p_int;
+	/* Self-assignment, disguised by a cast to a pointer. */
+	p_int = (void *)p_int;
+
+	/* expect+1: warning: illegal combination of 'pointer to int' and 'pointer to double', op '=' [124] */
+	p_int = p_double;
+	/* expect+1: warning: pointer cast from 'pointer to double' to 'pointer to int' may be troublesome [247] */
+	p_int = (int *)p_double;
+
+	/* expect+1: warning: illegal combination of 'pointer to union typedef anything' and 'pointer to double', op '=' [124] */
+	p_anything = p_double;
+	/* OK, since the union 'anything' has a 'double' member. */
+	p_anything = (anything *)p_double;
+	/* expect+1: warning: illegal combination of 'pointer to double' and 'pointer to union typedef anything', op '=' [124] */
+	p_double = p_anything;
+	/* OK, since the union 'anything' has a 'double' member. */
+	p_double = (double *)p_anything;
+
+	/*
+	 * Casting to an intermediate union does not make casting between two
+	 * incompatible types better.
+	 */
+	/* expect+1: warning: illegal combination of 'pointer to function(void) returning void' and 'pointer to union typedef anything', op '=' [124] */
+	p_function = (anything *)p_int;
+
+	/* expect+2: warning: converting 'pointer to function(void) returning void' to 'pointer to union typedef anything' is questionable [229] */
+	/* expect+1: warning: illegal combination of 'pointer to function(void) returning void' and 'pointer to union typedef anything', op '=' [124] */
+	p_function = (anything *)p_function_array->m_function_array[0];
+
+	/* expect+1: warning: illegal combination of 'pointer to int' and 'pointer to function(void) returning void', op '=' [124] */
+	p_int = p_function;
 }

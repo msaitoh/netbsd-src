@@ -1,7 +1,7 @@
-/*	$NetBSD: uipc_socket.c,v 1.302 2022/04/09 23:52:22 riastradh Exp $	*/
+/*	$NetBSD: uipc_socket.c,v 1.307 2023/11/02 10:31:55 martin Exp $	*/
 
 /*
- * Copyright (c) 2002, 2007, 2008, 2009 The NetBSD Foundation, Inc.
+ * Copyright (c) 2002, 2007, 2008, 2009, 2023 The NetBSD Foundation, Inc.
  * All rights reserved.
  *
  * This code is derived from software contributed to The NetBSD Foundation
@@ -71,7 +71,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: uipc_socket.c,v 1.302 2022/04/09 23:52:22 riastradh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: uipc_socket.c,v 1.307 2023/11/02 10:31:55 martin Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_compat_netbsd.h"
@@ -559,7 +559,7 @@ socreate(int dom, struct socket **aso, int type, int proto, struct lwp *l,
 		sofree(so);
 		return error;
 	}
-	so->so_cred = kauth_cred_dup(l->l_cred);
+	so->so_cred = kauth_cred_hold(l->l_cred);
 	sounlock(so);
 
 	*aso = so;
@@ -702,7 +702,7 @@ sofree(struct socket *so)
 	KASSERT(!cv_has_waiters(&so->so_snd.sb_cv));
 	sorflush(so);
 	refs = so->so_aborting;	/* XXX */
-	/* Remove acccept filter if one is present. */
+	/* Remove accept filter if one is present. */
 	if (so->so_accf != NULL)
 		(void)accept_filt_clear(so);
 	sounlock(so);

@@ -1,9 +1,9 @@
-.\" $NetBSD: ctime.3,v 1.69 2022/12/11 17:57:23 christos Exp $
+.\" $NetBSD: ctime.3,v 1.71 2023/09/16 18:40:26 christos Exp $
 .\"
 .\" This file is in the public domain, so clarified as of
 .\" 2009-05-17 by Arthur David Olson.
 .\"
-.Dd October 22, 2022
+.Dd September 16, 2023
 .Dt CTIME 3
 .Os
 .Sh NAME
@@ -26,11 +26,11 @@
 .Sh SYNOPSIS
 .In time.h
 .Vt extern char *tzname[2];
-.Ft char *
+.Ft [[deprecated]] char *
 .Fn asctime "const struct tm *tm"
 .Ft char *
 .Fn asctime_r "const struct tm *restrict tm" "char * restrict buf"
-.Ft char *
+.Ft [[deprecated]] char *
 .Fn ctime "const time_t *clock"
 .Ft char *
 .Fn ctime_r "const time_t *clock"  "char *buf"
@@ -73,6 +73,11 @@ The
 .Fa tm
 structure is described in
 .Xr tm 3 .
+.Pp
+This function is deprecated starting in C23.
+Callers can use
+.Fn strftime
+instead.
 .It Fn asctime_r "tm" "buf"
 The
 .Fn asctime_r
@@ -110,6 +115,15 @@ Many implementations extend POSIX by allowing negative time stamps,
 and can therefore represent time stamps that predate the
 introduction of UTC and are some other flavor of Universal Time (UT).
 Some implementations support leap seconds, in contradiction to POSIX.
+.Pp
+The
+.Fn ctime
+function is deprecated starting in C23.
+Callers can use
+.Fn localtime_r
+and
+.Fn strftime
+instead.
 .It Fn ctime_r "clock" "buf"
 The
 .Fn ctime_r
@@ -139,40 +153,6 @@ The
 function returns the difference between two calendar times,
 .Fa ( time1 No - Fa time0 ) ,
 expressed in seconds.
-.Pp
-The
-.Fn ctime_r ,
-.Fn localtime_r ,
-.Fn gmtime_r ,
-and
-.Fn asctime_r
-functions
-are like their unsuffixed counterparts, except that they accept an
-additional argument specifying where to store the result if successful.
-.Pp
-The
-.Fn ctime_rz ,
-.Fn localtime_rz ,
-and
-.Fn mktime_z
-functions
-are like their unsuffixed counterparts, except that they accept an
-extra initial
-.Ar zone
-argument specifying the timezone to be used for conversion.
-If
-.Fa zone
-is
-.Dv NULL ,
-UT is used; otherwise,
-.Fa zone
-should have been allocated by
-.Fn tzalloc
-and should not be freed until after all uses (e.g., by calls to
-.Fn strftime )
-of the filled-in
-.Fn tm_zone
-fields.
 .It Fn gmtime "clock"
 The
 .Fn gmtime
@@ -415,6 +395,40 @@ variable is optional; also, there is no guarantee that
 .Dv tzname
 will
 continue to exist in this form in future releases of this code.
+.Pp
+The
+.Fn ctime_r ,
+.Fn localtime_r ,
+.Fn gmtime_r ,
+and
+.Fn asctime_r
+functions
+are like their unsuffixed counterparts, except that they accept an
+additional argument specifying where to store the result if successful.
+.Pp
+The
+.Fn ctime_rz ,
+.Fn localtime_rz ,
+and
+.Fn mktime_z
+functions
+are like their unsuffixed counterparts, except that they accept an
+extra initial
+.Ar zone
+argument specifying the timezone to be used for conversion.
+If
+.Fa zone
+is
+.Dv NULL ,
+UT is used; otherwise,
+.Fa zone
+should have been allocated by
+.Fn tzalloc
+and should not be freed until after all uses (e.g., by calls to
+.Fn strftime )
+of the filled-in
+.Fn tm_zone
+fields.
 .Sh RETURN VALUES
 .Bl -bullet
 .It
@@ -500,7 +514,8 @@ timezone information directory
 .It Pa /usr/share/zoneinfo/localtime
 local timezone file
 .It Pa /usr/share/zoneinfo/posixrules
-used with POSIX-style TZ's
+default DST rules (obsolete,
+and can cause bugs if present)
 .It Pa /usr/share/zoneinfo/GMT
 for UTC leap seconds
 .El

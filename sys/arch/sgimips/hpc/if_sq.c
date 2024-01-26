@@ -1,4 +1,4 @@
-/*	$NetBSD: if_sq.c,v 1.55 2022/09/18 13:23:53 thorpej Exp $	*/
+/*	$NetBSD: if_sq.c,v 1.57 2023/12/20 15:29:07 thorpej Exp $	*/
 
 /*
  * Copyright (c) 2001 Rafal K. Boni
@@ -33,7 +33,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_sq.c,v 1.55 2022/09/18 13:23:53 thorpej Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_sq.c,v 1.57 2023/12/20 15:29:07 thorpej Exp $");
 
 
 #include <sys/param.h>
@@ -41,7 +41,6 @@ __KERNEL_RCSID(0, "$NetBSD: if_sq.c,v 1.55 2022/09/18 13:23:53 thorpej Exp $");
 #include <sys/device.h>
 #include <sys/callout.h>
 #include <sys/mbuf.h>
-#include <sys/malloc.h>
 #include <sys/kernel.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
@@ -896,10 +895,10 @@ sq_intr(void *arg)
 
 	stat = sq_hpc_read(sc, sc->hpc_regs->enetr_reset);
 
-	if ((stat & 2) == 0)
+	if ((stat & 2) == 0) {
 		SQ_DPRINTF(("%s: Unexpected interrupt!\n",
 		    device_xname(sc->sc_dev)));
-	else
+	} else
 		sq_hpc_write(sc, sc->hpc_regs->enetr_reset, (stat | 2));
 
 	/*

@@ -1,4 +1,4 @@
-/*	$NetBSD: socketvar.h,v 1.165 2022/04/09 23:52:23 riastradh Exp $	*/
+/*	$NetBSD: socketvar.h,v 1.167 2023/11/02 10:31:55 martin Exp $	*/
 
 /*-
  * Copyright (c) 2008, 2009 The NetBSD Foundation, Inc.

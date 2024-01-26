@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.34 2022/05/15 16:25:09 christos Exp $
+#	$NetBSD: Makefile,v 1.36 2023/10/07 12:15:53 rin Exp $
 
 USE_FORT?=	yes	# cryptographic software
 
@@ -30,9 +30,6 @@ SRCS+=		crypt-argon2.c
 SRCS+=		${src}
 COPTS.${src}+=	-fvisibility=hidden
 .  endfor
-.  if ${MACHINE} == "vax"
-COPTS.blake2b.c+=	-O0
-.  endif
 .endif
 
 WARNS?=	5
@@ -40,6 +37,9 @@ WARNS?=	5
 MAN=	crypt.3 pw_gensalt.3
 MLINKS= crypt.3 encrypt.3 crypt.3 setkey.3
 
+# XXXGCC12 - init_perm() takes a larger array than IE3264[] is, but
+# it doesn't need more.
+COPTS.crypt.c+=	${CC_WNO_STRINGOP_OVERFLOW}
 
 .if make(*.test)
 .SUFFIXES: .test

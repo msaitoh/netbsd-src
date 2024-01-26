@@ -1,4 +1,4 @@
-/*	$NetBSD: main.c,v 1.30 2022/07/10 10:52:40 martin Exp $	*/
+/*	$NetBSD: main.c,v 1.32 2023/12/17 18:46:42 martin Exp $	*/
 
 /*
  * Copyright 1997 Piermont Information Systems Inc.
@@ -97,6 +97,7 @@ __dead static void miscsighandler(int);
 static void ttysighandler(int);
 static void cleanup(void);
 static void process_f_flag(char *);
+static bool no_openssl_trust_anchors_available(void);
 
 static int exit_cleanly = 0;	/* Did we finish nicely? */
 FILE *logfp;			/* log file */
@@ -131,8 +132,8 @@ static const struct f_arg fflagopts[] = {
 	{"xfer dir", "/usr/INSTALL", xfer_dir, sizeof xfer_dir},
 	{"ext dir", "", ext_dir_bin, sizeof ext_dir_bin},
 	{"ext src dir", "", ext_dir_src, sizeof ext_dir_src},
-	{"ftp host", SYSINST_FTP_HOST, ftp.xfer_host[XFER_FTP], sizeof ftp.xfer_host[XFER_FTP]},
-	{"http host", SYSINST_HTTP_HOST, ftp.xfer_host[XFER_HTTP], sizeof ftp.xfer_host[XFER_HTTP]},
+	{"ftp host", SYSINST_FTP_HOST, ftp.xfer_host[XFER_HOST(XFER_FTP)], sizeof ftp.xfer_host[XFER_HOST(XFER_FTP)]},
+	{"http host", SYSINST_HTTP_HOST, ftp.xfer_host[XFER_HOST(XFER_HTTP)], sizeof ftp.xfer_host[XFER_HOST(XFER_HTTP)]},
 	{"ftp dir", SYSINST_FTP_DIR, ftp.dir, sizeof ftp.dir},
 	{"ftp prefix", "/" ARCH_SUBDIR "/binary/sets", set_dir_bin, sizeof set_dir_bin},
 	{"ftp src prefix", "/source/sets", set_dir_src, sizeof set_dir_src},
@@ -149,15 +150,15 @@ static const struct f_arg fflagopts[] = {
 	{"targetroot mount", "/targetroot", targetroot_mnt, sizeof targetroot_mnt},
 	{"dist postfix", "." SETS_TAR_SUFF, dist_postfix, sizeof dist_postfix},
 	{"dist tgz postfix", ".tgz", dist_tgz_postfix, sizeof dist_tgz_postfix},
-	{"pkg host", SYSINST_PKG_HOST, pkg.xfer_host[XFER_FTP], sizeof pkg.xfer_host[XFER_FTP]},
-	{"pkg http host", SYSINST_PKG_HTTP_HOST, pkg.xfer_host[XFER_HTTP], sizeof pkg.xfer_host[XFER_HTTP]},
+	{"pkg host", SYSINST_PKG_HOST, pkg.xfer_host[XFER_HOST(XFER_FTP)], sizeof pkg.xfer_host[XFER_HOST(XFER_FTP)]},
+	{"pkg http host", SYSINST_PKG_HTTP_HOST, pkg.xfer_host[XFER_HOST(XFER_HTTP)], sizeof pkg.xfer_host[XFER_HOST(XFER_HTTP)]},
 	{"pkg dir", SYSINST_PKG_DIR, pkg.dir, sizeof pkg.dir},
 	{"pkg prefix", "/" PKG_ARCH_SUBDIR "/" PKG_SUBDIR "/All", pkg_dir, sizeof pkg_dir},
 	{"pkg user", "ftp", pkg.user, sizeof pkg.user},
 	{"pkg pass", "", pkg.pass, sizeof pkg.pass},
 	{"pkg proxy", "", pkg.proxy, sizeof pkg.proxy},
-	{"pkgsrc host", SYSINST_PKGSRC_HOST, pkgsrc.xfer_host[XFER_FTP], sizeof pkgsrc.xfer_host[XFER_FTP]},
-	{"pkgsrc http host", SYSINST_PKGSRC_HTTP_HOST, pkgsrc.xfer_host[XFER_HTTP], sizeof pkgsrc.xfer_host[XFER_HTTP]},
+	{"pkgsrc host", SYSINST_PKGSRC_HOST, pkgsrc.xfer_host[XFER_HOST(XFER_FTP)], sizeof pkgsrc.xfer_host[XFER_HOST(XFER_FTP)]},
+	{"pkgsrc http host", SYSINST_PKGSRC_HTTP_HOST, pkgsrc.xfer_host[XFER_HOST(XFER_HTTP)], sizeof pkgsrc.xfer_host[XFER_HOST(XFER_HTTP)]},
 	{"pkgsrc dir", "", pkgsrc.dir, sizeof pkgsrc.dir},
 	{"pkgsrc prefix", "pub/pkgsrc/stable", pkgsrc_dir, sizeof pkgsrc_dir},
 	{"pkgsrc user", "ftp", pkgsrc.user, sizeof pkgsrc.user},
@@ -190,7 +191,7 @@ init(void)
 		else
 			strlcpy(arg->var, arg->dflt, arg->size);
 	}
-	pkg.xfer = pkgsrc.xfer = XFER_HTTP;
+	ftp.xfer = pkg.xfer = pkgsrc.xfer = XFER_HTTPS;
 
 	clr_arg.bg=COLOR_BLUE;
 	clr_arg.fg=COLOR_WHITE;
@@ -263,6 +264,10 @@ main(int argc, char **argv)
 
 	/* Initialize the partitioning subsystem */
 	partitions_init();
+
+	/* do we need to tell ftp(1) to avoid checking certificate chains? */
+	if (no_openssl_trust_anchors_available())
+		setenv("FTPSSLNOVERIFY", "1", 1);
 
 	/* initialize message window */
 	if (menu_init()) {
@@ -634,4 +639,47 @@ process_f_flag(char *f_name)
 	}
 
 	fclose(fp);
+}
+
+/*
+ * return true if we do not have any root certificates installed,
+ * so can not verify any trust chain.
+ * We rely on /etc/openssl being the OPENSSLDIR and test the
+ * "all in one" /etc/openssl/cert.pem first, if that is not found
+ * check if there are multiple regular files or symlinks in
+ * /etc/openssl/certs/.
+ */
+static bool
+no_openssl_trust_anchors_available(void)
+{
+	struct stat sb;
+	DIR *dir;
+	struct dirent *ent;
+	size_t cnt;
+
+	/* check the omnibus single file variant first */
+	if (stat("/etc/openssl/cert.pem", &sb) == 0 &&
+	    S_ISREG(sb.st_mode) && sb.st_size > 0)
+		return false;	/* exists and is a non-empty file */
+
+	/* look for files/symlinks in the certs subdirectory */
+	dir = opendir("/etc/openssl/certs");
+	if (dir == NULL)
+		return true;
+	for (cnt = 0; cnt < 2; ) {
+		ent = readdir(dir);
+		if (ent == NULL)
+			break;
+		switch (ent->d_type) {
+		case DT_REG:
+		case DT_LNK:
+			cnt++;
+			break;
+		default:
+			break;
+		}
+	}
+	closedir(dir);
+
+	return cnt < 2;
 }

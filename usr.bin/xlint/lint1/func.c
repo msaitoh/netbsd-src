@@ -1,4 +1,4 @@
-/*	$NetBSD: func.c,v 1.153 2023/04/15 11:34:45 rillig Exp $	*/
+/*	$NetBSD: func.c,v 1.179 2024/01/06 15:05:24 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -14,7 +14,7 @@
  *    documentation and/or other materials provided with the distribution.
  * 3. All advertising materials mentioning features or use of this software
  *    must display the following acknowledgement:
- *      This product includes software developed by Jochen Pohl for
+ *	This product includes software developed by Jochen Pohl for
  *	The NetBSD Project.
  * 4. The name of the author may not be used to endorse or promote products
  *    derived from this software without specific prior written permission.
@@ -37,7 +37,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID)
-__RCSID("$NetBSD: func.c,v 1.153 2023/04/15 11:34:45 rillig Exp $");
+__RCSID("$NetBSD: func.c,v 1.179 2024/01/06 15:05:24 rillig Exp $");
 #endif
 
 #include <stdlib.h>
@@ -50,83 +50,81 @@ __RCSID("$NetBSD: func.c,v 1.153 2023/04/15 11:34:45 rillig Exp $");
  * Contains a pointer to the symbol table entry of the current function
  * definition.
  */
-sym_t	*funcsym;
+sym_t *funcsym;
 
 /* Is set as long as a statement can be reached. Must be set at level 0. */
-bool	reached = true;
+bool reached = true;
 
 /*
  * Is true by default, can be cleared by NOTREACHED.
  * Is reset to true whenever 'reached' changes.
  */
-bool	warn_about_unreachable;
+bool warn_about_unreachable;
 
 /*
  * In conjunction with 'reached', controls printing of "fallthrough on ..."
  * warnings.
- * Reset by each statement and set by FALLTHROUGH, switch (switch1())
- * and case (label()).
+ * Reset by each statement and set by FALLTHROUGH, stmt_switch_expr and
+ * case_label.
  *
- * Control statements if, for, while and switch do not reset seen_fallthrough
- * because this must be done by the controlled statement. At least for if this
- * is important because ** FALLTHROUGH ** after "if (expr) statement" is
- * evaluated before the following token, which causes reduction of above.
- * This means that ** FALLTHROUGH ** after "if ..." would always be ignored.
+ * The control statements 'if', 'for', 'while' and 'switch' do not reset
+ * suppress_fallthrough because this must be done by the controlled statement.
+ * At least for 'if', this is important because ** FALLTHROUGH ** after "if
+ * (expr) statement" is evaluated before the following token, which causes
+ * reduction of above. This means that ** FALLTHROUGH ** after "if ..." would
+ * always be ignored.
  */
-bool	seen_fallthrough;
+bool suppress_fallthrough;
 
 /* The innermost control statement */
 static control_statement *cstmt;
 
 /*
- * Number of arguments which will be checked for usage in following
- * function definition. -1 stands for all arguments.
+ * Number of parameters which will be checked for usage in following
+ * function definition. -1 stands for all parameters.
  *
  * The position of the last ARGSUSED comment is stored in argsused_pos.
  */
-int	nargusg = -1;
-pos_t	argsused_pos;
+int nargusg = -1;
+pos_t argsused_pos;
 
 /*
- * Number of arguments of the following function definition whose types
- * shall be checked by lint2. -1 stands for all arguments.
+ * Number of parameters of the following function definition whose types
+ * shall be checked by lint2. -1 stands for all parameters.
  *
  * The position of the last VARARGS comment is stored in vapos.
  */
-int	nvararg = -1;
-pos_t	vapos;
+int nvararg = -1;
+pos_t vapos;
 
 /*
  * Both printflike_argnum and scanflike_argnum contain the 1-based number
- * of the string argument which shall be used to check the types of remaining
+ * of the string parameter which shall be used to check the types of remaining
  * arguments (for PRINTFLIKE and SCANFLIKE).
  *
  * printflike_pos and scanflike_pos are the positions of the last PRINTFLIKE
  * or SCANFLIKE comment.
  */
-int	printflike_argnum = -1;
-int	scanflike_argnum = -1;
-pos_t	printflike_pos;
-pos_t	scanflike_pos;
+int printflike_argnum = -1;
+int scanflike_argnum = -1;
+pos_t printflike_pos;
+pos_t scanflike_pos;
 
 /*
  * If both plibflg and llibflg are set, prototypes are written as function
  * definitions to the output file.
  */
-bool	plibflg;
+bool plibflg;
 
-/*
- * True means that no warnings about constants in conditional
- * context are printed.
- */
-bool	constcond_flag;
+/* Temporarily suppress warnings about constants in conditional context. */
+bool suppress_constcond;
 
 /*
  * Whether a lint library shall be created. The effect of this flag is that
  * all defined symbols are treated as used.
  * (The LINTLIBRARY comment also resets vflag.)
  */
-bool	llibflg;
+bool llibflg;
 
 /*
  * Determines the warnings that are suppressed by a LINTED directive.  For
@@ -136,19 +134,13 @@ bool	llibflg;
  * LWARN_NONE:	all warnings are suppressed
  * n >= 0:	warning n is ignored, the others are active
  */
-int	lwarn = LWARN_ALL;
+int lwarn = LWARN_ALL;
 
-/*
- * Whether bitfield type errors are suppressed by a BITFIELDTYPE
- * directive.
- */
-bool	bitfieldtype_ok;
+/* Temporarily suppress warnings about wrong types for bit-fields. */
+bool suppress_bitfieldtype;
 
-/*
- * Whether complaints about use of "long long" are suppressed in
- * the next statement or declaration.
- */
-bool	quadflg;
+/* Temporarily suppress warnings about use of 'long long'. */
+bool suppress_longlong;
 
 void
 begin_control_statement(control_statement_kind kind)
@@ -209,9 +201,9 @@ check_statement_reachable(void)
 
 /*
  * Called after a function declaration which introduces a function definition
- * and before an (optional) old-style argument declaration list.
+ * and before an (optional) old-style parameter declaration list.
  *
- * Puts all symbols declared in the prototype or in an old-style argument
+ * Puts all symbols declared in the prototype or in an old-style parameter
  * list back to the symbol table.
  *
  * Does the usual checking of storage class, type (return value),
@@ -220,15 +212,15 @@ check_statement_reachable(void)
 void
 begin_function(sym_t *fsym)
 {
-	int	n;
-	bool	dowarn;
-	sym_t	*arg, *sym, *rdsym;
+	int n;
+	bool dowarn;
+	sym_t *sym, *rdsym;
 
 	funcsym = fsym;
 
 	/*
-	 * Put all symbols declared in the argument list back to the
-	 * symbol table.
+	 * Put all symbols declared in the parameter list back to the symbol
+	 * table.
 	 */
 	for (sym = dcs->d_func_proto_syms; sym != NULL;
 	    sym = sym->s_level_next) {
@@ -239,11 +231,11 @@ begin_function(sym_t *fsym)
 	}
 
 	/*
-	 * In old_style_function() we did not know whether it is an old
-	 * style function definition or only an old-style declaration,
-	 * if there are no arguments inside the argument list ("f()").
+	 * In old_style_function() we did not know whether it is an old style
+	 * function definition or only an old-style declaration, if there are
+	 * no parameters inside the parameter list ("f()").
 	 */
-	if (!fsym->s_type->t_proto && fsym->u.s_old_style_args == NULL)
+	if (!fsym->s_type->t_proto && fsym->u.s_old_style_params == NULL)
 		fsym->s_osdef = true;
 
 	check_type(fsym);
@@ -270,25 +262,25 @@ begin_function(sym_t *fsym)
 		fsym->s_inline = true;
 
 	/*
-	 * Arguments in new style function declarations need a name.
-	 * (void is already removed from the list of arguments)
+	 * Parameters in new-style function declarations need a name. ('void'
+	 * is already removed from the list of parameters.)
 	 */
 	n = 1;
-	for (arg = fsym->s_type->t_args; arg != NULL; arg = arg->s_next) {
-		if (arg->s_scl == ABSTRACT) {
-			lint_assert(arg->s_name == unnamed);
+	for (const sym_t *param = fsym->s_type->t_params;
+	    param != NULL; param = param->s_next) {
+		if (param->s_scl == ABSTRACT) {
+			lint_assert(param->s_name == unnamed);
 			/* formal parameter #%d lacks name */
 			error(59, n);
 		} else {
-			lint_assert(arg->s_name != unnamed);
+			lint_assert(param->s_name != unnamed);
 		}
 		n++;
 	}
 
 	/*
-	 * We must also remember the position. s_def_pos is overwritten
-	 * if this is an old-style definition and we had already a
-	 * prototype.
+	 * We must also remember the position. s_def_pos is overwritten if this
+	 * is an old-style definition, and we had already a prototype.
 	 */
 	dcs->d_func_def_pos = fsym->s_def_pos;
 
@@ -297,9 +289,9 @@ begin_function(sym_t *fsym)
 		if (!check_redeclaration(fsym, (dowarn = false, &dowarn))) {
 
 			/*
-			 * Print nothing if the newly defined function
-			 * is defined in old style. A better warning will
-			 * be printed in check_func_lint_directives().
+			 * Print nothing if the newly defined function is
+			 * defined in old style. A better warning will be
+			 * printed in check_func_lint_directives().
 			 */
 			if (dowarn && !fsym->s_osdef) {
 				/* TODO: error in C99 mode as well? */
@@ -315,9 +307,9 @@ begin_function(sym_t *fsym)
 			copy_usage_info(fsym, rdsym);
 
 			/*
-			 * If the old symbol was a prototype and the new
-			 * one is none, overtake the position of the
-			 * declaration of the prototype.
+			 * If the old symbol was a prototype and the new one is
+			 * none, overtake the position of the declaration of
+			 * the prototype.
 			 */
 			if (fsym->s_osdef && rdsym->s_type->t_proto)
 				fsym->s_def_pos = rdsym->s_def_pos;
@@ -326,23 +318,21 @@ begin_function(sym_t *fsym)
 
 			if (rdsym->s_inline)
 				fsym->s_inline = true;
-
 		}
 
 		/* remove the old symbol from the symbol table */
 		rmsym(rdsym);
-
 	}
 
 	if (fsym->s_osdef && !fsym->s_type->t_proto) {
 		/* TODO: Make this an error in C99 mode as well. */
-		if ((!allow_trad && !allow_c99) && hflag &&
+		if (!allow_trad && !allow_c99 && hflag &&
 		    strcmp(fsym->s_name, "main") != 0)
 			/* function definition is not a prototype */
 			warning(286);
 	}
 
-	if (dcs->d_notyp)
+	if (dcs->d_no_type_specifier)
 		fsym->s_return_type_implicit_int = true;
 
 	set_reached(true);
@@ -370,8 +360,6 @@ check_missing_return_value(void)
 void
 end_function(void)
 {
-	sym_t	*arg;
-	int	n;
 
 	if (reached) {
 		cstmt->c_had_return_noval = true;
@@ -380,28 +368,24 @@ end_function(void)
 
 	/*
 	 * This warning is printed only if the return value was implicitly
-	 * declared to be int. Otherwise the wrong return statement
-	 * has already printed a warning.
+	 * declared to be int. Otherwise, the wrong return statement has
+	 * already printed a warning.
 	 */
 	if (cstmt->c_had_return_noval && cstmt->c_had_return_value &&
 	    funcsym->s_return_type_implicit_int)
 		/* function '%s' has 'return expr' and 'return' */
 		warning(216, funcsym->s_name);
 
-	/* Print warnings for unused arguments */
-	arg = dcs->d_func_args;
-	n = 0;
-	while (arg != NULL && (nargusg == -1 || n < nargusg)) {
-		check_usage_sym(dcs->d_asm, arg);
-		arg = arg->s_next;
-		n++;
-	}
+	/* Warn about unused parameters. */
+	int n = nargusg;
 	nargusg = -1;
+	for (const sym_t *param = dcs->d_func_params;
+	    param != NULL && n != 0; param = param->s_next, n--)
+		check_usage_sym(dcs->d_asm, param);
 
 	/*
-	 * write the information about the function definition to the
-	 * output file
-	 * inline functions explicitly declared extern are written as
+	 * Write the information about the function definition to the output
+	 * file. Inline functions explicitly declared extern are written as
 	 * declarations only.
 	 */
 	if (dcs->d_scl == EXTERN && funcsym->s_inline) {
@@ -409,7 +393,7 @@ end_function(void)
 	} else {
 		outfdef(funcsym, &dcs->d_func_def_pos,
 		    cstmt->c_had_return_value, funcsym->s_osdef,
-		    dcs->d_func_args);
+		    dcs->d_func_params);
 	}
 
 	/* clean up after syntax errors, see test stmt_for.c. */
@@ -417,12 +401,12 @@ end_function(void)
 		dcs = dcs->d_enclosing;
 
 	/*
-	 * remove all symbols declared during argument declaration from
-	 * the symbol table
+	 * Remove all symbols declared during the parameter declaration from
+	 * the symbol table.
 	 */
 	lint_assert(dcs->d_enclosing == NULL);
-	lint_assert(dcs->d_kind == DK_EXTERN);
-	rmsyms(dcs->d_func_proto_syms);
+	lint_assert(dcs->d_kind == DLK_EXTERN);
+	symtab_remove_level(dcs->d_func_proto_syms);
 
 	/* must be set on level 0 */
 	set_reached(true);
@@ -448,15 +432,14 @@ named_label(sym_t *sym)
 static void
 check_case_label_bitand(const tnode_t *case_expr, const tnode_t *switch_expr)
 {
-	uint64_t case_value, mask;
 
 	if (switch_expr->tn_op != BITAND ||
 	    switch_expr->tn_right->tn_op != CON)
 		return;
 
 	lint_assert(case_expr->tn_op == CON);
-	case_value = case_expr->tn_val->v_quad;
-	mask = switch_expr->tn_right->tn_val->v_quad;
+	uint64_t case_value = (uint64_t)case_expr->tn_val.u.integer;
+	uint64_t mask = (uint64_t)switch_expr->tn_right->tn_val.u.integer;
 
 	if ((case_value & ~mask) != 0) {
 		/* statement not reached */
@@ -486,9 +469,9 @@ static void
 check_case_label(tnode_t *tn, control_statement *cs)
 {
 	case_label_t *cl;
-	val_t	*v;
-	val_t	nv;
-	tspec_t	t;
+	val_t *v;
+	val_t nv;
+	tspec_t t;
 
 	if (cs == NULL) {
 		/* case not in switch */
@@ -516,7 +499,7 @@ check_case_label(tnode_t *tn, control_statement *cs)
 
 	lint_assert(cs->c_switch_type != NULL);
 
-	if (reached && !seen_fallthrough) {
+	if (reached && !suppress_fallthrough) {
 		if (hflag)
 			/* fallthrough on case statement */
 			warning(220);
@@ -524,34 +507,34 @@ check_case_label(tnode_t *tn, control_statement *cs)
 
 	t = tn->tn_type->t_tspec;
 	if (t == LONG || t == ULONG ||
-	    t == QUAD || t == UQUAD) {
+	    t == LLONG || t == ULLONG) {
 		if (!allow_c90)
 			/* case label must be of type 'int' in traditional C */
 			warning(203);
 	}
 
 	/*
-	 * get the value of the expression and convert it
-	 * to the type of the switch expression
+	 * get the value of the expression and convert it to the type of the
+	 * switch expression
 	 */
-	v = constant(tn, true);
+	v = integer_constant(tn, true);
 	(void)memset(&nv, 0, sizeof(nv));
 	convert_constant(CASE, 0, cs->c_switch_type, &nv, v);
 	free(v);
 
 	/* look if we had this value already */
 	for (cl = cs->c_case_labels; cl != NULL; cl = cl->cl_next) {
-		if (cl->cl_val.v_quad == nv.v_quad)
+		if (cl->cl_val.u.integer == nv.u.integer)
 			break;
 	}
 	if (cl != NULL && is_uinteger(nv.v_tspec)) {
-		/* duplicate case in switch: %lu */
-		error(200, (unsigned long)nv.v_quad);
+		/* duplicate case '%lu' in switch */
+		error(200, (unsigned long)nv.u.integer);
 	} else if (cl != NULL) {
-		/* duplicate case in switch: %ld */
-		error(199, (long)nv.v_quad);
+		/* duplicate case '%ld' in switch */
+		error(199, (long)nv.u.integer);
 	} else {
-		check_getopt_case_label(nv.v_quad);
+		check_getopt_case_label(nv.u.integer);
 
 		/* append the value to the list of case values */
 		cl = xcalloc(1, sizeof(*cl));
@@ -593,7 +576,7 @@ default_label(void)
 		/* duplicate default in switch */
 		error(202);
 	} else {
-		if (reached && !seen_fallthrough) {
+		if (reached && !suppress_fallthrough) {
 			if (hflag)
 				/* fallthrough on default statement */
 				warning(284);
@@ -623,17 +606,15 @@ check_controlling_expression(tnode_t *tn)
 
 	if (tn != NULL && Tflag && !is_typeok_bool_compares_with_zero(tn)) {
 		/* controlling expression must be bool, not '%s' */
-		error(333, tspec_name(tn->tn_type->t_tspec));
+		error(333, tn->tn_type->t_is_enum ? type_name(tn->tn_type)
+		    : tspec_name(tn->tn_type->t_tspec));
 	}
 
 	return tn;
 }
 
-/*
- * T_IF T_LPAREN expr T_RPAREN
- */
 void
-if1(tnode_t *tn)
+stmt_if_expr(tnode_t *tn)
 {
 
 	if (tn != NULL)
@@ -650,12 +631,8 @@ if1(tnode_t *tn)
 	}
 }
 
-/*
- * if_without_else
- * if_without_else T_ELSE
- */
 void
-if2(void)
+stmt_if_then_stmt(void)
 {
 
 	cstmt->c_reached_end_of_then = reached;
@@ -663,12 +640,8 @@ if2(void)
 	set_reached(!cstmt->c_always_then);
 }
 
-/*
- * if_without_else
- * if_without_else T_ELSE statement
- */
 void
-if3(bool els)
+stmt_if_else_stmt(bool els)
 {
 	if (cstmt->c_reached_end_of_then)
 		set_reached(true);
@@ -680,14 +653,11 @@ if3(bool els)
 	end_control_statement(CS_IF);
 }
 
-/*
- * T_SWITCH T_LPAREN expr T_RPAREN
- */
 void
-switch1(tnode_t *tn)
+stmt_switch_expr(tnode_t *tn)
 {
-	tspec_t	t;
-	type_t	*tp;
+	tspec_t t;
+	type_t *tp;
 
 	if (tn != NULL)
 		tn = cconv(tn);
@@ -700,17 +670,16 @@ switch1(tnode_t *tn)
 	}
 	if (tn != NULL && !allow_c90) {
 		t = tn->tn_type->t_tspec;
-		if (t == LONG || t == ULONG || t == QUAD || t == UQUAD) {
+		if (t == LONG || t == ULONG || t == LLONG || t == ULLONG) {
 			/* switch expression must be of type 'int' in ... */
 			warning(271);
 		}
 	}
 
 	/*
-	 * Remember the type of the expression. Because it's possible
-	 * that (*tp) is allocated on tree memory, the type must be
-	 * duplicated. This is not too complicated because it is
-	 * only an integer type.
+	 * Remember the type of the expression. Because it's possible that
+	 * (*tp) is allocated on tree memory, the type must be duplicated. This
+	 * is not too complicated because it is only an integer type.
 	 */
 	tp = xcalloc(1, sizeof(*tp));
 	if (tn != NULL) {
@@ -733,17 +702,14 @@ switch1(tnode_t *tn)
 	cstmt->c_switch_expr = tn;
 
 	set_reached(false);
-	seen_fallthrough = true;
+	suppress_fallthrough = true;
 }
 
-/*
- * switch_expr statement
- */
 void
-switch2(void)
+stmt_switch_expr_stmt(void)
 {
-	int	nenum = 0, nclab = 0;
-	sym_t	*esym;
+	int nenum = 0, nclab = 0;
+	sym_t *esym;
 	case_label_t *cl;
 
 	lint_assert(cstmt->c_switch_type != NULL);
@@ -756,7 +722,7 @@ switch2(void)
 		nenum = nclab = 0;
 		lint_assert(cstmt->c_switch_type->t_enum != NULL);
 		for (esym = cstmt->c_switch_type->t_enum->en_first_enumerator;
-		     esym != NULL; esym = esym->s_next) {
+		    esym != NULL; esym = esym->s_next) {
 			nenum++;
 		}
 		for (cl = cstmt->c_case_labels; cl != NULL; cl = cl->cl_next)
@@ -772,21 +738,21 @@ switch2(void)
 	if (cstmt->c_break) {
 		/*
 		 * The end of the switch statement is always reached since
-		 * c_break is only set if a break statement can actually
-		 * be reached.
+		 * c_break is only set if a break statement can actually be
+		 * reached.
 		 */
 		set_reached(true);
 	} else if (cstmt->c_default ||
 		   (hflag && cstmt->c_switch_type->t_is_enum &&
 		    nenum == nclab)) {
 		/*
-		 * The end of the switch statement is reached if the end
-		 * of the last statement inside it is reached.
+		 * The end of the switch statement is reached if the end of the
+		 * last statement inside it is reached.
 		 */
 	} else {
 		/*
-		 * There are possible values that are not handled in the
-		 * switch statement.
+		 * There are possible values that are not handled in the switch
+		 * statement.
 		 */
 		set_reached(true);
 	}
@@ -794,11 +760,8 @@ switch2(void)
 	end_control_statement(CS_SWITCH);
 }
 
-/*
- * T_WHILE T_LPAREN expr T_RPAREN
- */
 void
-while1(tnode_t *tn)
+stmt_while_expr(tnode_t *tn)
 {
 	bool body_reached;
 
@@ -823,17 +786,13 @@ while1(tnode_t *tn)
 	set_reached(body_reached);
 }
 
-/*
- * while_expr statement
- * while_expr error
- */
 void
-while2(void)
+stmt_while_expr_stmt(void)
 {
 
 	/*
-	 * The end of the loop can be reached if it is no endless loop
-	 * or there was a break statement which was reached.
+	 * The end of the loop can be reached if it is no endless loop or there
+	 * was a break statement which was reached.
 	 */
 	set_reached(!cstmt->c_maybe_endless || cstmt->c_break);
 
@@ -841,11 +800,8 @@ while2(void)
 	end_control_statement(CS_WHILE);
 }
 
-/*
- * T_DO
- */
 void
-do1(void)
+stmt_do(void)
 {
 
 	if (!reached) {
@@ -858,12 +814,8 @@ do1(void)
 	cstmt->c_loop = true;
 }
 
-/*
- * do statement do_while_expr
- * do error
- */
 void
-do2(tnode_t *tn)
+stmt_do_while_expr(tnode_t *tn)
 {
 
 	/*
@@ -893,16 +845,13 @@ do2(tnode_t *tn)
 	end_control_statement(CS_DO_WHILE);
 }
 
-/*
- * T_FOR T_LPAREN opt_expr T_SEMI opt_expr T_SEMI opt_expr T_RPAREN
- */
 void
-for1(tnode_t *tn1, tnode_t *tn2, tnode_t *tn3)
+stmt_for_exprs(tnode_t *tn1, tnode_t *tn2, tnode_t *tn3)
 {
 
 	/*
-	 * If there is no initialization expression it is possible that
-	 * it is intended not to enter the loop at top.
+	 * If there is no initialization expression it is possible that it is
+	 * intended not to enter the loop at top.
 	 */
 	if (tn1 != NULL && !reached) {
 		/* loop not entered at top */
@@ -914,9 +863,9 @@ for1(tnode_t *tn1, tnode_t *tn2, tnode_t *tn3)
 	cstmt->c_loop = true;
 
 	/*
-	 * Store the tree memory for the reinitialization expression.
-	 * Also remember this expression itself. We must check it at
-	 * the end of the loop to get "used but not set" warnings correct.
+	 * Store the tree memory for the reinitialization expression. Also
+	 * remember this expression itself. We must check it at the end of the
+	 * loop to get "used but not set" warnings correct.
 	 */
 	cstmt->c_for_expr3_mem = expr_save_memory();
 	cstmt->c_for_expr3 = tn3;
@@ -933,20 +882,16 @@ for1(tnode_t *tn1, tnode_t *tn2, tnode_t *tn3)
 
 	cstmt->c_maybe_endless = tn2 == NULL || is_nonzero(tn2);
 
-	/* Checking the reinitialization expression is done in for2() */
+	/* The tn3 expression is checked in stmt_for_exprs_stmt. */
 
 	set_reached(!is_zero(tn2));
 }
 
-/*
- * for_exprs statement
- * for_exprs error
- */
 void
-for2(void)
+stmt_for_exprs_stmt(void)
 {
-	pos_t	cpos, cspos;
-	tnode_t	*tn3;
+	pos_t cpos, cspos;
+	tnode_t *tn3;
 
 	if (cstmt->c_continue)
 		set_reached(true);
@@ -983,11 +928,8 @@ for2(void)
 	end_control_statement(CS_FOR);
 }
 
-/*
- * T_GOTO identifier T_SEMI
- */
 void
-do_goto(sym_t *lab)
+stmt_goto(sym_t *lab)
 {
 
 	mark_as_used(lab, false, false);
@@ -997,11 +939,8 @@ do_goto(sym_t *lab)
 	set_reached(false);
 }
 
-/*
- * T_BREAK T_SEMI
- */
 void
-do_break(void)
+stmt_break(void)
 {
 	control_statement *cs;
 
@@ -1023,11 +962,8 @@ do_break(void)
 	set_reached(false);
 }
 
-/*
- * T_CONTINUE T_SEMI
- */
 void
-do_continue(void)
+stmt_continue(void)
 {
 	control_statement *cs;
 
@@ -1066,7 +1002,7 @@ check_return_value(bool sys, tnode_t *tn)
 	}
 
 	/* Create a temporary node for the left side */
-	tnode_t *ln = expr_zero_alloc(sizeof(*ln));
+	tnode_t *ln = expr_zero_alloc(sizeof(*ln), "tnode");
 	ln->tn_op = NAME;
 	ln->tn_type = expr_unqualified_type(funcsym->s_type->t_subt);
 	ln->tn_lvalue = true;
@@ -1088,12 +1024,8 @@ check_return_value(bool sys, tnode_t *tn)
 	expr(retn, true, false, true, false);
 }
 
-/*
- * T_RETURN T_SEMI
- * T_RETURN expr T_SEMI
- */
 void
-do_return(bool sys, tnode_t *tn)
+stmt_return(bool sys, tnode_t *tn)
 {
 	control_statement *cs = cstmt;
 
@@ -1116,12 +1048,13 @@ do_return(bool sys, tnode_t *tn)
 		error(213, funcsym->s_name);
 		expr_free_all();
 		tn = NULL;
-	} else if (tn == NULL && funcsym->s_type->t_subt->t_tspec != VOID) {
-		/*
-		 * Assume that the function has a return value only if it
-		 * is explicitly declared.
-		 */
-		if (!funcsym->s_return_type_implicit_int)
+	}
+	if (tn == NULL && funcsym->s_type->t_subt->t_tspec != VOID
+	    && !funcsym->s_return_type_implicit_int) {
+		if (allow_c99)
+			/* function '%s' expects to return value */
+			error(214, funcsym->s_name);
+		else
 			/* function '%s' expects to return value */
 			warning(214, funcsym->s_name);
 	}
@@ -1183,19 +1116,17 @@ global_clean_up_decl(bool silent)
 }
 
 /*
- * ARGSUSED comment
- *
- * Only the first n arguments of the following function are checked
- * for usage. A missing argument is taken to be 0.
+ * Only the first n parameters of the following function are checked for usage.
+ * A missing argument is taken to be 0.
  */
-void
+static void
 argsused(int n)
 {
 
 	if (n == -1)
 		n = 0;
 
-	if (dcs->d_kind != DK_EXTERN) {
+	if (dcs->d_kind != DLK_EXTERN) {
 		/* comment ** %s ** must be outside function */
 		warning(280, "ARGSUSED");
 		return;
@@ -1208,20 +1139,14 @@ argsused(int n)
 	argsused_pos = curr_pos;
 }
 
-/*
- * VARARGS comment
- *
- * Causes lint2 to check only the first n arguments for compatibility
- * with the function definition. A missing argument is taken to be 0.
- */
-void
+static void
 varargs(int n)
 {
 
 	if (n == -1)
 		n = 0;
 
-	if (dcs->d_kind != DK_EXTERN) {
+	if (dcs->d_kind != DLK_EXTERN) {
 		/* comment ** %s ** must be outside function */
 		warning(280, "VARARGS");
 		return;
@@ -1235,19 +1160,17 @@ varargs(int n)
 }
 
 /*
- * PRINTFLIKE comment
- *
- * Check all arguments until the (n-1)-th as usual. The n-th argument is
- * used the check the types of remaining arguments.
+ * Check all parameters until the (n-1)-th as usual. The n-th argument is
+ * used to check the types of the remaining arguments.
  */
-void
+static void
 printflike(int n)
 {
 
 	if (n == -1)
 		n = 0;
 
-	if (dcs->d_kind != DK_EXTERN) {
+	if (dcs->d_kind != DLK_EXTERN) {
 		/* comment ** %s ** must be outside function */
 		warning(280, "PRINTFLIKE");
 		return;
@@ -1261,19 +1184,17 @@ printflike(int n)
 }
 
 /*
- * SCANFLIKE comment
- *
- * Check all arguments until the (n-1)-th as usual. The n-th argument is
+ * Check all parameters until the (n-1)-th as usual. The n-th argument is
  * used the check the types of remaining arguments.
  */
-void
+static void
 scanflike(int n)
 {
 
 	if (n == -1)
 		n = 0;
 
-	if (dcs->d_kind != DK_EXTERN) {
+	if (dcs->d_kind != DLK_EXTERN) {
 		/* comment ** %s ** must be outside function */
 		warning(280, "SCANFLIKE");
 		return;
@@ -1286,89 +1207,29 @@ scanflike(int n)
 	scanflike_pos = curr_pos;
 }
 
-/*
- * Set the line number for a CONSTCOND comment. At this and the following
- * line no warnings about constants in conditional contexts are printed.
- */
-/* ARGSUSED */
-void
-constcond(int n)
+static void
+lintlib(void)
 {
 
-	constcond_flag = true;
-}
-
-/*
- * Suppress printing of "fallthrough on ..." warnings until next
- * statement.
- */
-/* ARGSUSED */
-void
-fallthru(int n)
-{
-
-	seen_fallthrough = true;
-}
-
-/*
- * Stop warnings about statements which cannot be reached. Also tells lint
- * that the following statements cannot be reached (e.g. after exit()).
- */
-/* ARGSUSED */
-void
-not_reached(int n)
-{
-
-	set_reached(false);
-	warn_about_unreachable = false;
-}
-
-/* ARGSUSED */
-void
-lintlib(int n)
-{
-
-	if (dcs->d_kind != DK_EXTERN) {
+	if (dcs->d_kind != DLK_EXTERN) {
 		/* comment ** %s ** must be outside function */
 		warning(280, "LINTLIBRARY");
 		return;
 	}
 	llibflg = true;
-	vflag = false;
-}
-
-/* Suppress one or most warnings at the current and the following line. */
-void
-linted(int n)
-{
-
-	debug_step("set lwarn %d", n);
-	lwarn = n;
-}
-
-/*
- * Suppress bitfield type errors on the current line.
- */
-/* ARGSUSED */
-void
-bitfieldtype(int n)
-{
-
-	debug_step("%s, %d: bitfieldtype_ok = true",
-	    curr_pos.p_file, curr_pos.p_line);
-	bitfieldtype_ok = true;
+	vflag = true;
 }
 
 /*
  * PROTOLIB in conjunction with LINTLIBRARY can be used to handle
  * prototypes like function definitions. This is done if the argument
- * to PROTOLIB is nonzero. Otherwise prototypes are handled normally.
+ * to PROTOLIB is nonzero. Otherwise, prototypes are handled normally.
  */
-void
+static void
 protolib(int n)
 {
 
-	if (dcs->d_kind != DK_EXTERN) {
+	if (dcs->d_kind != DLK_EXTERN) {
 		/* comment ** %s ** must be outside function */
 		warning(280, "PROTOLIB");
 		return;
@@ -1376,11 +1237,23 @@ protolib(int n)
 	plibflg = n != 0;
 }
 
-/* The next statement/declaration may use "long long" without a diagnostic. */
-/* ARGSUSED */
 void
-longlong(int n)
+handle_lint_comment(lint_comment comment, int arg)
 {
-
-	quadflg = true;
+	switch (comment) {
+	case LC_ARGSUSED:	argsused(arg);			break;
+	case LC_BITFIELDTYPE:	suppress_bitfieldtype = true;	break;
+	case LC_CONSTCOND:	suppress_constcond = true;	break;
+	case LC_FALLTHROUGH:	suppress_fallthrough = true;	break;
+	case LC_LINTLIBRARY:	lintlib();			break;
+	case LC_LINTED:		debug_step("set lwarn %d", arg);
+				lwarn = arg;			break;
+	case LC_LONGLONG:	suppress_longlong = true;	break;
+	case LC_NOTREACHED:	set_reached(false);
+				warn_about_unreachable = false;	break;
+	case LC_PRINTFLIKE:	printflike(arg);		break;
+	case LC_PROTOLIB:	protolib(arg);			break;
+	case LC_SCANFLIKE:	scanflike(arg);			break;
+	case LC_VARARGS:	varargs(arg);			break;
+	}
 }

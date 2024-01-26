@@ -1,4 +1,4 @@
-/* $NetBSD: t_siginfo.c,v 1.47 2022/05/07 13:14:16 rin Exp $ */
+/* $NetBSD: t_siginfo.c,v 1.49 2023/08/04 03:31:13 rin Exp $ */
 
 /*-
  * Copyright (c) 2010 The NetBSD Foundation, Inc.
@@ -365,7 +365,6 @@ ATF_TC_HEAD(sigfpe_int, tc)
 ATF_TC_BODY(sigfpe_int, tc)
 {
 	struct sigaction sa;
-	long l = strtol("0", NULL, 10);
 
 #if defined(__aarch64__) || defined(__powerpc__) || defined(__sh3__)
 	atf_tc_skip("Integer division by zero doesn't trap");
@@ -380,7 +379,13 @@ ATF_TC_BODY(sigfpe_int, tc)
 #elif defined(_FLOAT_IEEE754)
 		fpsetmask(FP_X_INV|FP_X_DZ|FP_X_OFL|FP_X_UFL|FP_X_IMP);
 #endif
-		printf("%ld\n", 1 / l);
+		/*
+		 * Do not use constant 1 here. GCC >= 12 optimizes
+		 * (1 / i) to (abs(i) == 1 ? i : 0), even for -O0.
+		 */
+		long unity = strtol("1", NULL, 10),
+		     zero  = strtol("0", NULL, 10);
+		printf("%ld\n", unity / zero);
 	}
 	if (intdiv_signalled == 0)
 		atf_tc_fail("FPE signal handler was not invoked");
@@ -477,7 +482,8 @@ ATF_TC_BODY(sigbus_adraln, tc)
 	/* m68k (except sun2) never issue SIGBUS (PR lib/49653),
 	 * same for armv8 or newer */
 #if (defined(__m68k__) && !defined(__mc68010__)) || \
-    defined(__aarch64__)
+    defined(__aarch64__) || \
+    defined(__riscv__)
 	atf_tc_skip("No SIGBUS signal for unaligned accesses");
 #endif
 

@@ -1,5 +1,5 @@
-/*	$NetBSD: cipher.h,v 1.15 2020/02/27 00:24:40 christos Exp $	*/
-/* $OpenBSD: cipher.h,v 1.55 2020/01/23 10:24:29 dtucker Exp $ */
+/*	$NetBSD: cipher.h,v 1.17 2023/12/20 17:15:20 christos Exp $	*/
+/* $OpenBSD: cipher.h,v 1.56 2023/10/10 06:49:54 tb Exp $ */
 
 /*
  * Author: Tatu Ylonen <ylo@cs.hut.fi>
@@ -49,18 +49,7 @@
 #define CIPHER_DECRYPT		0
 
 struct sshcipher;
-#if 0
-struct sshcipher_ctx {
-	int	plaintext;
-	int	encrypt;
-	EVP_CIPHER_CTX *evp;
-	struct chachapoly_ctx cp_ctx; /* XXX union with evp? */
-	struct aesctr_ctx ac_ctx; /* XXX union with evp? */
-	const struct sshcipher *cipher;
-};
-#else
 struct sshcipher_ctx;
-#endif
 
 const struct sshcipher *cipher_by_name(const char *);
 const char *cipher_warning_message(const struct sshcipher_ctx *);
@@ -85,6 +74,5 @@ u_int	 cipher_ctx_is_plaintext(struct sshcipher_ctx *);
 
 int	 cipher_get_keyiv(struct sshcipher_ctx *, u_char *, size_t);
 int	 cipher_set_keyiv(struct sshcipher_ctx *, const u_char *, size_t);
-int	 cipher_get_keyiv_len(const struct sshcipher_ctx *);
 
 #endif				/* CIPHER_H */

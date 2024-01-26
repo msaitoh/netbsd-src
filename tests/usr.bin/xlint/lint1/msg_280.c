@@ -1,7 +1,9 @@
-/*	$NetBSD: msg_280.c,v 1.6 2022/06/22 19:23:18 rillig Exp $	*/
+/*	$NetBSD: msg_280.c,v 1.9 2023/08/02 18:51:25 rillig Exp $	*/
 # 3 "msg_280.c"
 
 // Test for message: comment /* %s */ must be outside function [280]
+
+/* lint1-extra-flags: -X 351 */
 
 /* VARARGS */
 void
@@ -22,7 +24,7 @@ varargs_ok(const char *str, ...)
  * which case the T_LPAREN belongs to an abstract_decl_lparen).  This token
  * lookahead happens just before either of these grammar rules is reduced.
  * During that reduction, the current declaration context switches from
- * 'extern' to 'prototype argument', which makes this exact position the very
+ * DLK_EXTERN to DLK_PROTO_PARAMS, which makes this exact position the very
  * last possible.  Everything later would already be in the wrong context.
  *
  * As of cgram.y 1.360 from 2021-09-04, the implementation of these grammar
@@ -51,7 +53,7 @@ varargs_bad_body(const char *str, ...)
 }
 
 void
-/* expect+1: warning: argument 'str' unused in function 'argsused_bad_body' [231] */
+/* expect+1: warning: parameter 'str' unused in function 'argsused_bad_body' [231] */
 argsused_bad_body(const char *str)
 {
 	/* expect+1: warning: comment ** ARGSUSED ** must be outside function [280] */

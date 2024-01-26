@@ -1,4 +1,4 @@
-/* $NetBSD: style,v 1.72 2023/04/15 12:22:37 rillig Exp $ */
+/* $NetBSD: style,v 1.76 2024/01/24 04:00:43 rin Exp $ */
 
 /*
  * The revision control tag appears first, with a blank line after it.
@@ -30,7 +30,7 @@
 #include <sys/cdefs.h>
 __COPYRIGHT("@(#) Copyright (c) 2008\
  The NetBSD Foundation, inc. All rights reserved.");
-__RCSID("$NetBSD: style,v 1.72 2023/04/15 12:22:37 rillig Exp $");
+__RCSID("$NetBSD: style,v 1.76 2024/01/24 04:00:43 rin Exp $");
 
 /*
  * VERY important single-line comments look like this.
@@ -58,6 +58,76 @@ __RCSID("$NetBSD: style,v 1.72 2023/04/15 12:22:37 rillig Exp $");
 #define _SYS_SOCKET_H_
 
 /*
+ * Include other header files only as necessary, mainly for type
+ * definitions or macros that are necessary to use in this header file.
+ *
+ * Avoid relying on transitive inclusions.
+ *
+ * Avoid header files dependencies just for struct and union types that
+ * are used in pointer types, which don't require type defintions.
+ * Instead, use forward declarations of the struct or union tag.
+ */
+#include <sys/foobar.h>
+
+/*
+ * Forward declarations for struct and union tags that don't need
+ * definitions go next.
+ */
+struct dirent;
+
+/*
+ * Define public structs and unions, only if they are user-allocated or
+ * otherwise exposed to users for a good reason; otherwise keep them
+ * private to .c files or `_impl.h' or `_private.h' files.
+ *
+ * Do not create a typedef like `typedef struct example example_t;' or
+ * `typedef struct example *example_t;'.  Use `struct example' or
+ * `struct example *' in the public API; that way, other header files
+ * which declare functions or define struct or union types that involve
+ * only pointers to `struct example' need not pull in unnecessary
+ * header files.
+ */
+struct example {
+	struct data *p;
+	int x;
+	char y;
+};
+
+/*
+ * Use typedefs judiciously.
+ *
+ * Function or function pointer types:
+ */
+typedef void sighandler_t(int);
+
+/*
+ * Aliases for arithmetic types:
+ */
+typedef uint16_t nlink_t;
+
+/*
+ * Types that might be defined differently in some contexts, like
+ * uint8_t on one port, a pointer to a struct on another port, and an
+ * in-line struct larger than a pointer on a third port:
+ */
+typedef uint8_t foo_t;		/* Hypothetical leg26 definition */
+typedef struct foo *foo_t;	/* Hypothetical i786 definition */
+typedef struct {		/* Hypothetical risc72 definition */
+	uint32_t p;
+	uint32_t q;
+	uint8_t t;
+} foo_t;
+
+/*
+ * For opaque data structures that are always represented by a pointer
+ * when stored in other data structures or passed to functions, don't
+ * use a type `foo_t' with `typedef void *foo_t'.  Use `struct foo *'
+ * with no public definition for `struct foo', so the compiler can
+ * detect type errors, and other header files can use `struct foo *'
+ * without creating header file dependencies.
+ */
+
+/*
  * extern declarations must only appear in header files, not in .c
  * files, so the same declaration is used by the .c file defining it
  * and the .c file using it, giving the compiler the opportunity to
@@ -71,7 +141,7 @@ __RCSID("$NetBSD: style,v 1.72 2023/04/15 12:22:37 rillig Exp $");
  */
 extern int frotz;
 
-int frobnicate(const char *);
+int frobnicate(const char *, struct dirent *, foobar_t);
 
 /*
  * Contents of #include file go between the #ifndef and the #endif at the end.
@@ -131,9 +201,8 @@ int frobnicate(const char *);
 #include "pathnames.h"		/* Local includes in double quotes. */
 
 /*
- * ANSI function declarations for private functions (i.e. functions not used
- * elsewhere) and the main() function go at the top of the source module.
- * Don't associate a name with the types.  I.e. use:
+ * Declarations for file-static functions go at the top of the file.
+ * Don't associate a name with the parameter types.  I.e. use:
  *	void function(int);
  * Use your discretion on indenting between the return type and the name, and
  * how to wrap a prototype too long for a single line.  In the latter case,
@@ -196,6 +265,10 @@ enum enumtype {
  *
  * It may be useful to use a meaningful prefix for each member name.
  * E.g, for ``struct softc'' the prefix could be ``sc_''.
+ *
+ * Don't create typedef aliases for struct or union types.  That way,
+ * other header files can use pointer types to them without the header
+ * file defining the typedef.
  */
 struct foo {
 	struct foo *next;	/* List of active foo */
@@ -207,11 +280,6 @@ struct foo {
 	uint8_t flag;
 };
 struct foo *foohead;		/* Head of global foo list */
-
-/* Make the structure name match the typedef. */
-typedef struct BAR {
-	int level;
-} BAR;
 
 /* C99 uintN_t is preferred over u_intN_t. */
 uint32_t zero;
@@ -356,7 +424,8 @@ function(int a1, int a2, float fl, int a4)
 	 * When declaring variables in functions, multiple variables per line
 	 * are okay. If a line overflows reuse the type keyword.
 	 *
-	 * Function prototypes should go in the include file "extern.h".
+	 * Function prototypes and external data declarations should go in a
+	 * suitable include file.
 	 *
 	 * Avoid initializing variables in the declarations; move
 	 * declarations next to their first use, and initialize
@@ -399,8 +468,8 @@ function(int a1, int a2, float fl, int a4)
 	 * code is designed to compile and work on different environments
 	 * where we don't have control over the NULL definition (on NetBSD
 	 * it is defined as ((void *)0), but on other systems it can be
-	 * defined as (0) and both definitions are valid under ANSI C), it
-	 * it advised to cast NULL to a pointer on variadic functions,
+	 * defined as (0) and both definitions are valid), it
+	 * is advised to cast NULL to a pointer on variadic functions,
 	 * because on machines where sizeof(pointer) != sizeof(int) and in
 	 * the absence of a prototype in scope, passing an un-casted NULL,
 	 * will result in passing an int on the stack instead of a pointer.
@@ -428,8 +497,7 @@ function(int a1, int a2, float fl, int a4)
 }
 
 /*
- * Use ANSI function declarations.  ANSI function braces look like
- * old-style (K&R) function braces.
+ * Place the opening brace of a function body in column 1.
  * As per the wrapped prototypes, use your discretion on how to format
  * the subsequent lines.
  */

@@ -1,4 +1,4 @@
-/*	$NetBSD: context.c,v 1.6 2017/01/30 18:59:04 christos Exp $	*/
+/*	$NetBSD: context.c,v 1.8 2023/09/11 15:12:12 christos Exp $	*/
 
 /*
  * Copyright (c) 1997 - 2010 Kungliga Tekniska Högskolan
@@ -38,6 +38,9 @@
 #include "krb5_locl.h"
 #include <assert.h>
 #include <krb5/com_err.h>
+#if OPENSSL_VERSION_NUMBER >= 0x30000000UL
+#include <openssl/provider.h>
+#endif
 
 #define INIT_FIELD(C, T, E, D, F)					\
     (C)->E = krb5_config_get_ ## T ## _default ((C), NULL, (D), 	\
@@ -103,7 +106,7 @@ init_context_from_config_file(krb5_context context)
     krb5_error_code ret;
     const char * tmp;
     char **s;
-    krb5_enctype *tmptypes;
+    krb5_enctype *tmptypes = NULL;
 
     INIT_FIELD(context, time, max_skew, 5 * 60, "clockskew");
     INIT_FIELD(context, time, kdc_timeout, 30, "kdc_timeout");
@@ -396,6 +399,9 @@ init_context_once(void *ctx)
 	krb5_config_free_strings(dirs);
 
     bindtextdomain(HEIMDAL_TEXTDOMAIN, HEIMDAL_LOCALEDIR);
+#if OPENSSL_VERSION_NUMBER >= 0x30000000UL
+    OSSL_PROVIDER_load(NULL, "legacy");
+#endif
 }
 
 

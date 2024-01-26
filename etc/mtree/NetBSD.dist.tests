@@ -1,4 +1,4 @@
-#	$NetBSD: NetBSD.dist.tests,v 1.198 2023/01/15 23:18:05 rillig Exp $
+#	$NetBSD: NetBSD.dist.tests,v 1.202 2024/01/25 00:30:57 riastradh Exp $
 
 ./usr/libdata/debug/usr/tests
 ./usr/libdata/debug/usr/tests/atf
@@ -11,6 +11,8 @@
 ./usr/libdata/debug/usr/tests/atf/tools
 ./usr/libdata/debug/usr/tests/bin
 ./usr/libdata/debug/usr/tests/bin/df
+./usr/libdata/debug/usr/tests/compat
+./usr/libdata/debug/usr/tests/compat/linux
 ./usr/libdata/debug/usr/tests/crypto
 ./usr/libdata/debug/usr/tests/crypto/libcrypto
 ./usr/libdata/debug/usr/tests/crypto/opencrypto
@@ -210,6 +212,8 @@
 ./usr/tests/bin/sh/dotcmd/out
 ./usr/tests/bin/sleep
 ./usr/tests/bin/tar
+./usr/tests/compat
+./usr/tests/compat/linux
 ./usr/tests/crypto
 ./usr/tests/crypto/libcrypto
 ./usr/tests/crypto/opencrypto
@@ -441,6 +445,7 @@
 ./usr/tests/usr.bin/cut
 ./usr/tests/usr.bin/diff
 ./usr/tests/usr.bin/dirname
+./usr/tests/usr.bin/error
 ./usr/tests/usr.bin/find
 ./usr/tests/usr.bin/fstat
 ./usr/tests/usr.bin/gdb
@@ -457,6 +462,7 @@
 ./usr/tests/usr.bin/make/unit-tests
 ./usr/tests/usr.bin/mixerctl
 ./usr/tests/usr.bin/mkdep
+./usr/tests/usr.bin/mtree
 ./usr/tests/usr.bin/nbperf
 ./usr/tests/usr.bin/netpgpverify
 ./usr/tests/usr.bin/patch
@@ -482,6 +488,11 @@
 ./usr/tests/usr.bin/xlint/xlint
 ./usr/tests/usr.bin/ztest
 ./usr/tests/usr.sbin
+./usr/tests/usr.sbin/certctl
+./usr/tests/usr.sbin/certctl/certs1
+./usr/tests/usr.sbin/certctl/certs2
+./usr/tests/usr.sbin/certctl/certs3
+./usr/tests/usr.sbin/certctl/certs4
 ./usr/tests/usr.sbin/cpuctl
 ./usr/tests/usr.sbin/execsnoop
 ./usr/tests/usr.sbin/inetd

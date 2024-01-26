@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.14 2021/04/13 06:25:48 mrg Exp $
+#	$NetBSD: Makefile,v 1.18 2023/08/13 18:57:07 gutteridge Exp $
 
 PROG=	mdnsd
 
@@ -7,7 +7,7 @@ PROG=	mdnsd
 .PATH:	${DIST}/mDNSPosix ${DIST}/mDNSCore ${DIST}/mDNSShared
 
 CPPFLAGS+=-I${DIST}/mDNSCore -I${DIST}/mDNSShared \
-	-DPROGRAM_NAME=\"mdnsd\" -DHAVE_SIGINFO
+	-DPROGRAM_NAME=\"mdnsd\" -DHAVE_SIGINFO -D_PLATFORM_HAS_STRONG_PRNG_
 #CPPFLAGS+=-DMDNS_DEBUGMSGS=99
 SRCS=	PosixDaemon.c mDNSPosix.c mDNSBSD.c mDNS.c DNSDigest.c uDNS.c \
 	DNSCommon.c uds_daemon.c mDNSDebug.c dnssd_ipc.c GenLinkedList.c \
@@ -17,9 +17,9 @@ COPTS.uds_daemon.c += -Wno-stack-protector
 
 MAN=	mdnsd.8
 
-CWARNFLAGS.clang+=	-Wno-unused-value -Wno-error=address-of-packed-member
-CWARNFLAGS.gcc+=	${GCC_NO_ADDR_OF_PACKED_MEMBER}
+CWARNFLAGS.clang+=	-Wno-unused-value
+CWARNFLAGS+=		${CC_WNO_ADDRESS_OF_PACKED_MEMBER}
 
-COPTS.DNSCommon.c+=	${GCC_NO_RETURN_LOCAL_ADDR}
+COPTS.DNSCommon.c+=	${CC_WNO_RETURN_LOCAL_ADDR}
 
 .include <bsd.prog.mk>

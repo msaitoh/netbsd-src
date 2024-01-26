@@ -1,4 +1,4 @@
-#	$NetBSD: bsd.sys.mk,v 1.312 2023/01/22 15:20:01 rillig Exp $
+#	$NetBSD: bsd.sys.mk,v 1.315 2023/11/06 22:35:48 christos Exp $
 #
 # Build definitions used for NetBSD source tree builds.
 
@@ -21,6 +21,7 @@ error2:
 .if !empty(DESTDIR)
 CPPFLAGS+=	-Wp,-iremap,${DESTDIR}:
 REPROFLAGS+=	-fdebug-prefix-map=\$$DESTDIR=
+REPROFLAGS+=	-fmacro-prefix-map=\$$DESTDIR=
 .endif
 
 CPPFLAGS+=	-Wp,-fno-canonical-system-headers
@@ -28,7 +29,9 @@ CPPFLAGS+=	-Wp,-iremap,${NETBSDSRCDIR}:/usr/src
 CPPFLAGS+=	-Wp,-iremap,${X11SRCDIR}:/usr/xsrc
 
 REPROFLAGS+=	-fdebug-prefix-map=\$$NETBSDSRCDIR=/usr/src
+REPROFLAGS+=	-fmacro-prefix-map=\$$NETBSDSRCDIR=/usr/src
 REPROFLAGS+=	-fdebug-prefix-map=\$$X11SRCDIR=/usr/xsrc
+REPROFLAGS+=	-fmacro-prefix-map=\$$X11SRCDIR=/usr/xsrc
 .if defined(MAKEOBJDIRPREFIX)
 NETBSDOBJDIR=	${MAKEOBJDIRPREFIX}${NETBSDSRCDIR}
 .endif
@@ -36,6 +39,7 @@ NETBSDOBJDIR=	${MAKEOBJDIRPREFIX}${NETBSDSRCDIR}
 .if defined(NETBSDOBJDIR)
 .export NETBSDOBJDIR
 REPROFLAGS+=	-fdebug-prefix-map=\$$NETBSDOBJDIR=/usr/obj
+REPROFLAGS+=	-fmacro-prefix-map=\$$NETBSDOBJDIR=/usr/obj
 .endif
 
 LINTFLAGS+=	-R${NETBSDSRCDIR}=/usr/src -R${X11SRCDIR}=/usr/xsrc
@@ -163,7 +167,9 @@ CWARNFLAGS+=	${CWARNFLAGS.${ACTIVE_CC}}
 CPPFLAGS+=	${AUDIT:D-D__AUDIT__}
 _NOWERROR=	${defined(NOGCCERROR) || (${ACTIVE_CC} == "clang" && defined(NOCLANGERROR)):?yes:no}
 CFLAGS+=	${${_NOWERROR} == "no" :?-Werror:} ${CWARNFLAGS}
-LINTFLAGS+=	${DESTDIR:D-d ${DESTDIR}}
+.if !empty(DESTDIR)
+LINTFLAGS+=	-d ${DESTDIR}
+.endif
 
 .if !defined(NOSSP) && (${USE_SSP:Uno} != "no") && (${BINDIR:Ux} != "/usr/mdec")
 .   if !defined(KERNSRCDIR) && !defined(KERN) # not for kernels / kern modules
@@ -345,7 +351,7 @@ OBJCOPYLIBFLAGS_EXTRA=-w -K '[$$][dx]' -K '[$$][dx]\.*'
 OBJCOPYLIBFLAGS_EXTRA=-w -K '[$$][adt]' -K '[$$][adt]\.*'
 .endif
 
-.if ${MKSTRIPSYM:Uyes} == "yes"
+.if ${MKSTRIPSYM} != "no"
 OBJCOPYLIBFLAGS?=${"${.TARGET:M*.po}" != "":?-X:-x} ${OBJCOPYLIBFLAGS_EXTRA}
 .else
 OBJCOPYLIBFLAGS?=-X ${OBJCOPYLIBFLAGS_EXTRA}

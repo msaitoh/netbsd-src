@@ -1,4 +1,4 @@
-/* $NetBSD: read.c,v 1.79 2023/02/21 19:30:51 rillig Exp $ */
+/* $NetBSD: read.c,v 1.90 2023/12/03 18:17:41 rillig Exp $ */
 
 /*
  * Copyright (c) 1996 Christopher G. Demetriou.  All Rights Reserved.
@@ -15,7 +15,7 @@
  *    documentation and/or other materials provided with the distribution.
  * 3. All advertising materials mentioning features or use of this software
  *    must display the following acknowledgement:
- *      This product includes software developed by Jochen Pohl for
+ *	This product includes software developed by Jochen Pohl for
  *	The NetBSD Project.
  * 4. The name of the author may not be used to endorse or promote products
  *    derived from this software without specific prior written permission.
@@ -38,7 +38,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID)
-__RCSID("$NetBSD: read.c,v 1.79 2023/02/21 19:30:51 rillig Exp $");
+__RCSID("$NetBSD: read.c,v 1.90 2023/12/03 18:17:41 rillig Exp $");
 #endif
 
 #include <ctype.h>
@@ -52,22 +52,22 @@ __RCSID("$NetBSD: read.c,v 1.79 2023/02/21 19:30:51 rillig Exp $");
 
 
 /* index of current (included) source file */
-static	int	srcfile;
+static int srcfile;
 
 /*
  * The array pointed to by inpfns maps the file name indices of input files
  * to the file name indices used in lint2
  */
-static	short	*inpfns;
-static	size_t	ninpfns;
+static short *inpfns;
+static size_t ninpfns;
 
 /*
  * The array pointed to by *fnames maps file name indices to file names.
  * Indices of type short are used instead of pointers to save memory.
  */
-const	char **fnames;
-static	size_t *flines;
-static	size_t	nfnames;
+const char **fnames;
+static size_t *flines;
+static size_t nfnames;
 
 /*
  * Types are shared (to save memory for the types itself) and accessed
@@ -81,32 +81,32 @@ typedef struct thtab {
 	unsigned short th_idx;
 	struct thtab *th_next;
 } thtab_t;
-static	thtab_t	**thtab;		/* hash table */
-type_t	**tlst;				/* array for indexed access */
-static	size_t	tlstlen;		/* length of tlst */
+static thtab_t *thtab[1009];		/* hash table */
+type_t **tlst;				/* array for indexed access */
+static size_t tlstlen;		/* length of tlst */
 
-static	hte_t **renametab;
+static hte_t **renametab;
 
 /* index of current C source file (as specified at the command line) */
-static	int	csrcfile;
+static int csrcfile;
 
-static	const char *readfile_line;
+static const char *readfile_line;
 
-static	void	inperr(const char *, ...)
+static void inperr(const char *, ...)
     __printflike(1, 2) __attribute__((noreturn));
-static	void	setsrc(const char *);
-static	void	setfnid(int, const char *);
-static	void	funccall(pos_t, const char *);
-static	void	decldef(pos_t, const char *);
-static	void	usedsym(pos_t, const char *);
-static	unsigned short inptype(const char *, const char **);
-static	size_t	gettlen(const char *, const char **);
-static	unsigned short findtype(const char *, size_t, int);
-static	unsigned short storetyp(type_t *, const char *, size_t, int);
-static	unsigned int thash(const char *, size_t);
-static	char	*inpqstrg(const char *, const char **);
-static	const	char *inpname(const char *, const char **);
-static	int	getfnidx(const char *);
+static void setsrc(const char *);
+static void setfnid(int, const char *);
+static void funccall(pos_t, const char *);
+static void decldef(pos_t, const char *);
+static void usedsym(pos_t, const char *);
+static unsigned short inptype(const char *, const char **);
+static size_t gettlen(const char *, const char **);
+static unsigned short findtype(const char *, size_t, int);
+static unsigned short storetyp(type_t *, const char *, size_t, int);
+static unsigned int thash(const char *, size_t);
+static char *inpqstrg(const char *, const char **);
+static const char *inpname(const char *, const char **);
+static int getfnidx(const char *);
 
 /* Allocate zero-initialized memory that doesn't need to be freed. */
 static void *
@@ -178,9 +178,8 @@ read_ln_line(const char *line)
 	}
 
 	/*
-	 * Index of (included) source file. If this index is
-	 * different from csrcfile, it refers to an included
-	 * file.
+	 * Index of (included) source file. If this index is different from
+	 * csrcfile, it refers to an included file.
 	 */
 	isrc = parse_int(&cp);
 	isrc = inpfns[isrc];
@@ -214,9 +213,9 @@ read_ln_line(const char *line)
 void
 readfile(const char *name)
 {
-	FILE	*inp;
-	size_t	len;
-	char	*line;
+	FILE *inp;
+	size_t len;
+	char *line;
 
 	if (inpfns == NULL)
 		inpfns = xcalloc(ninpfns = 128, sizeof(*inpfns));
@@ -226,8 +225,6 @@ readfile(const char *name)
 		flines = xcalloc(nfnames, sizeof(*flines));
 	if (tlstlen == 0)
 		tlst = xcalloc(tlstlen = 256, sizeof(*tlst));
-	if (thtab == NULL)
-		thtab = xcalloc(THSHSIZ2, sizeof(*thtab));
 
 	renametab = htab_new();
 
@@ -248,7 +245,7 @@ readfile(const char *name)
 		readfile_line = NULL;
 	}
 
-	_destroyhash(renametab);
+	hash_free(renametab);
 
 	if (ferror(inp) != 0)
 		err(1, "read error on %s", name);
@@ -301,8 +298,8 @@ setfnid(int fid, const char *cp)
 		ninpfns *= 2;
 	}
 	/*
-	 * Should always be true because indices written in the output
-	 * file by lint1 are always the previous index + 1.
+	 * Should always be true because indices written in the output file by
+	 * lint1 are always the previous index + 1.
 	 */
 	if ((size_t)fid >= ninpfns)
 		errx(1, "internal error: setfnid");
@@ -316,10 +313,10 @@ static void
 funccall(pos_t pos, const char *cp)
 {
 	arginf_t *ai, **lai;
-	char	c;
-	bool	rused, rdisc;
-	hte_t	*hte;
-	fcall_t	*fcall;
+	char c;
+	bool rused, rdisc;
+	hte_t *hte;
+	fcall_t *fcall;
 	const char *name;
 
 	fcall = xalloc(sizeof(*fcall));
@@ -376,11 +373,11 @@ again:
 	name = inpname(cp, &cp);
 
 	/* first look it up in the renaming table, then in the normal table */
-	hte = _hsearch(renametab, name, false);
+	hte = hash_search(renametab, name, false);
 	if (hte != NULL)
 		hte = hte->h_hte;
 	else
-		hte = hsearch(name, true);
+		hte = htab_search(name, true);
 	hte->h_used = true;
 
 	fcall->f_type = inptype(cp, &cp);
@@ -468,10 +465,10 @@ parse_function_attribute(const char **pp, sym_t *sym, bool *used)
 static void
 decldef(pos_t pos, const char *cp)
 {
-	sym_t	*symp, sym;
-	char	*pos1, *tname;
-	bool	used, renamed;
-	hte_t	*hte, *renamehte = NULL;
+	sym_t *symp, sym;
+	char *tname;
+	bool used, renamed;
+	hte_t *hte, *renamehte = NULL;
 	const char *name, *newname;
 
 	(void)memset(&sym, 0, sizeof(sym));
@@ -492,26 +489,25 @@ decldef(pos_t pos, const char *cp)
 		newname = inpname(cp, &cp);
 
 		/* enter it and see if it's already been renamed */
-		renamehte = _hsearch(renametab, tname, true);
+		renamehte = hash_search(renametab, tname, true);
 		if (renamehte->h_hte == NULL) {
-			hte = hsearch(newname, true);
+			hte = htab_search(newname, true);
 			renamehte->h_hte = hte;
 			renamed = true;
 		} else if (hte = renamehte->h_hte,
 		    strcmp(hte->h_name, newname) != 0) {
-			pos1 = xstrdup(mkpos(&renamehte->h_syms->s_pos));
 			/* %s renamed multiple times  \t%s  ::  %s */
-			msg(18, tname, pos1, mkpos(&sym.s_pos));
-			free(pos1);
+			msg(18, tname, mkpos(&renamehte->h_syms->s_pos),
+			    mkpos(&sym.s_pos));
 		}
 		free(tname);
 	} else {
 		/* it might be a previously-done rename */
-		hte = _hsearch(renametab, name, false);
+		hte = hash_search(renametab, name, false);
 		if (hte != NULL)
 			hte = hte->h_hte;
 		else
-			hte = hsearch(name, true);
+			hte = htab_search(name, true);
 	}
 	hte->h_used |= used;
 	if (sym.s_def == DEF || sym.s_def == TDEF)
@@ -520,11 +516,11 @@ decldef(pos_t pos, const char *cp)
 	sym.s_type = inptype(cp, &cp);
 
 	/*
-	 * Allocate memory for this symbol only if it was not already
-	 * declared or tentatively defined at the same location with
-	 * the same type. Works only for symbols with external linkage,
-	 * because static symbols, tentatively defined at the same location
-	 * but in different translation units are really different symbols.
+	 * Allocate memory for this symbol only if it was not already declared
+	 * or tentatively defined at the same location with the same type.
+	 * Works only for symbols with external linkage, because static
+	 * symbols, tentatively defined at the same location but in different
+	 * translation units are really different symbols.
 	 */
 	for (symp = hte->h_syms; symp != NULL; symp = symp->s_next) {
 		if (symp->s_pos.p_isrc == sym.s_pos.p_isrc &&
@@ -564,8 +560,8 @@ decldef(pos_t pos, const char *cp)
 static void
 usedsym(pos_t pos, const char *cp)
 {
-	usym_t	*usym;
-	hte_t	*hte;
+	usym_t *usym;
+	hte_t *hte;
 	const char *name;
 
 	usym = xalloc(sizeof(*usym));
@@ -576,11 +572,11 @@ usedsym(pos_t pos, const char *cp)
 		inperr("bad delim %c", cp[-1]);
 
 	name = inpname(cp, &cp);
-	hte = _hsearch(renametab, name, false);
+	hte = hash_search(renametab, name, false);
 	if (hte != NULL)
 		hte = hte->h_hte;
 	else
-		hte = hsearch(name, true);
+		hte = htab_search(name, true);
 	hte->h_used = true;
 
 	*hte->h_lusym = usym;
@@ -593,10 +589,10 @@ parse_tspec(const char **pp, char c, bool *osdef)
 	char s;
 
 	switch (c) {
-	case 's':	/* 'signed' or 'struct' or 'float' */
-	case 'u':	/* 'unsigned' or 'union' */
-	case 'l':	/* 'long double' */
-	case 'e':	/* 'enum' */
+	case 's':		/* 'signed' or 'struct' or 'float' */
+	case 'u':		/* 'unsigned' or 'union' */
+	case 'l':		/* 'long double' */
+	case 'e':		/* 'enum' */
 		s = c;
 		c = *(*pp)++;
 		break;
@@ -617,7 +613,7 @@ parse_tspec(const char **pp, char c, bool *osdef)
 	case 'L':
 		return s == 'u' ? ULONG : LONG;
 	case 'Q':
-		return s == 'u' ? UQUAD : QUAD;
+		return s == 'u' ? ULLONG : LLONG;
 #ifdef INT128_SIZE
 	case 'J':
 		return s == 'u' ? UINT128 : INT128;
@@ -638,7 +634,7 @@ parse_tspec(const char **pp, char c, bool *osdef)
 		return s == 'e' ? ENUM : (s == 's' ? STRUCT : UNION);
 	case 'X':
 		return s == 's' ? FCOMPLEX
-				       : (s == 'l' ? LCOMPLEX : DCOMPLEX);
+		    : (s == 'l' ? LCOMPLEX : DCOMPLEX);
 	default:
 		inperr("tspec '%c'", c);
 		/* NOTREACHED */
@@ -651,14 +647,14 @@ parse_tspec(const char **pp, char c, bool *osdef)
 static unsigned short
 inptype(const char *cp, const char **epp)
 {
-	char	c;
-	const	char *ep;
-	type_t	*tp;
-	int	narg, i;
-	bool	osdef = false;
-	size_t	tlen;
+	char c;
+	const char *ep;
+	type_t *tp;
+	int narg, i;
+	bool osdef = false;
+	size_t tlen;
 	unsigned short tidx;
-	int	h;
+	int h;
 
 	/* If we have this type already, return its index. */
 	tlen = gettlen(cp, &ep);
@@ -701,7 +697,7 @@ inptype(const char *cp, const char **epp)
 				tp->t_proto = true;
 			narg = parse_int(&cp);
 			tp->t_args = xcalloc((size_t)narg + 1,
-					     sizeof(*tp->t_args));
+			    sizeof(*tp->t_args));
 			for (i = 0; i < narg; i++) {
 				if (i == narg - 1 && *cp == 'E') {
 					tp->t_vararg = true;
@@ -721,18 +717,18 @@ inptype(const char *cp, const char **epp)
 		switch (*cp++) {
 		case '1':
 			tp->t_istag = true;
-			tp->t_tag = hsearch(inpname(cp, &cp), true);
+			tp->t_tag = htab_search(inpname(cp, &cp), true);
 			break;
 		case '2':
 			tp->t_istynam = true;
-			tp->t_tynam = hsearch(inpname(cp, &cp), true);
+			tp->t_tynam = htab_search(inpname(cp, &cp), true);
 			break;
 		case '3':
 			tp->t_isuniqpos = true;
 			tp->t_uniqpos.p_line = parse_int(&cp);
 			cp++;
 			/* xlate to 'global' file name. */
-			tp->t_uniqpos.p_file =
+			tp->t_uniqpos.p_file = (short)
 			    addoutfile(inpfns[parse_int(&cp)]);
 			cp++;
 			tp->t_uniqpos.p_uniq = parse_int(&cp);
@@ -753,10 +749,10 @@ inptype(const char *cp, const char **epp)
 static size_t
 gettlen(const char *cp, const char **epp)
 {
-	const	char *cp1;
-	char	c, s;
-	tspec_t	t;
-	int	narg, i;
+	const char *cp1;
+	char c, s;
+	tspec_t t;
+	int narg, i;
 
 	cp1 = cp;
 
@@ -780,7 +776,7 @@ gettlen(const char *cp, const char **epp)
 		break;
 	}
 
-	t = NOTSPEC;
+	t = NO_TSPEC;
 
 	switch (c) {
 	case 'B':
@@ -815,9 +811,9 @@ gettlen(const char *cp, const char **epp)
 		break;
 	case 'Q':
 		if (s == 'u')
-			t = UQUAD;
+			t = ULLONG;
 		else if (s == '\0')
-			t = QUAD;
+			t = LLONG;
 		break;
 #ifdef INT128_SIZE
 	case 'J':
@@ -872,7 +868,7 @@ gettlen(const char *cp, const char **epp)
 		break;
 	}
 
-	if (t == NOTSPEC)
+	if (t == NO_TSPEC)
 		inperr("bad type: %c %c", c, s);
 
 	switch (t) {
@@ -932,7 +928,7 @@ gettlen(const char *cp, const char **epp)
 static unsigned short
 findtype(const char *cp, size_t len, int h)
 {
-	thtab_t	*thte;
+	thtab_t *thte;
 
 	for (thte = thtab[h]; thte != NULL; thte = thte->th_next) {
 		if (strncmp(thte->th_name, cp, len) != 0)
@@ -952,8 +948,8 @@ static unsigned short
 storetyp(type_t *tp, const char *cp, size_t len, int h)
 {
 	static unsigned int tidx = 1;	/* 0 is reserved */
-	thtab_t	*thte;
-	char	*name;
+	thtab_t *thte;
+	char *name;
 
 	if (tidx >= USHRT_MAX)
 		errx(1, "sorry, too many types");
@@ -973,7 +969,7 @@ storetyp(type_t *tp, const char *cp, size_t len, int h)
 
 	thte = xalloc(sizeof(*thte));
 	thte->th_name = name;
-	thte->th_idx = tidx;
+	thte->th_idx = (unsigned short)tidx;
 	thte->th_next = thtab[h];
 	thtab[h] = thte;
 
@@ -993,7 +989,7 @@ thash(const char *s, size_t len)
 		v = (v << sizeof(v)) + (unsigned char)*s++;
 		v ^= v >> (sizeof(v) * CHAR_BIT - sizeof(v));
 	}
-	return v % THSHSIZ2;
+	return v % (sizeof(thtab) / sizeof(thtab[0]));
 }
 
 /*
@@ -1002,10 +998,10 @@ thash(const char *s, size_t len)
 static char *
 inpqstrg(const char *src, const char **epp)
 {
-	char	*strg, *dst;
-	size_t	slen;
-	char	c;
-	int	v;
+	char *strg, *dst;
+	size_t slen;
+	char c;
+	int v;
 
 	dst = strg = xmalloc(slen = 32);
 
@@ -1085,10 +1081,10 @@ inpqstrg(const char *src, const char **epp)
 static const char *
 inpname(const char *cp, const char **epp)
 {
-	static	char	*buf;
-	static	size_t	blen = 0;
-	size_t	len, i;
-	char	c;
+	static char *buf;
+	static size_t blen = 0;
+	size_t len, i;
+	char c;
 
 	len = parse_int(&cp);
 	if (len + 1 > blen)
@@ -1112,7 +1108,7 @@ inpname(const char *cp, const char **epp)
 static int
 getfnidx(const char *fn)
 {
-	size_t	i;
+	size_t i;
 
 	/* 0 is reserved */
 	for (i = 1; fnames[i] != NULL; i++) {
@@ -1140,11 +1136,11 @@ getfnidx(const char *fn)
 void
 mkstatic(hte_t *hte)
 {
-	sym_t	*sym1, **symp, *sym;
-	fcall_t	**callp, *call;
-	usym_t	**usymp, *usym;
-	hte_t	*nhte;
-	bool	ofnd;
+	sym_t *sym1, **symp, *sym;
+	fcall_t **callp, *call;
+	usym_t **usymp, *usym;
+	hte_t *nhte;
+	bool ofnd;
 
 	/* Look for first static definition */
 	for (sym1 = hte->h_syms; sym1 != NULL; sym1 = sym1->s_next) {
@@ -1179,8 +1175,8 @@ mkstatic(hte_t *hte)
 	/*
 	 * Create a new hash table entry
 	 *
-	 * XXX this entry should be put at the beginning of the list to
-	 * avoid processing the same symbol twice.
+	 * XXX this entry should be put at the beginning of the list to avoid
+	 * processing the same symbol twice.
 	 */
 	for (nhte = hte; nhte->h_link != NULL; nhte = nhte->h_link)
 		continue;
@@ -1200,8 +1196,8 @@ mkstatic(hte_t *hte)
 	nhte->h_hte = NULL;
 
 	/*
-	 * move all symbols used in this translation unit into the new
-	 * hash table entry.
+	 * move all symbols used in this translation unit into the new hash
+	 * table entry.
 	 */
 	for (symp = &hte->h_syms; (sym = *symp) != NULL; ) {
 		if (sym->s_pos.p_src == sym1->s_pos.p_src) {

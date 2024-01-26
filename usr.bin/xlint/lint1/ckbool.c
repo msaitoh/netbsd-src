@@ -1,4 +1,4 @@
-/* $NetBSD: ckbool.c,v 1.20 2023/01/21 20:07:01 rillig Exp $ */
+/* $NetBSD: ckbool.c,v 1.28 2023/12/30 15:37:27 rillig Exp $ */
 
 /*-
  * Copyright (c) 2021 The NetBSD Foundation, Inc.
@@ -36,7 +36,7 @@
 #include <sys/cdefs.h>
 
 #if defined(__RCSID)
-__RCSID("$NetBSD: ckbool.c,v 1.20 2023/01/21 20:07:01 rillig Exp $");
+__RCSID("$NetBSD: ckbool.c,v 1.28 2023/12/30 15:37:27 rillig Exp $");
 #endif
 
 #include <string.h>
@@ -50,12 +50,6 @@ __RCSID("$NetBSD: ckbool.c,v 1.20 2023/01/21 20:07:01 rillig Exp $");
  */
 
 
-static const char *
-op_name(op_t op)
-{
-	return modtab[op].m_name;
-}
-
 /*
  * See if in strict bool mode, the operator takes either two bool operands
  * or two arbitrary other operands.
@@ -64,22 +58,22 @@ static bool
 is_assignment_bool_or_other(op_t op)
 {
 	return op == ASSIGN ||
-	       op == ANDASS || op == XORASS || op == ORASS ||
-	       op == RETURN || op == INIT || op == FARG;
+	    op == ANDASS || op == XORASS || op == ORASS ||
+	    op == RETURN || op == INIT || op == FARG;
 }
 
 static bool
 is_symmetric_bool_or_other(op_t op)
 {
 	return op == EQ || op == NE ||
-	       op == BITAND || op == BITXOR || op == BITOR ||
-	       op == COLON;
+	    op == BITAND || op == BITXOR || op == BITOR ||
+	    op == COLON;
 }
 
 static bool
 is_int_constant_zero(const tnode_t *tn, tspec_t t)
 {
-	return t == INT && tn->tn_op == CON && tn->tn_val->v_quad == 0;
+	return t == INT && tn->tn_op == CON && tn->tn_val.u.integer == 0;
 }
 
 static bool
@@ -120,7 +114,7 @@ typeok_strict_bool_binary_compatible(op_t op, int arg,
 		return true;
 
 	if (op == FARG) {
-		/* argument #%d expects '%s', gets passed '%s' */
+		/* parameter %d expects '%s', gets passed '%s' */
 		error(334, arg, tspec_name(lt), tspec_name(rt));
 	} else if (op == RETURN) {
 		/* function has return type '%s' but returns '%s' */
@@ -151,7 +145,7 @@ typeok_scalar_strict_bool(op_t op, const mod_t *mp, int arg,
 		rn = before_conversion(rn);
 		rt = rn->tn_type->t_tspec;
 	} else {
-		rt = NOTSPEC;
+		rt = NO_TSPEC;
 	}
 
 	if (rn != NULL &&
@@ -210,7 +204,7 @@ typeok_scalar_strict_bool(op_t op, const mod_t *mp, int arg,
 
 /*
  * See if the node is valid as operand of an operator that compares its
- * argument with 0.
+ * operand with 0.
  */
 bool
 is_typeok_bool_compares_with_zero(const tnode_t *tn)
@@ -227,15 +221,7 @@ is_typeok_bool_compares_with_zero(const tnode_t *tn)
 
 	if (tn->tn_sys && is_scalar(t))
 		return true;
-
-	/* For enums that are used as bit sets, allow "flags & FLAG". */
-	if (tn->tn_op == BITAND &&
-	    tn->tn_left->tn_op == CVT &&
-	    tn->tn_left->tn_type->t_is_enum &&
-	    tn->tn_right->tn_type->t_is_enum)
-		return true;
-
-	return false;
+	return tn->tn_op == BITAND;
 }
 
 bool

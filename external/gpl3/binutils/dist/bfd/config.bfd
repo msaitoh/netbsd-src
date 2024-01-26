@@ -374,11 +374,11 @@ case "${targ}" in
     targ_defvec=arm_elf32_nacl_be_vec
     targ_selvecs="arm_elf32_nacl_le_vec"
     ;;
-  armeb-*-netbsd*)
+  arm*eb-*-netbsd*)
     targ_defvec=arm_elf32_be_vec
     targ_selvecs="arm_elf32_le_vec"
     ;;
-  arm-*-netbsd*)
+  arm*-*-netbsd*)
     targ_defvec=arm_elf32_le_vec
     targ_selvecs="arm_elf32_be_vec"
     ;;
@@ -863,6 +863,30 @@ case "${targ}" in
     ;;
 
 #ifdef BFD64
+  mipsn64*el-*-netbsd*)
+    targ_defvec=mips_elf64_trad_le_vec
+    targ_selvecs="mips_elf32_trad_be_vec mips_elf32_trad_le_vec mips_elf32_ntrad_be_vec mips_elf32_ntrad_le_vec mips_elf64_trad_be_vec mips_ecoff_be_vec mips_ecoff_le_vec"
+    ;;
+  mipsn64*-*-netbsd*)
+    targ_defvec=mips_elf64_trad_be_vec
+    targ_selvecs="mips_elf32_trad_be_vec mips_elf32_trad_le_vec mips_elf32_ntrad_be_vec mips_elf32_ntrad_le_vec mips_elf64_trad_le_vec mips_ecoff_be_vec mips_ecoff_le_vec"
+    ;;
+  mips64*el-*-netbsd*)
+    targ_defvec=mips_elf32_ntrad_le_vec
+    targ_selvecs="mips_elf32_trad_be_vec mips_elf32_trad_le_vec mips_elf32_ntrad_be_vec mips_elf64_trad_be_vec mips_elf64_trad_le_vec mips_ecoff_be_vec mips_ecoff_le_vec"
+    ;;
+  mips64*-*-netbsd*)
+    targ_defvec=mips_elf32_ntrad_be_vec
+    targ_selvecs="mips_elf32_trad_be_vec mips_elf32_trad_le_vec mips_elf32_ntrad_le_vec mips_elf64_trad_be_vec mips_elf64_trad_le_vec mips_ecoff_be_vec mips_ecoff_le_vec"
+    ;;
+  mips*el-*-netbsd*)
+    targ_defvec=mips_elf32_trad_le_vec
+    targ_selvecs="mips_elf32_trad_be_vec mips_elf32_ntrad_be_vec mips_elf32_ntrad_le_vec mips_elf64_trad_be_vec mips_elf64_trad_le_vec mips_ecoff_be_vec mips_ecoff_le_vec"
+    ;;
+  mips*-*-netbsd*)
+    targ_defvec=mips_elf32_trad_be_vec
+    targ_selvecs="mips_elf32_trad_le_vec mips_elf32_ntrad_be_vec mips_elf32_ntrad_le_vec mips_elf64_trad_be_vec mips_elf64_trad_le_vec mips_ecoff_be_vec mips_ecoff_le_vec"
+    ;;
   mips*el-*-haiku*)
     targ_defvec=mips_elf32_le_vec
     targ_selvecs="mips_elf32_be_vec mips_elf64_be_vec mips_elf64_le_vec mips_ecoff_le_vec mips_ecoff_be_vec"
@@ -906,22 +930,6 @@ case "${targ}" in
   mips*-*-elf* | mips*-*-rtems* | mips*-*-windiss | mips*-*-none)
     targ_defvec=mips_elf32_be_vec
     targ_selvecs="mips_elf32_le_vec mips_elf64_be_vec mips_elf64_le_vec"
-    ;;
-  mips64*el-*-netbsd*)
-    targ_defvec=mips_elf32_ntrad_le_vec
-    targ_selvecs="mips_elf32_ntrad_be_vec mips_elf32_trad_le_vec mips_elf32_trad_be_vec mips_elf64_trad_le_vec mips_elf64_trad_be_vec mips_ecoff_le_vec mips_ecoff_be_vec"
-    ;;
-  mips64*-*-netbsd*)
-    targ_defvec=mips_elf32_ntrad_be_vec
-    targ_selvecs="mips_elf32_ntrad_le_vec mips_elf32_trad_be_vec mips_elf32_trad_le_vec mips_elf64_trad_be_vec mips_elf64_trad_le_vec mips_ecoff_be_vec mips_ecoff_le_vec"
-    ;;
-  mips*el-*-netbsd*)
-    targ_defvec=mips_elf32_trad_le_vec
-    targ_selvecs="mips_elf32_trad_be_vec mips_elf32_ntrad_le_vec mips_elf32_ntrad_be_vec mips_elf64_trad_be_vec mips_elf64_trad_le_vec mips_ecoff_le_vec mips_ecoff_be_vec"
-    ;;
-  mips*-*-netbsd*)
-    targ_defvec=mips_elf32_trad_be_vec
-    targ_selvecs="mips_elf32_trad_le_vec mips_elf32_ntrad_be_vec mips_elf32_ntrad_le_vec mips_elf64_trad_le_vec mips_elf64_trad_be_vec mips_ecoff_be_vec mips_ecoff_le_vec"
     ;;
   mips64*-*-openbsd*)
     targ_defvec=mips_elf64_trad_be_vec
@@ -1285,7 +1293,6 @@ case "${targ}" in
   sh*-*-netbsd*)
     targ_defvec=sh_elf32_nbsd_vec
     targ_selvecs="sh_elf32_nbsd_le_vec sh_coff_vec sh_coff_le_vec"
-    want64=true
     ;;
 
   shl*-*-elf* | sh[1234]l*-*-elf* | sh3el*-*-elf* | shl*-*-kaos*)
@@ -1329,7 +1336,7 @@ case "${targ}" in
     targ_underscore=yes
     ;;
 
-  sparc-*-netbsdelf*)
+  sparc-*-netbsd*)
     targ_defvec=sparc_elf32_vec
     want64=true
     ;;
@@ -1500,6 +1507,13 @@ esac
 # All MIPS ELF targets need a 64-bit bfd_vma.
 case "${targ_defvec} ${targ_selvecs}" in
   *mips_elf*)
+    want64=true
+    ;;
+esac
+
+# vax natively supports 64-bit integers.
+case "${targ_defvec} ${targ_selvecs}" in
+  *vax*)
     want64=true
     ;;
 esac

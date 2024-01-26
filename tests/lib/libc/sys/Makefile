@@ -1,4 +1,4 @@
-# $NetBSD: Makefile,v 1.72 2022/08/01 15:48:39 kre Exp $
+# $NetBSD: Makefile,v 1.76 2023/12/07 16:54:44 riastradh Exp $
 
 MKMAN=	no
 
@@ -153,7 +153,10 @@ truncate_test.root_owned:
 
 WARNS=			4
 
-CWARNFLAGS.gcc+=	${GCC_NO_ADDR_OF_PACKED_MEMBER} \
+CWARNFLAGS.gcc+=	${CC_WNO_ADDRESS_OF_PACKED_MEMBER} \
 			${${ACTIVE_CC} == "gcc" && ${HAVE_GCC:U0} >= 8:? -Wno-error=deprecated :}
+
+# Explicitly breaks this
+COPTS.t_wait.c+=	${CC_WNO_ARRAY_BOUNDS} ${CC_WNO_STRINGOP_OVERFLOW}
 
 .include <bsd.test.mk>

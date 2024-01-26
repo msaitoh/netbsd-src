@@ -1,4 +1,4 @@
-# $NetBSD: XEN3_DOM0,v 1.198 2023/02/09 14:09:48 abs Exp $
+# $NetBSD: XEN3_DOM0,v 1.201 2023/10/17 13:30:56 bouyer Exp $
 
 # XEN3_DOM0 machine description file
 #
@@ -14,7 +14,7 @@ include 	"arch/amd64/conf/std.xen"
 
 options 	INCLUDE_CONFIG_FILE	# embed config file in kernel binary
 
-#ident		"XEN3_DOM0-$Revision: 1.198 $"
+#ident		"XEN3_DOM0-$Revision: 1.201 $"
 
 maxusers	32		# estimated number of users
 
@@ -165,6 +165,10 @@ options 	KDTRACE_HOOKS	# kernel DTrace hooks
 
 # Fault Injection Driver.
 #options 	FAULT
+
+# Heartbeat checks
+options 	HEARTBEAT
+options 	HEARTBEAT_MAX_PERIOD_DEFAULT=15
 
 # Compatibility options
 # x86_64 never shipped with a.out binaries; the two options below are
@@ -439,8 +443,8 @@ options 	PMS_SYNAPTICS_TOUCHPAD	# Enable support for Synaptics Touchpads
 options 	PMS_ELANTECH_TOUCHPAD	# Enable support for Elantech Touchpads
 options 	PMS_ALPS_TOUCHPAD	# Enable support for Alps Touchpads
 vga*		at pci? dev ? function ?
-#genfb*		at pci? dev ? function ?# Needs acpi_md_vesa_modenum
-					# in acpi_wakeup.c (!xenpv)
+genfb*		at pci? dev ? function ?
+
 #options 	VCONS_DRAW_INTR
 #wsdisplay*	at vga? console ?
 wsdisplay*	at wsemuldisplaydev?
@@ -841,6 +845,7 @@ gem*	at pci? dev ? function ?	# Apple GMAC and Sun ERI gigabit enet
 gsip*	at pci? dev ? function ?	# NS83820 Gigabit Ethernet
 hme*	at pci? dev ? function ?	# Sun Microelectronics STP2002-STQ
 iavf*	at pci? dev ? function ?	# Intel Adaptive Virtual Function
+igc*	at pci? dev ? function ?	# Intel I225 2.5 gigabit
 ipw*	at pci? dev ? function ?	# Intel PRO/Wireless 2100
 iwi*	at pci? dev ? function ?	# Intel PRO/Wireless 2200BG
 iwm*	at pci? dev ? function ?	# Intel Centrino 7260

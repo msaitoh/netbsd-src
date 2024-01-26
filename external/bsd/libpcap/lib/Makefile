@@ -1,4 +1,4 @@
-# $NetBSD: Makefile,v 1.29 2020/03/29 19:50:46 christos Exp $	
+# $NetBSD: Makefile,v 1.34 2023/08/17 16:19:05 christos Exp $	
 
 USE_SHLIBDIR=yes
 .include <bsd.init.mk>
@@ -111,7 +111,7 @@ ${i:S/manfile.in/5/}: ${i} __sed
 .endfor
 
 CPPFLAGS+=	-I${.CURDIR}/../include -I${.CURDIR} -I${SRCDIR}
-CPPFLAGS+=	-DYYBISON
+CPPFLAGS+=	-DYYBISON -DYYDEBUG
 LPREFIX=	pcap_
 LFLAGS+=	--header-file=scanner.h
 YPREFIX=	pcap_
@@ -140,6 +140,8 @@ pcap-common.c \
 pcap-new.c \
 pcap-rpcap.c \
 pcap-rpcap-unix.c \
+pcap-usb-linux-common.c \
+pcap-util.c \
 pcap.c \
 rpcap-protocol.c \
 savefile.c \
@@ -161,17 +163,28 @@ scanner.d scanner.o: tokdefs.h
 tokdefs.h: grammar.h
 	cp $? $@
 
-CLEANFILES+=	tokdefs.h scanner.h
+CLEANFILES+=	tokdefs.h scanner.h grammar.y
 
 COPTS.bpf_image.c+=	-Wno-format-nonliteral
 
-COPTS.gencode.c+=	${${ACTIVE_CC} == "gcc" && ${HAVE_GCC:U0} >= 7:? -Wno-error=implicit-fallthrough :}
-COPTS.pcap.c+=		${GCC_NO_FORMAT_TRUNCATION}
-COPTS.pcap-bpf.c+=	${GCC_NO_STRINGOP_TRUNCATION}
-COPTS.pcap-new.c+=	${GCC_NO_FORMAT_TRUNCATION}
-COPTS.pcap-rpcap.c+=	${GCC_NO_FORMAT_TRUNCATION}
+COPTS.gencode.c+=	${CC_WNO_IMPLICIT_FALLTHROUGH}
+COPTS.pcap.c+=		${CC_WNO_FORMAT_TRUNCATION}
+COPTS.pcap-bpf.c+=	${CC_WNO_STRINGOP_TRUNCATION}
+COPTS.pcap-new.c+=	${CC_WNO_FORMAT_TRUNCATION}
+COPTS.pcap-rpcap.c+=	${CC_WNO_FORMAT_TRUNCATION}
 
 CWARNFLAGS.clang+=	-Wno-format-extra-args \
 			-Wno-unneeded-internal-declaration
+
+grammar.y: grammar.y.in
+	${_MKTARGET_CREATE}
+	${TOOL_SED} -e 's/@REENTRANT_PARSER@/%pure-parser/g' < ${.ALLSRC} > ${.TARGET}
+
+.if ${USE_OPENSSL:Uno} == "yes"
+CPPFLAGS  +=	-DHAVE_OPENSSL
+SRCS	  +=	sslutils.c
+LIBDPLIBS +=	ssl ${OPENSSLDIR}/lib/libssl \
+	    	crypto ${OPENSSLDIR}/lib/libcrypto
+.endif
 
 .include <bsd.lib.mk>

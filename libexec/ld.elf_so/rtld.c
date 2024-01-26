@@ -1,4 +1,4 @@
-/*	$NetBSD: rtld.c,v 1.212 2022/09/13 10:18:58 riastradh Exp $	 */
+/*	$NetBSD: rtld.c,v 1.217 2024/01/19 19:21:34 christos Exp $	 */
 
 /*
  * Copyright 1996 John D. Polstra.
@@ -40,7 +40,7 @@
 
 #include <sys/cdefs.h>
 #ifndef lint
-__RCSID("$NetBSD: rtld.c,v 1.212 2022/09/13 10:18:58 riastradh Exp $");
+__RCSID("$NetBSD: rtld.c,v 1.217 2024/01/19 19:21:34 christos Exp $");
 #endif /* not lint */
 
 #include <sys/param.h>
@@ -60,12 +60,21 @@ __RCSID("$NetBSD: rtld.c,v 1.212 2022/09/13 10:18:58 riastradh Exp $");
 #include <ctype.h>
 
 #include <dlfcn.h>
+
 #include "debug.h"
+#include "hash.h"
 #include "rtld.h"
 
 #if !defined(lint)
 #include "sysident.h"
 #endif
+
+/*
+ * Hidden function from common/lib/libc/atomic - nop on machines
+ * with enough atomic ops. Need to explicitly call it early.
+ * libc has the same symbol and will initialize itself, but not our copy.
+ */
+void __libc_atomic_init(void);
 
 /*
  * Function declarations.
@@ -402,6 +411,8 @@ _rtld_init(caddr_t mapbase, caddr_t relocbase, const char *execname)
 	ehdr = (Elf_Ehdr *)mapbase;
 	_rtld_objself.phdr = (Elf_Phdr *)((char *)mapbase + ehdr->e_phoff);
 	_rtld_objself.phsize = ehdr->e_phnum * sizeof(_rtld_objself.phdr[0]);
+
+	__libc_atomic_init();
 }
 
 /*
@@ -1026,7 +1037,7 @@ __strong_alias(__dlopen,dlopen)
 void *
 dlopen(const char *name, int mode)
 {
-	Obj_Entry **old_obj_tail = _rtld_objtail;
+	Obj_Entry **old_obj_tail;
 	Obj_Entry *obj = NULL;
 	int flags = _RTLD_DLOPEN;
 	bool nodelete;
@@ -1034,9 +1045,11 @@ dlopen(const char *name, int mode)
 	sigset_t mask;
 	int result;
 
-	dbg(("dlopen of %s %d", name, mode));
+	dbg(("dlopen of %s 0x%x", name, mode));
 
 	_rtld_exclusive_enter(&mask);
+
+	old_obj_tail = _rtld_objtail;
 
 	flags |= (mode & RTLD_GLOBAL) ? _RTLD_GLOBAL : 0;
 	flags |= (mode & RTLD_NOLOAD) ? _RTLD_NOLOAD : 0;
@@ -1088,6 +1101,9 @@ dlopen(const char *name, int mode)
 	}
 	_rtld_debug.r_state = RT_CONSISTENT;
 	_rtld_debug_state();
+
+	dbg(("dlopen of %s 0x%x returned %p%s%s%s", name, mode, obj,
+	    obj ? "" : " (", obj ? "" : error_message, obj ? "" : ")"));
 
 	_rtld_exclusive_exit(&mask);
 
@@ -1534,8 +1550,6 @@ __dl_cxa_refcount(void *addr, ssize_t delta)
 	_rtld_exclusive_exit(&mask);
 }
 
-pid_t __fork(void);
-
 __dso_public pid_t
 __locked_fork(int *my_errno)
 {
@@ -1563,6 +1577,7 @@ _rtld_error(const char *fmt,...)
 
 	va_start(ap, fmt);
 	xvsnprintf(buf, sizeof buf, fmt, ap);
+	dbg(("%s: %s", __func__, buf));
 	error_message = buf;
 	va_end(ap);
 }

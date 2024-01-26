@@ -1,4 +1,4 @@
-#	$NetBSD: NetBSD.dist.base,v 1.246 2022/06/12 03:51:13 tsutsui Exp $
+#	$NetBSD: NetBSD.dist.base,v 1.253 2023/09/03 18:31:01 riastradh Exp $
 #	@(#)4.4BSD.dist	8.1 (Berkeley) 6/13/93
 
 # Do not customize this file as it may be overwritten on upgrades.
@@ -283,10 +283,10 @@
 ./usr/include/g++/tr1
 ./usr/include/g++/tr1_impl
 ./usr/include/g++/tr2
-./usr/include/gcc-9
-./usr/include/gcc-9/sanitizer
 ./usr/include/gcc-10
 ./usr/include/gcc-10/sanitizer
+./usr/include/gcc-12
+./usr/include/gcc-12/sanitizer
 ./usr/include/gssapi
 ./usr/include/isofs
 ./usr/include/isofs/cd9660
@@ -353,8 +353,11 @@
 ./usr/lib/clang/13.0.0/share
 ./usr/lib/i18n
 ./usr/lib/lua
-./usr/lib/lua/5.3
+./usr/lib/lua/5.4
 ./usr/lib/named
+./usr/lib/openssl
+./usr/lib/openssl/engines
+./usr/lib/openssl/modules
 ./usr/lib/pkgconfig
 ./usr/lib/postfix
 ./usr/lib/security
@@ -395,6 +398,12 @@
 ./usr/share
 ./usr/share/atf
 ./usr/share/calendar
+./usr/share/certs
+./usr/share/certs/mozilla
+./usr/share/certs/mozilla/all
+./usr/share/certs/mozilla/code
+./usr/share/certs/mozilla/email
+./usr/share/certs/mozilla/server
 ./usr/share/dhcpd
 ./usr/share/dict
 ./usr/share/dict/papers
@@ -469,6 +478,7 @@
 ./usr/share/examples/asm/hello
 ./usr/share/examples/atf
 ./usr/share/examples/blocklist
+./usr/share/examples/certctl
 ./usr/share/examples/dhcp
 ./usr/share/examples/dhcpcd
 ./usr/share/examples/dhcpcd/hooks
@@ -971,7 +981,7 @@
 ./usr/share/locale/zh_TW.eucTW/LC_MESSAGES
 ./usr/share/locale/zh_TW/LC_MESSAGES
 ./usr/share/lua
-./usr/share/lua/5.3
+./usr/share/lua/5.4
 ./usr/share/man
 ./usr/share/man/cat1
 ./usr/share/man/cat1/atari

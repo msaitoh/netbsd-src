@@ -1,4 +1,4 @@
-/*	$NetBSD: rtld.h,v 1.144 2022/06/21 06:52:17 skrll Exp $	 */
+/*	$NetBSD: rtld.h,v 1.147 2023/07/30 09:20:14 riastradh Exp $	 */
 
 /*
  * Copyright 1996 John D. Polstra.
@@ -219,7 +219,9 @@ typedef struct Struct_Obj_Entry {
 			phdr_loaded:1,	/* Phdr is loaded and doesn't need to
 					 * be freed. */
 #if defined(__HAVE_TLS_VARIANT_I) || defined(__HAVE_TLS_VARIANT_II)
-			tls_done:1,	/* True if static TLS offset
+			tls_static:1,	/* True if static TLS offset
+					 * has been allocated */
+			tls_dynamic:1,	/* True if any non-static DTV entry
 					 * has been allocated */
 #endif
 			ref_nodel:1,	/* Refcount increased to prevent dlclose */
@@ -440,8 +442,6 @@ void _rtld_call_ifunc(Obj_Entry *, sigset_t *, u_int);
 Obj_Entry *_rtld_load_library(const char *, const Obj_Entry *, int);
 
 /* symbol.c */
-unsigned long _rtld_sysv_hash(const char *);
-unsigned long _rtld_gnu_hash(const char *);
 const Elf_Sym *_rtld_symlook_obj(const char *, Elf_Hash *,
     const Obj_Entry *, u_int, const Ver_Entry *);
 const Elf_Sym *_rtld_find_symdef(unsigned long, const Obj_Entry *,
@@ -483,7 +483,6 @@ _rtld_fetch_ventry(const Obj_Entry *obj, unsigned long symnum)
 /* tls.c */
 void *_rtld_tls_get_addr(void *, size_t, size_t);
 void _rtld_tls_initial_allocation(void);
-void *_rtld_tls_module_allocate(size_t index);
 int _rtld_tls_offset_allocate(Obj_Entry *);
 void _rtld_tls_offset_free(Obj_Entry *);
 

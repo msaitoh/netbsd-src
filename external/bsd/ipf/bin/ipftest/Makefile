@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.7 2019/10/13 07:28:06 mrg Exp $
+#	$NetBSD: Makefile,v 1.9 2023/08/16 03:33:52 mrg Exp $
 
 .include <bsd.own.mk>
 
@@ -109,6 +109,11 @@ COPTS.ipf_y.c+=	-O1
 . endif
 .endif
 
-COPTS.fil.c+=	${GCC_NO_STRINGOP_OVERFLOW}
+COPTS.fil.c+=	${CC_WNO_STRINGOP_OVERFLOW}
+
+# XXXGCC12 this seems wrong; all paths would end up with ref > 1.
+.if defined(HAVE_GCC) && ${HAVE_GCC} >= 12 && ${ACTIVE_CC} == "gcc"
+COPTS.ip_proxy.c+=	-Wno-use-after-free
+.endif
 
 .include <bsd.prog.mk>

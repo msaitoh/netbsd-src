@@ -1,12 +1,10 @@
-# $NetBSD: Makefile,v 1.14 2021/04/12 06:08:31 mrg Exp $
+# $NetBSD: Makefile,v 1.19 2023/09/12 22:11:08 rillig Exp $
 
 LIB=		sqlite3
 INCS=		sqlite3.h sqlite3ext.h
 INCSDIR=	/usr/include
 
 SRCS=		sqlite3.c
-
-CFLAGS+=	-DNDEBUG
 
 LDADD+=		-lm
 DPADD+=		${LIBM}
@@ -20,7 +18,11 @@ FILESDIR_sqlite3.pc=	/usr/lib/pkgconfig
 CLEANFILES+=sqlite3.pc
 
 CWARNFLAGS.clang+=	-Wno-error=implicit-int-float-conversion
-COPTS.sqlite3.c+=	${GCC_NO_RETURN_LOCAL_ADDR}
+
+COPTS.sqlite3.c+=	${CC_WNO_RETURN_LOCAL_ADDR} ${CC_WNO_STRINGOP_OVERFLOW}
+COPTS.sqlite3.c+=	${CC_WNO_ARRAY_BOUNDS}
+COPTS.sqlite3.c+=	-Wno-error=misleading-indentation
+COPTS.sqlite3.c+=	${${ACTIVE_CC} == "gcc":? -Wno-error=restrict :}
 
 .include <bsd.own.mk>
 

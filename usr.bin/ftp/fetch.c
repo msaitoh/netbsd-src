@@ -1,4 +1,4 @@
-/*	$NetBSD: fetch.c,v 1.236 2023/02/25 12:07:25 mlelstv Exp $	*/
+/*	$NetBSD: fetch.c,v 1.238 2023/08/12 07:40:13 mlelstv Exp $	*/
 
 /*-
  * Copyright (c) 1997-2015 The NetBSD Foundation, Inc.
@@ -37,7 +37,7 @@
 
 #include <sys/cdefs.h>
 #ifndef lint
-__RCSID("$NetBSD: fetch.c,v 1.236 2023/02/25 12:07:25 mlelstv Exp $");
+__RCSID("$NetBSD: fetch.c,v 1.238 2023/08/12 07:40:13 mlelstv Exp $");
 #endif /* not lint */
 
 /*
@@ -801,7 +801,12 @@ handle_proxy(const char *url, const char *penv, struct urlinfo *ui,
 	}
 
 	FREEPTR(pui.path);
-	pui.path = ftp_strdup(url);
+#ifdef WITH_SSL
+	if (ui->utype == HTTPS_URL_T)
+		pui.path = ftp_strdup(ui->path);
+	else
+#endif
+		pui.path = ftp_strdup(url);
 
 	freeurlinfo(ui);
 	*ui = pui;
@@ -1647,9 +1652,10 @@ fetch_url(const char *url, const char *proxyenv, char *proxyauth,
 		}
 	}
 	if (fout == NULL) {
-		if ((pi.rangeend != -1 && pi.rangeend <= restart_point) ||
+		if (restart_point && (
+		    (pi.rangeend != -1 && pi.rangeend <= restart_point) ||
 		    (pi.rangestart == -1 &&
-		    filesize != -1 && filesize <= restart_point)) {
+		    filesize != -1 && filesize <= restart_point))) {
 			/* already done */
 			if (verbose)
 				fprintf(ttyout, "already done\n");

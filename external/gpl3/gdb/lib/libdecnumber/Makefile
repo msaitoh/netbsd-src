@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.3 2013/11/09 21:39:27 christos Exp $
+#	$NetBSD: Makefile,v 1.5 2023/10/07 12:15:52 rin Exp $
 
 .include <bsd.own.mk>
 .include "../Makefile.inc"
@@ -18,10 +18,6 @@ CPPFLAGS+=	-I${.CURDIR}/arch/${GDB_MACHINE_ARCH} \
 
 SRCS=		${G_OBJS:.o=.c} ${G_SOURCES}
 
-.if ${MACHINE_ARCH} == "vax"
-COPTS.decNumber.c=-O0
-.endif
-
-.PATH: ${DIST}/libdecnumber ${DIST}/libdecnumber/dpd
+.PATH: ${DIST}/libdecnumber ${DIST}/libdecnumber/dpd ${DIST}/libdecnumber/bid
 
 .include <bsd.lib.mk>

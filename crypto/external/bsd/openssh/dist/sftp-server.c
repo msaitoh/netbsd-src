@@ -1,5 +1,5 @@
-/*	$NetBSD: sftp-server.c,v 1.28 2022/10/05 22:39:36 christos Exp $	*/
-/* $OpenBSD: sftp-server.c,v 1.144 2022/09/19 10:41:58 djm Exp $ */
+/*	$NetBSD: sftp-server.c,v 1.30 2023/10/25 20:19:57 christos Exp $	*/
+/* $OpenBSD: sftp-server.c,v 1.147 2023/04/12 08:53:54 jsg Exp $ */
 
 /*
  * Copyright (c) 2000-2004 Markus Friedl.  All rights reserved.
@@ -18,7 +18,7 @@
  */
 
 #include "includes.h"
-__RCSID("$NetBSD: sftp-server.c,v 1.28 2022/10/05 22:39:36 christos Exp $");
+__RCSID("$NetBSD: sftp-server.c,v 1.30 2023/10/25 20:19:57 christos Exp $");
 
 #include <sys/param.h>	/* MIN */
 #include <sys/types.h>
@@ -603,7 +603,7 @@ send_handle(u_int32_t id, int handle)
 	int hlen;
 
 	handle_to_string(handle, &string, &hlen);
-	debug("request %u: sent handle handle %d", id, handle);
+	debug("request %u: sent handle %d", id, handle);
 	send_data_or_handle(SSH2_FXP_HANDLE, id, string, hlen);
 	free(string);
 }
@@ -815,7 +815,7 @@ process_read(u_int32_t id)
 	}
 	if (len > buflen) {
 		debug3_f("allocate %zu => %u", buflen, len);
-		if ((buf = realloc(NULL, len)) == NULL)
+		if ((buf = realloc(buf, len)) == NULL)
 			fatal_f("realloc failed");
 		buflen = len;
 	}
@@ -1718,7 +1718,7 @@ process_extended_get_users_groups_by_id(u_int32_t id)
 		name = user_pw == NULL ? "" : user_pw->pw_name;
 		debug3_f("uid %u => \"%s\"", n, name);
 		if ((r = sshbuf_put_cstring(usernames, name)) != 0)
-			fatal_fr(r, "assemble gid reply");
+			fatal_fr(r, "assemble uid reply");
 		nusers++;
 	}
 	while (sshbuf_len(gids) != 0) {

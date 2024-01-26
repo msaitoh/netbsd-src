@@ -1,4 +1,4 @@
-.\"	$NetBSD: sh.1,v 1.255 2022/12/20 17:51:54 kre Exp $
+.\"	$NetBSD: sh.1,v 1.259 2024/01/16 14:30:22 kre Exp $
 .\" Copyright (c) 1991, 1993
 .\"	The Regents of the University of California.  All rights reserved.
 .\"
@@ -136,14 +136,14 @@ automatically by the system
 when the user first logs in.
 A login shell first reads commands
 (as if by using the
-.Dq \&.
+.Ql \&.
 command)
 from the files
 .Pa /etc/profile
 and
 .Pa .profile
 in the user's home directory
-.Pq \&$HOME ,
+.Pq Li \&$HOME ,
 if they exist.
 If the environment variable
 .Ev ENV
@@ -164,7 +164,7 @@ Note that no error messages result from these
 expansions, to verify that
 .Ev ENV
 is correct, as desired, use:
-.Dl eval printf '%s\e\en' Dq \&${ENV}
+.Dl eval printf '%s\e\en' \*q${ENV}\*q
 Otherwise if
 .Ev ENV
 appears to contain a command substitution,
@@ -188,7 +188,7 @@ of your home directory
 .Dl ENV=$HOME/.shinit; export ENV
 .Pp
 substituting for
-.Dq .shinit
+.Pa .shinit
 any filename you wish.
 Since the
 .Ev ENV
@@ -1000,7 +1000,7 @@ If not explicitly present,
 .Ar n
 will be 0 (standard input)
 or 1 (standard output)
-depending upon the redicection operator used.
+depending upon the redirection operator used.
 If file descriptor
 .Ar n
 was open prior to the redirection, its previous use is closed.
@@ -2299,14 +2299,11 @@ and
 .Dq \&[ .
 .\"
 .\"
-.Ss White Space Splitting (Field Splitting)
+.Ss Field Splitting
 .\"
 After parameter expansion, command substitution, and
 arithmetic expansion the shell scans the results of
 expansions and substitutions that did not occur in double quotes,
-and
-.Dq Li $@
-even if it did,
 for field splitting and multiple fields can result.
 .Pp
 The shell treats each character of the
@@ -3632,7 +3629,7 @@ which is processed as if it had been part of the original line.
 This includes reading yet more input if necessary,
 until a line is read that contains or ends with an unescaped
 copy of the delimiter character.
-If the end delimiter (when it is not a newline) is escaoed,
+If the end delimiter (when it is not a newline) is escaped,
 it is treated as a normal character, and
 .Ic read
 continues looking for an unescaped end delimiter character.
@@ -3725,9 +3722,10 @@ command instead, if you want to return from a script or exit
 your shell.
 .\"
 .Pp
-.It set
-.It set { Fl o | Cm +o }
-.It Ic set Oo { Fl options | Cm +options } ... Oc Oo Cm \-\|\- Oc Oo Ar arg ... Oc
+.It Ic set
+.It Ic set No { Fl o | Cm +o No }
+.It Ic set No { Fl options | Cm +options | Fl o Ar opt | Cm +o Ar opt } ... Oo Cm \-\|\- Oc Oo Ar arg ... Oc
+.It Ic set \-\|\- Oo Ar arg ... Oc
 .Pp
 The
 .Ic set
@@ -3751,8 +3749,10 @@ In the
 form, the shell outputs a string that can later be used
 as a command to reset all options to their current values.
 .Pp
-If options are given, it sets the specified option
-flags, or clears them as described in the
+If options are given,
+.Nm
+sets the specified option flags,
+or clears them as described in the
 .Sx Argument List Processing
 section.
 Note that not all options available on the command
@@ -3762,6 +3762,7 @@ built-in command.
 However, in addition to the options listed there,
 when the
 .Dq "option name"
+.Pq Ar opt
 given to
 .Ic set Fl o
 is
@@ -3786,20 +3787,41 @@ parameters with no possibility of changing any options, use
 .Dq \-\|\-
 as the first argument to
 .Ic set .
-If no following arguments are present, the
+If no following
+.Ar arg Ns s
+are present, the
 .Ic set
 command
 will clear all the positional parameters (equivalent to executing
 .Dq Li shift $# . )
-Otherwise the following arguments become
+Otherwise the following
+.Ar arg Ns s
+become
 .Li \&$1 ,
 .Li \&$2 ,
 \&...,
 and
 .Li \&$#
-is set to the number of arguments present.
+is set to the number of
+.Ar arg Ns s
+present.
 The third and fourth forms may be combined, to set options,
-and the argument list, in one operation.
+and the positional parameters, in one operation.
+Note that if it is possible that no
+.Ar arg Ns uments
+might be present,
+or if the first
+.Ar arg
+might begin with a minus
+.Pq Sq \&\-
+then the
+.Dq \-\|\-
+is required to distinguish this case from the first
+and third variants of this command, and an
+.Ar arg
+beginning with
+.Sq \&\-
+from being an attempt to set options.
 .\"
 .Pp
 .It Ic setvar Ar variable Ar value

@@ -1,23 +1,22 @@
-#	$NetBSD: Makefile,v 1.9 2021/09/18 01:47:08 christos Exp $
+#	$NetBSD: Makefile,v 1.11 2023/08/01 05:57:55 mrg Exp $
 
+HOSTPROG_CXX=	1
 LIBISPRIVATE=	yes
 
 .include <bsd.init.mk>
 
 LIB=		cpp
 
-SRCS=		${G_libcpp_a_OBJS:.o=.c}
+SRCS=		${G_libcpp_a_OBJS:.o=.cc}
 
 CPPFLAGS+=	-I${.CURDIR} -I${.CURDIR}/arch/${GCC_MACHINE_ARCH} \
 		-I${GCCARCH} -I${BACKENDOBJ} -I. \
 		${G_INCLUDES:M-I*:N-I.*} \
 		-DPREFIX=\"/usr\"
 
-HOSTPROG_CXX=	1
-
 .include <bsd.lib.mk>
 
-COPTS+=	-Wno-stack-protector
+#COPTS+=	-Wno-stack-protector
 
 # Force using C++ for this
 HOST_CC:=	${HOST_CXX}

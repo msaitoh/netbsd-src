@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.3 2022/09/29 18:58:04 rjs Exp $
+#	$NetBSD: Makefile,v 1.5 2023/07/15 21:24:46 rjs Exp $
 
 .include <bsd.own.mk>
 
@@ -216,7 +216,7 @@ MKLINT=no
 
 PKGCONFIG=	gl
 PKGDIST.gl=	${X11SRCDIR.Mesa}/../src/pkgconfig
-.include "${.CURDIR}/../libGL/mesa-ver.mk"
+.include "${.CURDIR}/../libGL.old/mesa-ver.mk"
 PKGCONFIG_VERSION.gl=	${MESA_VER}
 
 # XXX remove these from bsd.x11.mk
@@ -231,9 +231,7 @@ PKGCONFIG_SED_FLAGS= \
 
 CWARNFLAGS.clang+=	-Wno-tautological-compare -Wno-format -Wno-constant-conversion \
 			-Wno-error=incompatible-pointer-types -Wno-error=atomic-alignment
-.if ${HAVE_GCC:U0} >= 7
-CWARNFLAGS.gcc+=	-Wno-error=stringop-overflow
-.endif
+CWARNFLAGS.gcc+=	${CC_WNO_STRINGOP_OVERFLOW}
 
 .include <bsd.x11.mk>
 .include <bsd.lib.mk>

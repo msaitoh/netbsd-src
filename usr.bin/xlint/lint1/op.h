@@ -1,4 +1,4 @@
-/*	$NetBSD: op.h,v 1.20 2022/06/15 18:29:21 rillig Exp $	*/
+/*	$NetBSD: op.h,v 1.26 2023/12/03 18:17:41 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -14,7 +14,7 @@
  *    documentation and/or other materials provided with the distribution.
  * 3. All advertising materials mentioning features or use of this software
  *    must display the following acknowledgement:
- *      This product includes software developed by Jochen Pohl for
+ *	This product includes software developed by Jochen Pohl for
  *	The NetBSD Project.
  * 4. The name of the author may not be used to endorse or promote products
  *    derived from this software without specific prior written permission.
@@ -34,9 +34,9 @@
 #include <stdbool.h>
 
 /*
- * Various information about operators; see ops.def.
+ * Various information about operators.
  */
-typedef	struct {
+typedef struct {
 	bool	m_binary: 1;
 	bool	m_returns_bool: 1;
 	bool	m_takes_bool: 1;
@@ -56,19 +56,89 @@ typedef	struct {
 	bool	m_valid_on_enum: 1;
 	bool	m_bad_on_enum: 1;
 	bool	m_warn_if_operand_eq: 1;
-	const char *m_name;
+	bool	m_has_operands: 1;
+	const char m_name[8];
 } mod_t;
 
-extern const mod_t modtab[];
+typedef enum {
+	NOOP,
+	ARROW,
+	POINT,
+	NOT,
+	COMPL,
+	INCBEF,
+	DECBEF,
+	INCAFT,
+	DECAFT,
+	UPLUS,
+	UMINUS,
+	INDIR,
+	ADDR,
 
-#define begin_ops() typedef enum {
-#define op(name, repr, \
-		is_binary, is_logical, takes_bool, requires_bool, \
-		is_integer, is_complex, is_arithmetic, is_scalar, \
-		can_fold, is_value, unused, balances_operands, \
-		side_effects, left_unsigned, right_unsigned, \
-		precedence_confusion, is_comparison, \
-		valid_on_enum, bad_on_enum, warn_if_eq) \
-	name,
-#define end_ops() } op_t;
-#include "ops.def"
+	MULT,
+	DIV,
+	MOD,
+	PLUS,
+	MINUS,
+	SHL,
+	SHR,
+
+	LT,
+	LE,
+	GT,
+	GE,
+	EQ,
+	NE,
+
+	BITAND,
+	BITXOR,
+	BITOR,
+	LOGAND,
+	LOGOR,
+	QUEST,
+	COLON,
+
+	ASSIGN,
+	MULASS,
+	DIVASS,
+	MODASS,
+	ADDASS,
+	SUBASS,
+	SHLASS,
+	SHRASS,
+	ANDASS,
+	XORASS,
+	ORASS,
+
+	NAME,
+	CON,
+	STRING,
+	FSEL,
+	CALL,
+	COMMA,
+	CVT,
+	ICALL,
+	LOAD,
+	/*
+	 * PUSH is a virtual node that is used to concatenate arguments in a
+	 * function call expression.  The PUSH nodes are ordered from right to
+	 * left.  For example, the function call f(17, 23) is represented as
+	 * CALL(f, PUSH(23, PUSH(17, NULL))).
+	 */
+	PUSH,
+	RETURN,
+	REAL,
+	IMAG,
+
+	INIT,			/* does not appear in the tree */
+	CASE,			/* does not appear in the tree */
+	/*
+	 * FARG is only used temporarily in check_prototype_argument to check
+	 * type compatibility and conversion for function arguments.
+	 */
+	FARG,			/* does not appear in the tree */
+} op_t;
+
+#define NOPS ((int)FARG + 1)
+
+extern const mod_t modtab[NOPS];

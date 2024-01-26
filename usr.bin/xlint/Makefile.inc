@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile.inc,v 1.23 2022/04/10 13:21:34 martin Exp $
+#	$NetBSD: Makefile.inc,v 1.28 2024/01/23 19:44:28 rillig Exp $
 
 .include <bsd.own.mk>
 
@@ -19,7 +19,7 @@ CPPFLAGS+=	-I${.CURDIR}/../common
 
 CLEANFILES+=	*.gcno *.gcda *.gcov
 
-.if ${MACHINE_CPU} != "alpha"
+.if ${MACHINE_CPU:Nalpha:Nvax}
 CFLAGS+=	${ACTIVE_CC:Mgcc:%=-ftrapv}
 .endif
 
@@ -27,4 +27,7 @@ CFLAGS+=	${ACTIVE_CC:Mgcc:%=-ftrapv}
 .include "${.CURDIR}/../../Makefile.inc"
 .endif
 
+LINTFLAGS+=	-aa	# warn about all lossy conversions
+LINTFLAGS+=	-e	# strict enum mode
+LINTFLAGS+=	-T	# strict bool mode
 LINTFLAGS+=	-w	# treat warnings as errors
