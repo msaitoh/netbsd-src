@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.54 2023/08/01 05:57:57 mrg Exp $
+#	$NetBSD: Makefile,v 1.56 2024/06/30 16:15:02 christos Exp $
 
 REQUIRETOOLS=	yes
 NOLINT=		# defined
@@ -161,7 +161,8 @@ BUILDSYMLINKS+=	\
 	codecvt 98 11 \
 	cow-string-inst 11 17 \
 	ostream-inst 11 17 \
-	string-inst 11 17
+	string-inst 11 17 \
+	sstream-inst 11 20
 
 BUILDSYMLINKS+=	\
 	${GLIBCXX_SRCDIR}/src/c++${_V1}/${_N}.cc c${_V1}-${_N}.cc
@@ -213,6 +214,8 @@ COPTS.${f}.cc+= -fimplicit-templates ${G_GLIBCXX_ABI_FLAGS}
 # XXXGCC12
 # hits on sparc, sparc64, armv7 at least
 COPTS.floating_to_chars.cc+=	-Wno-error=unused-function
+COPTS.cp-demangle.c+=	-Wno-error=stack-protector
+COPTS.floating_to_chars.cc+=	-Wno-error=stack-protector
 
 .include <bsd.lib.mk>
 .include <bsd.subdir.mk>

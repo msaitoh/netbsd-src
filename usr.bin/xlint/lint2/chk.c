@@ -1,4 +1,4 @@
-/* $NetBSD: chk.c,v 1.65 2023/12/03 18:17:41 rillig Exp $ */
+/* $NetBSD: chk.c,v 1.67 2024/05/12 18:49:36 rillig Exp $ */
 
 /*
  * Copyright (c) 1996 Christopher G. Demetriou.  All Rights Reserved.
@@ -38,7 +38,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID)
-__RCSID("$NetBSD: chk.c,v 1.65 2023/12/03 18:17:41 rillig Exp $");
+__RCSID("$NetBSD: chk.c,v 1.67 2024/05/12 18:49:36 rillig Exp $");
 #endif
 
 #include <ctype.h>
@@ -662,7 +662,9 @@ printflike(const hte_t *hte, fcall_t *call, int n, const char *fmt, type_t **ap)
 			fc = *fp++;
 			prec = true;
 			if (ch_isdigit(fc)) {
-				do { fc = *fp++; } while (ch_isdigit(fc));
+				do {
+					fc = *fp++;
+				} while (ch_isdigit(fc));
 			} else if (fc == '*') {
 				fc = *fp++;
 				if ((tp = *ap++) == NULL) {

@@ -1,4 +1,4 @@
-#	$NetBSD: bsd.own.mk,v 1.1363 2024/01/20 08:09:13 skrll Exp $
+#	$NetBSD: bsd.own.mk,v 1.1385 2024/06/30 15:56:08 christos Exp $
 
 # This needs to be before bsd.init.mk
 .if defined(BSD_MK_COMPAT_FILE)
@@ -75,6 +75,21 @@ TOOLCHAIN_MISSING?=	no
 #
 # What GCC is used?
 #
+.if \
+    ${MACHINE_CPU} == "aarch64" || \
+    ${MACHINE_CPU} == "arm" || \
+    ${MACHINE_CPU} == "mips" || \
+    ${MACHINE_CPU} == "powerpc" || \
+    ${MACHINE_CPU} == "riscv" || \
+    ${MACHINE_ARCH} == "x86_64" || \
+    ${MACHINE_ARCH} == "i386" || \
+    ${MACHINE} == "hppa" || \
+    ${MACHINE} == "sparc" || \
+    ${MACHINE} == "sparc64" || \
+    ${MACHINE} == "ia64" || \
+    ${MACHINE} == "alpha"
+HAVE_GCC?=	12
+.endif
 HAVE_GCC?=	10
 
 #
@@ -104,9 +119,9 @@ MKGCCCMDS?=	no
 #
 HAVE_BINUTILS?=	239
 
-.if ${HAVE_BINUTILS} == 239
+.if ${HAVE_BINUTILS} == 242
 EXTERNAL_BINUTILS_SUBDIR=	binutils
-.elif ${HAVE_BINUTILS} == 234
+.elif ${HAVE_BINUTILS} == 239
 EXTERNAL_BINUTILS_SUBDIR=	binutils.old
 .else
 EXTERNAL_BINUTILS_SUBDIR=	/does/not/exist
@@ -233,6 +248,14 @@ PRINTOBJDIR=	${MAKE} -V .OBJDIR
 .endif
 .else
 PRINTOBJDIR=	echo /error/bsd.own.mk/PRINTOBJDIR # avoid infinite recursion
+.endif
+
+#
+# Make sure we set _NETBSD_REVISIONID in CPPFLAGS if requested.
+#
+.ifdef NETBSD_REVISIONID
+_NETBSD_REVISIONID_STR=	"${NETBSD_REVISIONID}"
+CPPFLAGS+=	-D_NETBSD_REVISIONID=${_NETBSD_REVISIONID_STR:Q}
 .endif
 
 #
@@ -465,6 +488,7 @@ TOOL_JOIN=		${TOOLDIR}/bin/${_TOOL_PREFIX}join
 TOOL_LLVM_TBLGEN=	${TOOLDIR}/bin/${_TOOL_PREFIX}llvm-tblgen
 TOOL_M4=		${TOOLDIR}/bin/${_TOOL_PREFIX}m4
 TOOL_MACPPCFIXCOFF=	${TOOLDIR}/bin/${_TOOL_PREFIX}macppc-fixcoff
+TOOL_MACPPCINSTALLBOOT=	${TOOLDIR}/bin/${_TOOL_PREFIX}macppc_installboot
 TOOL_MAKEFS=		${TOOLDIR}/bin/${_TOOL_PREFIX}makefs
 TOOL_MAKEINFO=		${TOOLDIR}/bin/${_TOOL_PREFIX}makeinfo
 TOOL_MAKEKEYS=		${TOOLDIR}/bin/${_TOOL_PREFIX}makekeys
@@ -480,6 +504,7 @@ TOOL_M68KELF2AOUT=	${TOOLDIR}/bin/${_TOOL_PREFIX}m68k-elf2aout
 TOOL_MIPSELF2ECOFF=	${TOOLDIR}/bin/${_TOOL_PREFIX}mips-elf2ecoff
 TOOL_MKCSMAPPER=	${TOOLDIR}/bin/${_TOOL_PREFIX}mkcsmapper
 TOOL_MKESDB=		${TOOLDIR}/bin/${_TOOL_PREFIX}mkesdb
+TOOL_MKHYBRID=		${TOOLDIR}/bin/${_TOOL_PREFIX}mkhybrid
 TOOL_MKLOCALE=		${TOOLDIR}/bin/${_TOOL_PREFIX}mklocale
 TOOL_MKMAGIC=		${TOOLDIR}/bin/${_TOOL_PREFIX}file
 TOOL_MKNOD=		${TOOLDIR}/bin/${_TOOL_PREFIX}mknod
@@ -1301,7 +1326,6 @@ MKRADEONFIRMWARE.x86_64=	yes
 MKRADEONFIRMWARE.i386=		yes
 MKRADEONFIRMWARE.aarch64=	yes
 MKAMDGPUFIRMWARE.x86_64=	yes
-MKAMDGPUFIRMWARE.i386=		yes
 
 # Only install the tegra firmware on evbarm.
 MKTEGRAFIRMWARE.evbarm=		yes
@@ -1320,7 +1344,22 @@ MKDTB.earmv7hfeb=		yes
 MKDTB.riscv32=			yes
 MKDTB.riscv64=			yes
 
-HAVE_MESA_VER?=	19
+# During transition from xorg-server 1.10 to 1.20
+# XXX sgimips uses XAA which is removed in 1.20, and EXA is hard
+# XXX to do the same with.
+.if ${MACHINE} == "sgimips"
+HAVE_XORG_SERVER_VER?=110
+.else
+HAVE_XORG_SERVER_VER?=120
+.endif
+
+# Newer Mesa does not build with old X server
+# VAX build triggers a gcc internal error
+.if ${HAVE_XORG_SERVER_VER} != "120" || ${MACHINE} == "vax"
+HAVE_MESA_VER=19
+.endif
+
+HAVE_MESA_VER?=	21
 .if ${HAVE_MESA_VER} == 19
 EXTERNAL_MESALIB_DIR?=	MesaLib.old
 .elif ${HAVE_MESA_VER} == 21
@@ -1335,6 +1374,21 @@ MKLLVMRT.amd64=		yes
 MKLLVMRT.i386=		yes
 MKLLVMRT.aarch64=	yes
 .endif
+
+# Just-in-time compiler for bpf, npf acceleration
+MKSLJIT.aarch64=	yes
+MKSLJIT.i386=		yes
+MKSLJIT.sparc=		yes
+#MKSLJIT.sparc64=	yes	# not suppored in sljit (yet?)
+MKSLJIT.x86_64=		yes
+#MKSLJIT.powerpc=	yes	# XXX
+#MKSLJIT.powerpc64=	yes	# XXX
+#MKSLJIT.mipsel=	yes	# XXX
+#MKSLJIT.mipseb=	yes	# XXX
+#MKSLJIT.mips64el=	yes	# XXX
+#MKSLJIT.mips64eb=	yes	# XXX
+#MKSLJIT.riscv32=	yes	# not until we update sljit
+#MKSLJIT.riscv64=	yes	# not until we update sljit
 
 # compat with old names
 MKDEBUGKERNEL?=${MKKDEBUG:Uno}
@@ -1390,12 +1444,6 @@ _MKVARS.no= \
 .for var in ${_MKVARS.no}
 ${var}?=	${${var}.${MACHINE_ARCH}:U${${var}.${MACHINE}:Uno}}
 .endfor
-
-.if ${MACHINE_ARCH} == "i386" || \
-    ${MACHINE_ARCH} == "x86_64" || \
-    ${MACHINE_ARCH} == "sparc"
-MKSLJIT=	yes
-.endif
 
 #
 # Which platforms build the xorg-server drivers (as opposed
@@ -1598,7 +1646,6 @@ ${var}?= no
 # format if USE_PIGZGZIP is enabled.
 .if ${USE_PIGZGZIP} == "no" && \
     (${MACHINE} == "amd64" || \
-     ${MACHINE} == "sparc64" || \
      ${MACHINE_ARCH:Maarch64*})
 USE_XZ_SETS?= yes
 .else
@@ -1612,7 +1659,11 @@ USE_XZ_SETS?= no
 TOOL_GZIP=		${TOOL_PIGZ}
 GZIP_N_FLAG?=		-nT
 .else
+.if ${USETOOLS} == "yes"
+TOOL_GZIP=		${TOOLDIR}/bin/${_TOOL_PREFIX}gzip
+.else
 TOOL_GZIP=		gzip
+.endif
 GZIP_N_FLAG?=		-n
 .endif
 TOOL_GZIP_N=		${TOOL_GZIP} ${GZIP_N_FLAG}
@@ -1656,17 +1707,6 @@ X11SRCDIR.${_lib}?=		${X11SRCDIRMIT}/lib${_lib}/dist
 	xcb- xorg
 X11SRCDIR.${_proto}proto?=		${X11SRCDIRMIT}/${_proto}proto/dist
 .endfor
-
-# During transition from xorg-server 1.10 to 1.20
-.if \
-    ${MACHINE} == "alpha"	|| \
-    ${MACHINE} == "netwinder"	|| \
-    ${MACHINE} == "sgimips"	|| \
-    ${MACHINE} == "vax"
-HAVE_XORG_SERVER_VER?=110
-.else
-HAVE_XORG_SERVER_VER?=120
-.endif
 
 .if ${HAVE_XORG_SERVER_VER} == "120"
 XORG_SERVER_SUBDIR?=xorg-server

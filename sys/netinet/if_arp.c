@@ -1,4 +1,4 @@
-/*	$NetBSD: if_arp.c,v 1.311 2022/11/15 10:47:39 roy Exp $	*/
+/*	$NetBSD: if_arp.c,v 1.313 2024/06/29 12:59:08 riastradh Exp $	*/
 
 /*
  * Copyright (c) 1998, 2000, 2008 The NetBSD Foundation, Inc.
@@ -68,7 +68,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_arp.c,v 1.311 2022/11/15 10:47:39 roy Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_arp.c,v 1.313 2024/06/29 12:59:08 riastradh Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_ddb.h"
@@ -515,7 +515,7 @@ arprequest(struct ifnet *ifp,
 	struct mbuf *m;
 	struct arphdr *ah;
 	struct sockaddr sa;
-	uint64_t *arps;
+	net_stat_ref_t arps;
 
 	KASSERT(sip != NULL);
 	KASSERT(tip != NULL);
@@ -561,8 +561,8 @@ arprequest(struct ifnet *ifp,
 	sa.sa_family = AF_ARP;
 	sa.sa_len = 2;
 	arps = ARP_STAT_GETREF();
-	arps[ARP_STAT_SNDTOTAL]++;
-	arps[ARP_STAT_SENDREQUEST]++;
+	_NET_STATINC_REF(arps, ARP_STAT_SNDTOTAL);
+	_NET_STATINC_REF(arps, ARP_STAT_SENDREQUEST);
 	ARP_STAT_PUTREF();
 	if_output_lock(ifp, ifp, m, &sa, NULL);
 }
@@ -779,7 +779,7 @@ in_arpinput(struct mbuf *m)
 	struct in_addr isaddr, itaddr, myaddr;
 	int op, rt_cmd, new_state = 0;
 	void *tha;
-	uint64_t *arps;
+	net_stat_ref_t arps;
 	struct psref psref, psref_ia;
 	int s;
 	char ipbuf[INET_ADDRSTRLEN];
@@ -1166,8 +1166,8 @@ reply:
 	sa.sa_family = AF_ARP;
 	sa.sa_len = 2;
 	arps = ARP_STAT_GETREF();
-	arps[ARP_STAT_SNDTOTAL]++;
-	arps[ARP_STAT_SNDREPLY]++;
+	_NET_STATINC_REF(arps, ARP_STAT_SNDTOTAL);
+	_NET_STATINC_REF(arps, ARP_STAT_SNDREPLY);
 	ARP_STAT_PUTREF();
 	if_output_lock(ifp, ifp, m, &sa, NULL);
 	if (rcvif != NULL)
@@ -1355,8 +1355,8 @@ arp_llinfo_output(struct ifnet *ifp, __unused const union l3addr *daddr,
 		if (sip.s_addr == INADDR_ANY) {
 			char ipbuf[INET_ADDRSTRLEN];
 
-			log(LOG_DEBUG, "source can't be "
-			    "determined: dst=%s\n",
+			log(LOG_DEBUG, "%s: source can't be "
+			    "determined: dst=%s\n", __func__,
 			    IN_PRINT(ipbuf, &tip));
 			return;
 		}

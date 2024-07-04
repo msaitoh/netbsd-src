@@ -1,4 +1,4 @@
-/*	$NetBSD: mkfs.c,v 1.135 2023/07/05 10:58:58 riastradh Exp $	*/
+/*	$NetBSD: mkfs.c,v 1.137 2024/05/10 20:36:34 andvar Exp $	*/
 
 /*
  * Copyright (c) 1980, 1989, 1993
@@ -73,7 +73,7 @@
 #if 0
 static char sccsid[] = "@(#)mkfs.c	8.11 (Berkeley) 5/3/95";
 #else
-__RCSID("$NetBSD: mkfs.c,v 1.135 2023/07/05 10:58:58 riastradh Exp $");
+__RCSID("$NetBSD: mkfs.c,v 1.137 2024/05/10 20:36:34 andvar Exp $");
 #endif
 #endif /* not lint */
 
@@ -611,7 +611,7 @@ mkfs(const char *fsys, int fi, int fo,
 
 		/*
 		 * Ensure there is nothing that looks like a filesystem
-		 * superbock anywhere other than where ours will be.
+		 * superblock anywhere other than where ours will be.
 		 * If fsck finds the wrong one all hell breaks loose!
 		 */
 		for (i = 0; ; i++) {
@@ -672,7 +672,8 @@ mkfs(const char *fsys, int fi, int fo,
 	fld_width = verbosity < 4 ? 1 : snprintf(NULL, 0, "%" PRIu64, 
 		(uint64_t)FFS_FSBTODB(&sblock, cgsblock(&sblock, sblock.fs_ncg-1)));
 	/* Get terminal width */
-	if (ioctl(fileno(stdout), TIOCGWINSZ, &winsize) == 0)
+	if (ioctl(fileno(stdout), TIOCGWINSZ, &winsize) == 0 &&
+	    winsize.ws_col != 0)
 		max_cols = winsize.ws_col;
 	else
 		max_cols = 80;

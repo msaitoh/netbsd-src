@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile.sanitizer,v 1.17 2023/08/03 01:36:54 mrg Exp $
+#	$NetBSD: Makefile.sanitizer,v 1.19 2024/07/02 02:36:22 rin Exp $
 
 SANITIZER=${GCCDIST}/libsanitizer
 .PATH: ${SANITIZER}/interception ${SANITIZER}/sanitizer_common

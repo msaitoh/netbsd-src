@@ -1,4 +1,4 @@
-#	$NetBSD: mi,v 1.2453 2024/01/26 19:27:29 nros Exp $
+#	$NetBSD: mi,v 1.2461 2024/07/01 04:03:04 mrg Exp $
 #
 # Note: don't delete entries from here - mark them as "obsolete" instead.
 ./etc/mtree/set.comp				comp-sys-root
@@ -645,6 +645,7 @@
 ./usr/include/dev/ic/smc91cxxvar.h		comp-obsolete		obsolete
 ./usr/include/dev/ic/smc93cx6var.h		comp-obsolete		obsolete
 ./usr/include/dev/ic/st16650reg.h		comp-obsolete		obsolete
+./usr/include/dev/ic/stireg.h			comp-c-include
 ./usr/include/dev/ic/tms320av110reg.h		comp-obsolete		obsolete
 ./usr/include/dev/ic/tms320av110var.h		comp-obsolete		obsolete
 ./usr/include/dev/ic/uhareg.h			comp-obsolete		obsolete
@@ -1200,6 +1201,7 @@
 ./usr/include/g++/bits/random.tcc		comp-cxx-include	gcc,cxx,libstdcxx
 ./usr/include/g++/bits/range_access.h		comp-cxx-include	gcc,cxx,libstdcxx
 ./usr/include/g++/bits/range_cmp.h		comp-cxx-include	gcc,cxx,libstdcxx,gcc=10
+./usr/include/g++/bits/range_cmp.h		comp-cxx-include	gcc,cxx,libstdcxx,obsolete,gcc=12
 ./usr/include/g++/bits/ranges_algo.h		comp-cxx-include	gcc,cxx,libstdcxx
 ./usr/include/g++/bits/ranges_algobase.h	comp-cxx-include	gcc,cxx,libstdcxx
 ./usr/include/g++/bits/ranges_base.h		comp-cxx-include	gcc,cxx,libstdcxx,gcc=12
@@ -1335,6 +1337,7 @@
 ./usr/include/g++/cxxabi-forced.h		comp-obsolete 		obsolete
 ./usr/include/g++/cxxabi.h			comp-cxx-include	gcc,cxx,libstdcxx
 ./usr/include/g++/debug/array			comp-cxx-include	gcc,cxx,libstdcxx,gcc=10
+./usr/include/g++/debug/array			comp-cxx-include	gcc,cxx,libstdcxx,obsolete,gcc=12
 ./usr/include/g++/debug/assertions.h		comp-cxx-include	gcc,cxx,libstdcxx
 ./usr/include/g++/debug/bitset			comp-cxx-include	gcc,cxx,libstdcxx
 ./usr/include/g++/debug/debug.h			comp-cxx-include	gcc,cxx,libstdcxx
@@ -2379,6 +2382,16 @@
 ./usr/include/gcc-10/sanitizer/tsan_interface.h		comp-gcc-include	gcc=10
 ./usr/include/gcc-10/sanitizer/tsan_interface_atomic.h	comp-gcc-include	gcc=10
 ./usr/include/gcc-10/stdatomic.h			comp-gcc-include	gcc=10
+./usr/include/gcc-10/omp.h				comp-obsolete	obsolete,gcc=12
+./usr/include/gcc-10/openacc.h				comp-obsolete	obsolete,gcc=12
+./usr/include/gcc-10/sanitizer/allocator_interface.h	comp-obsolete	obsolete,gcc=12
+./usr/include/gcc-10/sanitizer/asan_interface.h		comp-obsolete	obsolete,gcc=12
+./usr/include/gcc-10/sanitizer/common_interface_defs.h	comp-obsolete	obsolete,gcc=12
+./usr/include/gcc-10/sanitizer/lsan_interface.h		comp-obsolete	obsolete,gcc=12
+./usr/include/gcc-10/sanitizer/netbsd_syscall_hooks.h	comp-obsolete	obsolete,gcc=12
+./usr/include/gcc-10/sanitizer/tsan_interface.h		comp-obsolete	obsolete,gcc=12
+./usr/include/gcc-10/sanitizer/tsan_interface_atomic.h	comp-obsolete	obsolete,gcc=12
+./usr/include/gcc-10/stdatomic.h			comp-obsolete	obsolete,gcc=12
 ./usr/include/gcc-12/omp.h				comp-gcc-include	gcc=12
 ./usr/include/gcc-12/openacc.h				comp-gcc-include	gcc=12
 ./usr/include/gcc-12/sanitizer				comp-gcc-include	gcc=12
@@ -3838,8 +3851,8 @@
 ./usr/lib/libamu_p.a				comp-obsolete		obsolete
 ./usr/lib/libarchive.a				comp-c-lib		compatfile
 ./usr/lib/libarchive_p.a			comp-c-proflib		compatfile,profile
-./usr/lib/libasan.a				comp-c-lib		compatfile,cxx,gcc
-./usr/lib/libasan_p.a				comp-c-proflib		compatfile,profile,cxx,gcc
+./usr/lib/libasan.a				comp-c-lib		compatfile,cxx,gcccmds,gcc
+./usr/lib/libasan_p.a				comp-c-proflib		compatfile,profile,cxx,gcccmds,gcc
 ./usr/lib/libasn1.a				comp-krb5-lib		compatfile,kerberos
 ./usr/lib/libasn1_p.a				comp-krb5-proflib	compatfile,kerberos,profile
 ./usr/lib/libatf-c++.a				comp-atf-lib		compatfile,atf
@@ -3999,8 +4012,8 @@
 ./usr/lib/libldap_p.a				comp-ldap-proflib	compatfile,ldap,profile
 ./usr/lib/libldap_r.a				comp-ldap-lib		compatfile,ldap
 ./usr/lib/libldap_r_p.a				comp-ldap-proflib	compatfile,ldap,profile
-./usr/lib/liblsan.a				comp-c-lib		compatfile,cxx,gcc
-./usr/lib/liblsan_p.a				comp-c-proflib		compatfile,profile,cxx,gcc
+./usr/lib/liblsan.a				comp-c-lib		compatfile,cxx,gcccmds,gcc
+./usr/lib/liblsan_p.a				comp-c-proflib		compatfile,profile,cxx,gcccmds,gcc
 ./usr/lib/liblua.a				comp-c-lib		compatfile
 ./usr/lib/liblua_p.a				comp-c-proflib		compatfile,profile
 ./usr/lib/liblutok.a				comp-c-lib		compatfile,kyua
@@ -4345,8 +4358,8 @@
 ./usr/lib/libtre_p.a				comp-c-proflib		compatfile,profile
 ./usr/lib/libtspi.a				comp-c-lib		compatfile,tpm
 ./usr/lib/libtspi_p.a				comp-c-proflib		compatfile,tpm,profile
-./usr/lib/libubsan.a				comp-c-lib		compatfile,cxx,gcc
-./usr/lib/libubsan_p.a				comp-c-proflib		compatfile,profile,cxx,gcc
+./usr/lib/libubsan.a				comp-c-lib		compatfile,cxx,gcccmds,gcc
+./usr/lib/libubsan_p.a				comp-c-proflib		compatfile,profile,cxx,gcccmds,gcc
 ./usr/lib/libukfs.a				comp-c-lib		compatfile,rump
 ./usr/lib/libukfs_p.a				comp-c-proflib		compatfile,rump,profile
 ./usr/lib/libumem.a				comp-zfs-lib		compatfile,zfs
@@ -4420,7 +4433,7 @@
 ./usr/libdata/lint/llib-lcurses.ln		comp-c-lintlib		lint
 ./usr/libdata/lint/llib-ldes.ln			comp-c-lintlib		lint
 ./usr/libdata/lint/llib-ldm.ln			comp-c-lintlib		lint
-./usr/libdata/lint/llib-ldns.ln			comp-bind-lintlib	lint
+./usr/libdata/lint/llib-ldns.ln			comp-obsolete		obsolete
 ./usr/libdata/lint/llib-ldns_sd.ln		comp-mdns-lintlib	lint,mdns
 ./usr/libdata/lint/llib-ldwarf.ln		comp-c-lintlib		lint
 ./usr/libdata/lint/llib-ledit.ln		comp-c-lintlib		lint
@@ -4439,9 +4452,9 @@
 ./usr/libdata/lint/llib-lintl.ln		comp-c-lintlib		lint
 ./usr/libdata/lint/llib-lipsec.ln		comp-c-lintlib		lint
 ./usr/libdata/lint/llib-lirs.ln			comp-bind-lintlib	lint
-./usr/libdata/lint/llib-lisc.ln			comp-bind-lintlib	lint
+./usr/libdata/lint/llib-lisc.ln			comp-obsolete		obsolete
 ./usr/libdata/lint/llib-lisccc.ln		comp-bind-lintlib	lint
-./usr/libdata/lint/llib-lisccfg.ln		comp-bind-lintlib	lint
+./usr/libdata/lint/llib-lisccfg.ln		comp-obsolete		obsolete
 ./usr/libdata/lint/llib-liscsi.ln		comp-c-lintlib		lint,iscsi
 ./usr/libdata/lint/llib-lisns.ln		comp-isns-lintlib	lint
 ./usr/libdata/lint/llib-ljemalloc.ln		comp-c-lintlib		lint
@@ -4466,7 +4479,7 @@
 ./usr/libdata/lint/llib-lnetpgp.ln		comp-c-lintlib		lint
 ./usr/libdata/lint/llib-lnetpgpverify.ln	comp-c-lintlib		lint
 ./usr/libdata/lint/llib-lnpf.ln			comp-npf-lintlib	lint,npf
-./usr/libdata/lint/llib-lns.ln			comp-bind-lintlib		lint
+./usr/libdata/lint/llib-lns.ln			comp-obsolete		obsolete
 ./usr/libdata/lint/llib-lntp.ln			comp-obsolete		obsolete
 ./usr/libdata/lint/llib-lnvmm.ln		comp-c-lintlib		nvmm,lint
 ./usr/libdata/lint/llib-lopenpgpsdk.ln		comp-obsolete		obsolete
@@ -6163,6 +6176,7 @@
 ./usr/share/man/cat3/__svc_getcallercreds.0	comp-c-catman		.cat
 ./usr/share/man/cat3/__unused.0			comp-c-catman		.cat
 ./usr/share/man/cat3/__used.0			comp-c-catman		.cat
+./usr/share/man/cat3/_dlauxinfo.0		comp-c-catman		.cat
 ./usr/share/man/cat3/_longjmp.0			comp-c-catman		.cat
 ./usr/share/man/cat3/_lwp_makecontext.0		comp-c-catman		.cat
 ./usr/share/man/cat3/_setjmp.0			comp-c-catman		.cat
@@ -9142,7 +9156,6 @@
 ./usr/share/man/cat3/logbf.0			comp-c-catman		.cat
 ./usr/share/man/cat3/logbl.0			comp-c-catman		.cat
 ./usr/share/man/cat3/logf.0			comp-c-catman		.cat
-./usr/share/man/cat3/logl.0			comp-c-catman		.cat
 ./usr/share/man/cat3/login.0			comp-c-catman		.cat
 ./usr/share/man/cat3/login_cap.0		comp-c-catman		.cat
 ./usr/share/man/cat3/login_close.0		comp-c-catman		.cat
@@ -9155,6 +9168,7 @@
 ./usr/share/man/cat3/login_getpwclass.0		comp-c-catman		.cat
 ./usr/share/man/cat3/login_tty.0		comp-c-catman		.cat
 ./usr/share/man/cat3/loginx.0			comp-c-catman		.cat
+./usr/share/man/cat3/logl.0			comp-c-catman		.cat
 ./usr/share/man/cat3/logout.0			comp-c-catman		.cat
 ./usr/share/man/cat3/logoutx.0			comp-c-catman		.cat
 ./usr/share/man/cat3/logwtmp.0			comp-c-catman		.cat
@@ -10660,6 +10674,7 @@
 ./usr/share/man/cat3/sqlite3_finalize.0	comp-c-catman		.cat
 ./usr/share/man/cat3/sqlite3_get_autocommit.0	comp-c-catman		.cat
 ./usr/share/man/cat3/sqlite3_get_auxdata.0	comp-c-catman		.cat
+./usr/share/man/cat3/sqlite3_get_clientdata.0		comp-c-catman	.cat
 ./usr/share/man/cat3/sqlite3_get_table.0	comp-c-catman		.cat
 ./usr/share/man/cat3/sqlite3_index_info.0	comp-c-catman		.cat
 ./usr/share/man/cat3/sqlite3_initialize.0	comp-c-catman		.cat
@@ -10767,6 +10782,7 @@
 ./usr/share/man/cat3/sqlite3changegroup_delete.0 comp-c-catman .cat
 ./usr/share/man/cat3/sqlite3changegroup_new.0	comp-3-catman	.cat
 ./usr/share/man/cat3/sqlite3changegroup_output.0 comp-c-catman .cat
+./usr/share/man/cat3/sqlite3changegroup_schema.0		comp-c-catman	.cat
 ./usr/share/man/cat3/sqlite3changeset_apply.0	comp-3-catman	.cat
 ./usr/share/man/cat3/sqlite3changeset_apply_strm.0	comp-3-catman	.cat
 ./usr/share/man/cat3/sqlite3changeset_concat.0	comp-3-catman	.cat
@@ -10780,6 +10796,7 @@
 ./usr/share/man/cat3/sqlite3changeset_op.0	comp-3-catman	.cat
 ./usr/share/man/cat3/sqlite3changeset_pk.0	comp-3-catman	.cat
 ./usr/share/man/cat3/sqlite3changeset_start.0	comp-3-catman	.cat
+./usr/share/man/cat3/sqlite3changeset_upgrade.0		comp-c-catman	.cat
 ./usr/share/man/cat3/sqlite3rebaser_configure.0   comp-c-catman           .cat
 ./usr/share/man/cat3/sqlite3rebaser_create.0   comp-c-catman           .cat
 ./usr/share/man/cat3/sqlite3rebaser_delete.0   comp-c-catman           .cat
@@ -13015,6 +13032,8 @@
 ./usr/share/man/cat9/uvm_map_pageable.0		comp-sys-catman		.cat
 ./usr/share/man/cat9/uvm_map_protect.0		comp-sys-catman		.cat
 ./usr/share/man/cat9/uvm_meter.0		comp-sys-catman		.cat
+./usr/share/man/cat9/uvm_obj_unwirepages.0	comp-sys-catman		.cat
+./usr/share/man/cat9/uvm_obj_wirepages.0	comp-sys-catman		.cat
 ./usr/share/man/cat9/uvm_page_physload.0	comp-sys-catman		.cat
 ./usr/share/man/cat9/uvm_pagealloc.0		comp-sys-catman		.cat
 ./usr/share/man/cat9/uvm_pagefree.0		comp-sys-catman		.cat
@@ -14709,6 +14728,7 @@
 ./usr/share/man/html3/__svc_getcallercreds.html comp-c-htmlman		html
 ./usr/share/man/html3/__unused.html		comp-c-htmlman		html
 ./usr/share/man/html3/__used.html		comp-c-htmlman		html
+./usr/share/man/html3/_dlauxinfo.html		comp-c-htmlman		html
 ./usr/share/man/html3/_longjmp.html		comp-c-htmlman		html
 ./usr/share/man/html3/_lwp_makecontext.html	comp-c-htmlman		html
 ./usr/share/man/html3/_setjmp.html		comp-c-htmlman		html
@@ -17610,7 +17630,6 @@
 ./usr/share/man/html3/logbf.html		comp-c-htmlman		html
 ./usr/share/man/html3/logbl.html		comp-c-htmlman		html
 ./usr/share/man/html3/logf.html			comp-c-htmlman		html
-./usr/share/man/html3/logl.html			comp-c-htmlman		html
 ./usr/share/man/html3/login.html		comp-c-htmlman		html
 ./usr/share/man/html3/login_cap.html		comp-c-htmlman		html
 ./usr/share/man/html3/login_close.html		comp-c-htmlman		html
@@ -17623,6 +17642,7 @@
 ./usr/share/man/html3/login_getpwclass.html	comp-c-htmlman		html
 ./usr/share/man/html3/login_tty.html		comp-c-htmlman		html
 ./usr/share/man/html3/loginx.html		comp-c-htmlman		html
+./usr/share/man/html3/logl.html			comp-c-htmlman		html
 ./usr/share/man/html3/logout.html		comp-c-htmlman		html
 ./usr/share/man/html3/logoutx.html		comp-c-htmlman		html
 ./usr/share/man/html3/logwtmp.html		comp-c-htmlman		html
@@ -19123,6 +19143,7 @@
 ./usr/share/man/html3/sqlite3_finalize.html	comp-c-htmlman		html
 ./usr/share/man/html3/sqlite3_get_autocommit.html	comp-c-htmlman		html
 ./usr/share/man/html3/sqlite3_get_auxdata.html	comp-c-htmlman		html
+./usr/share/man/html3/sqlite3_get_clientdata.html	comp-c-htmlman	html
 ./usr/share/man/html3/sqlite3_get_table.html	comp-c-htmlman		html
 ./usr/share/man/html3/sqlite3_index_info.html	comp-c-htmlman		html
 ./usr/share/man/html3/sqlite3_initialize.html	comp-c-htmlman		html
@@ -19230,6 +19251,7 @@
 ./usr/share/man/html3/sqlite3changegroup_delete.html comp-c-htmlman html
 ./usr/share/man/html3/sqlite3changegroup_new.html	comp-c-htmlman	html
 ./usr/share/man/html3/sqlite3changegroup_output.html comp-c-htmlman html
+./usr/share/man/html3/sqlite3changegroup_schema.html	comp-c-htmlman	html
 ./usr/share/man/html3/sqlite3changeset_apply.html	comp-c-htmlman	html
 ./usr/share/man/html3/sqlite3changeset_apply_strm.html	comp-c-htmlman	html
 ./usr/share/man/html3/sqlite3changeset_concat.html	comp-c-htmlman	html
@@ -19243,6 +19265,7 @@
 ./usr/share/man/html3/sqlite3changeset_op.html	comp-c-htmlman	html
 ./usr/share/man/html3/sqlite3changeset_pk.html	comp-c-htmlman	html
 ./usr/share/man/html3/sqlite3changeset_start.html	comp-c-htmlman	html
+./usr/share/man/html3/sqlite3changeset_upgrade.html	comp-c-htmlman	html
 ./usr/share/man/html3/sqlite3rebaser_configure.html       comp-c-htmlman          html
 ./usr/share/man/html3/sqlite3rebaser_create.html       comp-c-htmlman          html
 ./usr/share/man/html3/sqlite3rebaser_delete.html       comp-c-htmlman          html
@@ -21383,6 +21406,8 @@
 ./usr/share/man/html9/uvm_map_pageable.html	comp-sys-htmlman	html
 ./usr/share/man/html9/uvm_map_protect.html	comp-sys-htmlman	html
 ./usr/share/man/html9/uvm_meter.html		comp-sys-htmlman	html
+./usr/share/man/html9/uvm_obj_unwirepages.html	comp-sys-htmlman	html
+./usr/share/man/html9/uvm_obj_wirepages.html	comp-sys-htmlman	html
 ./usr/share/man/html9/uvm_page_physload.html	comp-sys-htmlman	html
 ./usr/share/man/html9/uvm_pagealloc.html	comp-sys-htmlman	html
 ./usr/share/man/html9/uvm_pagefree.html		comp-sys-htmlman	html
@@ -23092,6 +23117,7 @@
 ./usr/share/man/man3/__svc_getcallercreds.3	comp-c-man		.man
 ./usr/share/man/man3/__unused.3			comp-c-man		.man
 ./usr/share/man/man3/__used.3			comp-c-man		.man
+./usr/share/man/man3/_dlauxinfo.3		comp-c-man		.man
 ./usr/share/man/man3/_longjmp.3			comp-c-man		.man
 ./usr/share/man/man3/_lwp_makecontext.3		comp-c-man		.man
 ./usr/share/man/man3/_setjmp.3			comp-c-man		.man
@@ -26083,7 +26109,6 @@
 ./usr/share/man/man3/logbf.3			comp-c-man		.man
 ./usr/share/man/man3/logbl.3			comp-c-man		.man
 ./usr/share/man/man3/logf.3			comp-c-man		.man
-./usr/share/man/man3/logl.3			comp-c-man		.man
 ./usr/share/man/man3/login.3			comp-c-man		.man
 ./usr/share/man/man3/login_cap.3		comp-c-man		.man
 ./usr/share/man/man3/login_close.3		comp-c-man		.man
@@ -26096,6 +26121,7 @@
 ./usr/share/man/man3/login_getpwclass.3		comp-c-man		.man
 ./usr/share/man/man3/login_tty.3		comp-c-man		.man
 ./usr/share/man/man3/loginx.3			comp-c-man		.man
+./usr/share/man/man3/logl.3			comp-c-man		.man
 ./usr/share/man/man3/logout.3			comp-c-man		.man
 ./usr/share/man/man3/logoutx.3			comp-c-man		.man
 ./usr/share/man/man3/logwtmp.3			comp-c-man		.man
@@ -27620,6 +27646,7 @@
 ./usr/share/man/man3/sqlite3_finalize.3		comp-c-man		.man
 ./usr/share/man/man3/sqlite3_get_autocommit.3	comp-c-man		.man
 ./usr/share/man/man3/sqlite3_get_auxdata.3	comp-c-man		.man
+./usr/share/man/man3/sqlite3_get_clientdata.3		comp-c-man	.man
 ./usr/share/man/man3/sqlite3_get_table.3	comp-c-man		.man
 ./usr/share/man/man3/sqlite3_index_info.3	comp-c-man		.man
 ./usr/share/man/man3/sqlite3_initialize.3	comp-c-man		.man
@@ -27727,6 +27754,7 @@
 ./usr/share/man/man3/sqlite3changegroup_delete.3 comp-c-man .man
 ./usr/share/man/man3/sqlite3changegroup_new.3	comp-c-man	.man
 ./usr/share/man/man3/sqlite3changegroup_output.3 comp-c-man .man
+./usr/share/man/man3/sqlite3changegroup_schema.3		comp-c-man	.man
 ./usr/share/man/man3/sqlite3changeset_apply.3	comp-c-man	.man
 ./usr/share/man/man3/sqlite3changeset_apply_strm.3	comp-c-man	.man
 ./usr/share/man/man3/sqlite3changeset_concat.3	comp-c-man	.man
@@ -27740,6 +27768,7 @@
 ./usr/share/man/man3/sqlite3changeset_op.3	comp-c-man	.man
 ./usr/share/man/man3/sqlite3changeset_pk.3	comp-c-man	.man
 ./usr/share/man/man3/sqlite3changeset_start.3	comp-c-man	.man
+./usr/share/man/man3/sqlite3changeset_upgrade.3		comp-c-man	.man
 ./usr/share/man/man3/sqlite3rebaser_configure.3   comp-c-man              .man
 ./usr/share/man/man3/sqlite3rebaser_create.3   comp-c-man              .man
 ./usr/share/man/man3/sqlite3rebaser_delete.3   comp-c-man              .man
@@ -29974,6 +30003,8 @@
 ./usr/share/man/man9/uvm_map_pageable.9		comp-sys-man		.man
 ./usr/share/man/man9/uvm_map_protect.9		comp-sys-man		.man
 ./usr/share/man/man9/uvm_meter.9		comp-sys-man		.man
+./usr/share/man/man9/uvm_obj_unwirepages.9	comp-sys-man		.man
+./usr/share/man/man9/uvm_obj_wirepages.9	comp-sys-man		.man
 ./usr/share/man/man9/uvm_page_physload.9	comp-sys-man		.man
 ./usr/share/man/man9/uvm_pagealloc.9		comp-sys-man		.man
 ./usr/share/man/man9/uvm_pagefree.9		comp-sys-man		.man

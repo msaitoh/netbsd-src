@@ -5,8 +5,6 @@
 **  a couple of people on Usenet.  Completely overhauled by Rich $alz
 **  <rsalz@bbn.com> and Jim Berets <jberets@bbn.com> in August, 1990;
 **
-**  This grammar has 10 shift/reduce conflicts.
-**
 **  This code is in the public domain and has no copyright.
 */
 /* SUPPRESS 287 on yaccpar_sccsid *//* Unused static variable */
@@ -14,7 +12,7 @@
 
 #include <sys/cdefs.h>
 #ifdef __RCSID
-__RCSID("$NetBSD: parsedate.y,v 1.37 2022/04/23 13:02:04 christos Exp $");
+__RCSID("$NetBSD: parsedate.y,v 1.40 2024/05/02 14:19:56 christos Exp $");
 #endif
 
 #include <stdio.h>
@@ -548,7 +546,7 @@ static const TABLE OtherTable[] = {
     { "now",		tMINUTE_UNIT,	0 },
     { "last",		tUNUMBER,	-1 },
     { "this",		tMINUTE_UNIT,	0 },
-    { "next",		tUNUMBER,	2 },
+    { "next",		tUNUMBER,	2 },	/* it is more useful this way */
     { "first",		tUNUMBER,	1 },
     { "one",		tUNUMBER,	1 },
 /*  { "second",		tUNUMBER,	2 }, */

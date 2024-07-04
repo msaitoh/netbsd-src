@@ -1,4 +1,4 @@
-.\"	$NetBSD: make.1,v 1.374 2024/01/25 21:00:59 sjg Exp $
+.\"	$NetBSD: make.1,v 1.378 2024/07/01 21:02:26 sjg Exp $
 .\"
 .\" Copyright (c) 1990, 1993
 .\"	The Regents of the University of California.  All rights reserved.
@@ -29,7 +29,7 @@
 .\"
 .\"	from: @(#)make.1	8.4 (Berkeley) 3/19/94
 .\"
-.Dd January 24, 2024
+.Dd July 1, 2024
 .Dt MAKE 1
 .Os
 .Sh NAME
@@ -879,6 +879,9 @@ Is used in error handling, see
 .It Va .ERROR_CWD
 Is used in error handling, see
 .Va MAKE_PRINT_VAR_ON_ERROR .
+.It Va .ERROR_EXIT
+Is used in error handling, see
+.Va MAKE_PRINT_VAR_ON_ERROR .
 .It Va .ERROR_META_FILE
 Is used in error handling in
 .Dq meta
@@ -1140,9 +1143,19 @@ This mode can be used to detect undeclared dependencies between files.
 Used to create files in a separate directory, see
 .Va .OBJDIR .
 .It Va MAKE_OBJDIR_CHECK_WRITABLE
-Used to force a separate directory for the created files,
-even if that directory is not writable, see
-.Va .OBJDIR .
+When true,
+.Nm
+will check that
+.Va .OBJDIR
+is writable, and issue a warning if not.
+.It Va MAKE_DEBUG_OBJDIR_CHECK_WRITABLE
+When true and
+.Nm
+is warning about an unwritable
+.Va .OBJDIR ,
+report the variables listed in
+.Va MAKE_PRINT_VAR_ON_ERROR
+to help debug.
 .It Va MAKEOBJDIRPREFIX
 Used to create files in a separate directory, see
 .Va .OBJDIR .
@@ -1185,6 +1198,8 @@ When
 stops due to an error, it sets
 .Sq Va .ERROR_TARGET
 to the name of the target that failed,
+.Sq Va .ERROR_EXIT
+to the exit status of the failed target,
 .Sq Va .ERROR_CMD
 to the commands of the failed target,
 and in
@@ -1559,6 +1574,9 @@ If
 .Ar c
 is omitted, no separator is used.
 The common escapes (including octal numeric codes) work as expected.
+.It Cm \&:tt
+Converts the first character of each word to upper-case,
+and the rest to lower-case letters.
 .It Cm \&:tu
 Converts the value to upper-case letters.
 .It Cm \&:tW
@@ -1945,12 +1963,7 @@ The directives for exporting and unexporting variables are:
 .Bl -tag -width Ds
 .It Ic .export Ar variable No ...
 Export the specified global variable.
-If no variable list is provided, all globals are exported
-except for internal variables (those that start with
-.Ql \&. ) .
-This is not affected by the
-.Fl X
-flag, so should be used with caution.
+.Pp
 For compatibility with other make programs,
 .Cm export Ar variable\| Ns Cm \&= Ns Ar value
 (without leading dot) is also accepted.
@@ -1958,6 +1971,12 @@ For compatibility with other make programs,
 Appending a variable name to
 .Va .MAKE.EXPORTED
 is equivalent to exporting a variable.
+.It Ic .export-all
+Export all globals except for internal variables (those that start with
+.Ql \&. ) .
+This is not affected by the
+.Fl X
+flag, so should be used with caution.
 .It Ic .export-env Ar variable No ...
 The same as
 .Ql .export ,
@@ -2405,11 +2424,9 @@ Any command lines attached to this target are executed after everything
 else is done successfully.
 .It Ic .ERROR
 Any command lines attached to this target are executed when another target fails.
-The
-.Va .ERROR_TARGET
-variable is set to the target that failed.
-See also
-.Va MAKE_PRINT_VAR_ON_ERROR .
+See 
+.Va MAKE_PRINT_VAR_ON_ERROR
+for the variables that will be set.
 .It Ic .IGNORE
 Mark each of the sources with the
 .Ic .IGNORE

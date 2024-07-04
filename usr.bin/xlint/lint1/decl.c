@@ -1,4 +1,4 @@
-/* $NetBSD: decl.c,v 1.393 2024/02/08 20:59:19 rillig Exp $ */
+/* $NetBSD: decl.c,v 1.403 2024/05/12 18:49:36 rillig Exp $ */
 
 /*
  * Copyright (c) 1996 Christopher G. Demetriou.  All Rights Reserved.
@@ -38,7 +38,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID)
-__RCSID("$NetBSD: decl.c,v 1.393 2024/02/08 20:59:19 rillig Exp $");
+__RCSID("$NetBSD: decl.c,v 1.403 2024/05/12 18:49:36 rillig Exp $");
 #endif
 
 #include <sys/param.h>
@@ -63,12 +63,20 @@ int enumval;
  */
 decl_level *dcs;
 
+#ifdef DEBUG
+static inline void
+debug_func_dcs(const char *func)
+{
+	debug_printf("%s: ", func);
+	debug_dcs();
+}
+#else
+#define debug_func_dcs(func) debug_noop()
+#endif
 
 void
 init_decl(void)
 {
-
-	/* declaration stack */
 	dcs = xcalloc(1, sizeof(*dcs));
 	dcs->d_kind = DLK_EXTERN;
 	dcs->d_last_dlsym = &dcs->d_first_dlsym;
@@ -109,10 +117,10 @@ gettyp(tspec_t t)
 type_t *
 block_dup_type(const type_t *tp)
 {
-
-	debug_step("%s '%s'", __func__, type_name(tp));
 	type_t *ntp = block_zero_alloc(sizeof(*ntp), "type");
+	// Keep referring to the same subtype, struct, union, enum, params.
 	*ntp = *tp;
+	debug_step("%s '%s'", __func__, type_name(ntp));
 	return ntp;
 }
 
@@ -120,10 +128,10 @@ block_dup_type(const type_t *tp)
 type_t *
 expr_dup_type(const type_t *tp)
 {
-
-	debug_step("%s '%s'", __func__, type_name(tp));
 	type_t *ntp = expr_zero_alloc(sizeof(*ntp), "type");
+	// Keep referring to the same subtype, struct, union, enum, params.
 	*ntp = *tp;
+	debug_step("%s: '%s'", __func__, type_name(ntp));
 	return ntp;
 }
 
@@ -136,8 +144,8 @@ expr_dup_type(const type_t *tp)
 type_t *
 expr_unqualified_type(const type_t *tp)
 {
-
 	type_t *ntp = expr_zero_alloc(sizeof(*ntp), "type");
+	// Keep referring to the same subtype, struct, union, enum, params.
 	*ntp = *tp;
 	ntp->t_const = false;
 	ntp->t_volatile = false;
@@ -146,11 +154,11 @@ expr_unqualified_type(const type_t *tp)
 	 * In case of a struct or union type, the members should lose their
 	 * qualifiers as well, but that would require a deep copy of the struct
 	 * or union type.  This in turn would defeat the type comparison in
-	 * types_compatible, which simply tests whether tp1->t_sou ==
-	 * tp2->t_sou.
+	 * types_compatible, which simply tests whether 'tp1->u.sou ==
+	 * tp2->u.sou'.
 	 */
 
-	debug_step("%s '%s'", __func__, type_name(ntp));
+	debug_step("%s: '%s'", __func__, type_name(ntp));
 	return ntp;
 }
 
@@ -168,28 +176,24 @@ is_incomplete(const type_t *tp)
 	if (t == ARRAY)
 		return tp->t_incomplete_array;
 	if (is_struct_or_union(t))
-		return tp->t_sou->sou_incomplete;
+		return tp->u.sou->sou_incomplete;
 	if (t == ENUM)
-		return tp->t_enum->en_incomplete;
+		return tp->u.enumer->en_incomplete;
 	return false;
 }
 
 void
 dcs_add_function_specifier(function_specifier fs)
 {
-	debug_step("%s: %s", __func__, function_specifier_name(fs));
 	if (fs == FS_INLINE) {
 		if (dcs->d_inline)
 			/* duplicate '%s' */
 			warning(10, "inline");
 		dcs->d_inline = true;
 	}
+	debug_func_dcs(__func__);
 }
 
-/*
- * Remember the storage class of the current declaration and detect multiple
- * storage classes.
- */
 void
 dcs_add_storage_class(scl_t sc)
 {
@@ -209,8 +213,7 @@ dcs_add_storage_class(scl_t sc)
 		dcs->d_scl = STATIC;	/* ignore thread_local */
 	else
 		dcs->d_multiple_storage_classes = true;
-	debug_printf("%s: ", __func__);
-	debug_dcs();
+	debug_func_dcs(__func__);
 }
 
 /* Merge the signedness into the abstract type. */
@@ -237,9 +240,6 @@ merge_signedness(tspec_t t, tspec_t s)
 static type_t *
 typedef_error(type_t *td, tspec_t t)
 {
-
-	debug_step("%s: '%s' %s", __func__, type_name(td), tspec_name(t));
-
 	tspec_t t2 = td->t_tspec;
 
 	if ((t == SIGNED || t == UNSIGN) &&
@@ -290,6 +290,7 @@ typedef_error(type_t *td, tspec_t t)
 
 invalid:
 	dcs->d_invalid_type_combination = true;
+	debug_func_dcs(__func__);
 	return td;
 }
 
@@ -306,8 +307,6 @@ void
 dcs_add_type(type_t *tp)
 {
 
-	debug_step("%s: %s", __func__, type_name(tp));
-	debug_dcs();
 	if (tp->t_typedef) {
 		/*-
 		 * something like "typedef int a; int a b;"
@@ -319,11 +318,12 @@ dcs_add_type(type_t *tp)
 		lint_assert(dcs->d_rank_mod == NO_TSPEC);
 
 		dcs->d_type = tp;
+		debug_func_dcs(__func__);
 		return;
 	}
 
 	tspec_t t = tp->t_tspec;
-	if (is_struct_or_union(t) || t == ENUM) {
+	if (t == STRUCT || t == UNION || t == ENUM) {
 		/* something like "int struct a ..." */
 		if (dcs->d_type != NULL || dcs->d_abstract_type != NO_TSPEC ||
 		    dcs->d_rank_mod != NO_TSPEC || dcs->d_sign_mod != NO_TSPEC) {
@@ -333,13 +333,14 @@ dcs_add_type(type_t *tp)
 			dcs->d_rank_mod = NO_TSPEC;
 		}
 		dcs->d_type = tp;
-		debug_dcs();
+		debug_func_dcs(__func__);
 		return;
 	}
 
 	if (dcs->d_type != NULL && !dcs->d_type->t_typedef) {
 		/* something like "struct a int" */
 		dcs->d_invalid_type_combination = true;
+		debug_func_dcs(__func__);
 		return;
 	}
 
@@ -398,7 +399,7 @@ dcs_add_type(type_t *tp)
 			dcs->d_invalid_type_combination = true;
 		dcs->d_abstract_type = t;
 	}
-	debug_dcs();
+	debug_func_dcs(__func__);
 }
 
 static void
@@ -406,10 +407,12 @@ set_first_typedef(type_t *tp, sym_t *sym)
 {
 
 	tspec_t t = tp->t_tspec;
-	if (is_struct_or_union(t) && tp->t_sou->sou_first_typedef == NULL)
-		tp->t_sou->sou_first_typedef = sym;
-	if (t == ENUM && tp->t_enum->en_first_typedef == NULL)
-		tp->t_enum->en_first_typedef = sym;
+	if (is_struct_or_union(t) && tp->u.sou->sou_first_typedef == NULL)
+		tp->u.sou->sou_first_typedef = sym;
+	if (t == ENUM && tp->u.enumer->en_first_typedef == NULL)
+		tp->u.enumer->en_first_typedef = sym;
+	debug_printf("%s: ", __func__);
+	debug_type(tp);
 }
 
 static unsigned int
@@ -421,12 +424,13 @@ bit_fields_width(const sym_t **mem, bool *named)
 		if ((*mem)->s_name != unnamed)
 			*named = true;
 		width += (*mem)->s_type->t_bit_field_width;
-		unsigned int mem_align = alignment_in_bits((*mem)->s_type);
+		unsigned mem_align = alignment((*mem)->s_type);
 		if (mem_align > align)
 			align = mem_align;
 		*mem = (*mem)->s_next;
 	}
-	return (width + align - 1) & -align;
+	unsigned align_in_bits = align * CHAR_BIT;
+	return (width + align_in_bits - 1) & -align_in_bits;
 }
 
 static void
@@ -441,7 +445,7 @@ pack_struct_or_union(type_t *tp)
 
 	unsigned int bits = 0;
 	bool named = false;
-	for (const sym_t *mem = tp->t_sou->sou_first_member;
+	for (const sym_t *mem = tp->u.sou->sou_first_member;
 	    mem != NULL; mem = mem->s_next) {
 		// TODO: Maybe update mem->u.s_member.sm_offset_in_bits.
 		if (mem->s_type->t_bitfield) {
@@ -455,8 +459,17 @@ pack_struct_or_union(type_t *tp)
 		else if (mem_bits > bits)
 			bits = mem_bits;
 	}
-	tp->t_sou->sou_size_in_bits = bits;
-	debug_dcs();
+	tp->u.sou->sou_size_in_bits = bits;
+}
+
+void
+dcs_add_alignas(tnode_t *tn)
+{
+	dcs->d_mem_align = to_int_constant(tn, true);
+	if (dcs->d_type != NULL && is_struct_or_union(dcs->d_type->t_tspec))
+		// FIXME: The type must not be modified.
+		dcs->d_type->u.sou->sou_align = dcs->d_mem_align;
+	debug_func_dcs(__func__);
 }
 
 void
@@ -466,12 +479,14 @@ dcs_add_packed(void)
 		dcs->d_packed = true;
 	else
 		pack_struct_or_union(dcs->d_type);
+	debug_func_dcs(__func__);
 }
 
 void
 dcs_set_used(void)
 {
 	dcs->d_used = true;
+	debug_func_dcs(__func__);
 }
 
 /*
@@ -483,6 +498,7 @@ void
 dcs_add_qualifiers(type_qualifiers qs)
 {
 	add_type_qualifiers(&dcs->d_qual, qs);
+	debug_func_dcs(__func__);
 }
 
 void
@@ -582,6 +598,8 @@ dcs_set_asm(void)
 
 	for (decl_level *dl = dcs; dl != NULL; dl = dl->d_enclosing)
 		dl->d_asm = true;
+	debug_step("%s", __func__);
+	debug_dcs_all();
 }
 
 void
@@ -589,6 +607,8 @@ dcs_begin_type(void)
 {
 
 	debug_enter();
+
+	// keep d_kind
 	dcs->d_abstract_type = NO_TSPEC;
 	dcs->d_complex_mod = NO_TSPEC;
 	dcs->d_sign_mod = NO_TSPEC;
@@ -596,17 +616,27 @@ dcs_begin_type(void)
 	dcs->d_scl = NO_SCL;
 	dcs->d_type = NULL;
 	dcs->d_redeclared_symbol = NULL;
+	// keep d_sou_size_in_bits
+	// keep d_sou_align
+	dcs->d_mem_align = 0;
 	dcs->d_qual = (type_qualifiers) { .tq_const = false };
 	dcs->d_inline = false;
 	dcs->d_multiple_storage_classes = false;
 	dcs->d_invalid_type_combination = false;
 	dcs->d_nonempty_decl = false;
 	dcs->d_no_type_specifier = false;
+	// keep d_asm
 	dcs->d_packed = false;
 	dcs->d_used = false;
+	// keep d_tag_type
 	dcs->d_func_params = NULL;
 	dcs->d_func_def_pos = (pos_t){ NULL, 0, 0 };
+	// keep d_first_dlsym
+	// keep d_last_dlsym
 	dcs->d_func_proto_syms = NULL;
+	// keep d_enclosing
+
+	debug_func_dcs(__func__);
 }
 
 static void
@@ -688,9 +718,10 @@ dcs_merge_declaration_specifiers(void)
 	if (l != NO_TSPEC)
 		t = l;
 	dcs->d_type = gettyp(merge_signedness(t, s));
-	debug_printf("%s: ", __func__);
-	debug_dcs();
+	debug_func_dcs(__func__);
 }
+
+static void dcs_align(unsigned int, unsigned int);
 
 /* Create a type in 'dcs->d_type' from the information gathered in 'dcs'. */
 void
@@ -726,6 +757,15 @@ dcs_end_type(void)
 		dcs->d_type->t_const |= dcs->d_qual.tq_const;
 		dcs->d_type->t_volatile |= dcs->d_qual.tq_volatile;
 	}
+	unsigned align = dcs->d_mem_align;
+	if (align > 0 && dcs->d_type->t_tspec == STRUCT) {
+		dcs_align(align, 0);
+		dcs->d_type->u.sou->sou_align = align;
+		unsigned align_in_bits = align * CHAR_SIZE;
+		dcs->d_type->u.sou->sou_size_in_bits =
+		    (dcs->d_type->u.sou->sou_size_in_bits + align_in_bits - 1)
+		    & -align_in_bits;
+	}
 
 	debug_dcs();
 	debug_leave();
@@ -748,7 +788,7 @@ length_in_bits(const type_t *tp, const char *name)
 
 	unsigned int elem = 1;
 	while (tp->t_tspec == ARRAY) {
-		elem *= tp->t_dim;
+		elem *= tp->u.dimension;
 		tp = tp->t_subt;
 	}
 
@@ -756,7 +796,7 @@ length_in_bits(const type_t *tp, const char *name)
 		if (is_incomplete(tp) && name != NULL)
 			/* '%s' has incomplete type '%s' */
 			error(31, name, type_name(tp));
-		return (int)(elem * tp->t_sou->sou_size_in_bits);
+		return (int)(elem * tp->u.sou->sou_size_in_bits);
 	}
 
 	if (tp->t_tspec == ENUM && is_incomplete(tp) && name != NULL)
@@ -778,28 +818,27 @@ length_in_bits(const type_t *tp, const char *name)
 }
 
 unsigned int
-alignment_in_bits(const type_t *tp)
+alignment(const type_t *tp)
 {
 
 	/* Super conservative so that it works for most systems. */
-	unsigned int worst_align_in_bits = 2 * LONG_SIZE;
+	unsigned worst_align = 2 * LONG_SIZE / CHAR_SIZE;
 
 	while (tp->t_tspec == ARRAY)
 		tp = tp->t_subt;
 
 	tspec_t t = tp->t_tspec;
-	unsigned int a;
+	unsigned a;
 	if (is_struct_or_union(t))
-		a = tp->t_sou->sou_align_in_bits;
+		a = tp->u.sou->sou_align;
 	else {
 		lint_assert(t != FUNC);
-		if ((a = size_in_bits(t)) == 0)
-			a = CHAR_SIZE;
-		else if (a > worst_align_in_bits)
-			a = worst_align_in_bits;
+		if ((a = size_in_bits(t) / CHAR_SIZE) == 0)
+			a = 1;
+		else if (a > worst_align)
+			a = worst_align;
 	}
-	lint_assert(a >= CHAR_SIZE);
-	lint_assert(a <= worst_align_in_bits);
+	lint_assert(a >= 1);
 	return a;
 }
 
@@ -870,7 +909,7 @@ check_type(sym_t *sym)
 				*tpp = gettyp(INT);
 				return;
 			}
-			if (t == ARRAY && tp->t_dim == 0) {
+			if (t == ARRAY && tp->u.dimension == 0) {
 				/* null dimension */
 				error(17);
 				return;
@@ -993,19 +1032,21 @@ check_bit_field(sym_t *dsym, tspec_t *inout_t, type_t **inout_tp)
 	}
 }
 
-/* Aligns the next structure element as required. */
+/* Aligns the next structure member as required. */
 static void
 dcs_align(unsigned int member_alignment, unsigned int bit_field_width)
 {
 
-	if (member_alignment > dcs->d_sou_align_in_bits)
-		dcs->d_sou_align_in_bits = member_alignment;
+	if (member_alignment > dcs->d_sou_align)
+		dcs->d_sou_align = member_alignment;
 
-	unsigned int offset = (dcs->d_sou_size_in_bits + member_alignment - 1)
-	    & ~(member_alignment - 1);
+	unsigned align_in_bits = member_alignment * CHAR_SIZE;
+	unsigned offset = (dcs->d_sou_size_in_bits + align_in_bits - 1)
+	    & -align_in_bits;
 	if (bit_field_width == 0
 	    || dcs->d_sou_size_in_bits + bit_field_width > offset)
 		dcs->d_sou_size_in_bits = offset;
+	debug_func_dcs(__func__);
 }
 
 /* Add a member to the struct or union type that is being built in 'dcs'. */
@@ -1021,7 +1062,7 @@ dcs_add_member(sym_t *mem)
 	}
 
 	if (mem->s_bitfield) {
-		dcs_align(alignment_in_bits(tp), tp->t_bit_field_width);
+		dcs_align(alignment(tp), tp->t_bit_field_width);
 		// XXX: Why round down?
 		mem->u.s_member.sm_offset_in_bits = dcs->d_sou_size_in_bits
 		    - dcs->d_sou_size_in_bits % size_in_bits(tp->t_tspec);
@@ -1029,7 +1070,9 @@ dcs_add_member(sym_t *mem)
 		    - mem->u.s_member.sm_offset_in_bits;
 		dcs->d_sou_size_in_bits += tp->t_bit_field_width;
 	} else {
-		dcs_align(alignment_in_bits(tp), 0);
+		unsigned int align = dcs->d_mem_align > 0
+		    ? dcs->d_mem_align : alignment(tp);
+		dcs_align(align, 0);
 		mem->u.s_member.sm_offset_in_bits = dcs->d_sou_size_in_bits;
 		dcs->d_sou_size_in_bits += type_size_in_bits(tp);
 	}
@@ -1037,7 +1080,7 @@ dcs_add_member(sym_t *mem)
 	if (union_size > dcs->d_sou_size_in_bits)
 		dcs->d_sou_size_in_bits = union_size;
 
-	debug_dcs();
+	debug_func_dcs(__func__);
 }
 
 sym_t *
@@ -1050,7 +1093,7 @@ declare_unnamed_member(void)
 	mem->s_scl = dcs->d_kind == DLK_STRUCT ? STRUCT_MEMBER : UNION_MEMBER;
 	mem->s_block_level = -1;
 	mem->s_type = dcs->d_type;
-	mem->u.s_member.sm_containing_type = dcs->d_tag_type->t_sou;
+	mem->u.s_member.sm_containing_type = dcs->d_tag_type->u.sou;
 
 	dcs_add_member(mem);
 	suppress_bitfieldtype = false;
@@ -1072,7 +1115,7 @@ declare_member(sym_t *dsym)
 		    rdsym->u.s_member.sm_containing_type) {
 			/* duplicate member name '%s' */
 			error(33, dsym->s_name);
-			rmsym(rdsym);
+			symtab_remove_forever(rdsym);
 		}
 	}
 
@@ -1094,7 +1137,7 @@ declare_member(sym_t *dsym)
 	 * type the bit-field is packed in (it's ok)
 	 */
 	int sz = length_in_bits(dsym->s_type, dsym->s_name);
-	if (sz == 0 && t == ARRAY && dsym->s_type->t_dim == 0)
+	if (sz == 0 && t == ARRAY && dsym->s_type->u.dimension == 0)
 		/* zero-sized array '%s' in struct requires C99 or later */
 		c99ism(39, dsym->s_name);
 
@@ -1118,8 +1161,8 @@ set_bit_field_width(sym_t *dsym, int bit_field_width)
 		dsym->s_scl = STRUCT_MEMBER;
 		dsym->s_type = gettyp(UINT);
 		dsym->s_block_level = -1;
-		lint_assert(dcs->d_tag_type->t_sou != NULL);
-		dsym->u.s_member.sm_containing_type = dcs->d_tag_type->t_sou;
+		lint_assert(dcs->d_tag_type->u.sou != NULL);
+		dsym->u.s_member.sm_containing_type = dcs->d_tag_type->u.sou;
 	}
 	dsym->s_type = block_dup_type(dsym->s_type);
 	dsym->s_type->t_bitfield = true;
@@ -1169,14 +1212,6 @@ block_derive_pointer(type_t *stp, bool is_const, bool is_volatile)
 	return tp;
 }
 
-/*
- * The following 3 functions extend the type of a declarator with
- * pointer, function and array types.
- *
- * The current type is the type built by dcs_end_type (dcs->d_type) and
- * pointer, function and array types already added for this
- * declarator. The new type extension is inserted between both.
- */
 sym_t *
 add_pointer(sym_t *decl, qual_ptr *p)
 {
@@ -1200,28 +1235,24 @@ add_pointer(sym_t *decl, qual_ptr *p)
 		free(p);
 		p = next;
 	}
-	debug_step("add_pointer: '%s'", type_name(decl->s_type));
+	debug_step("%s: '%s'", __func__, type_name(decl->s_type));
 	return decl;
 }
 
 static type_t *
-block_derive_array(type_t *stp, bool dim, int len)
+block_derive_array(type_t *stp, bool has_dim, int dim)
 {
 
 	type_t *tp = block_derive_type(stp, ARRAY);
-	tp->t_dim = len;
+	tp->u.dimension = dim;
 
 #if 0
 	/*
-	 * As of 2022-04-03, the implementation of the type parser (see
-	 * add_function, add_array, add_pointer) is strange.  When it sees the
-	 * type 'void *b[4]', it first creates 'void b[4]' and only later
-	 * inserts the '*' in the middle of the type.  Late modifications like
-	 * these should not be done at all, instead the parser should be fixed
-	 * to process the type names in the proper syntactical order.
-	 *
-	 * Since the intermediate type would be an array of void, but the final
-	 * type is valid, this check cannot be enabled yet.
+	 * When the type of the declaration 'void *b[4]' is constructed (see
+	 * add_function, add_array, add_pointer), the intermediate type
+	 * 'void[4]' is invalid and only later gets the '*' inserted in the
+	 * middle of the type.  Due to the invalid intermediate type, this
+	 * check cannot be enabled yet.
 	 */
 	if (stp->t_tspec == VOID) {
 		/* array of incomplete type */
@@ -1229,25 +1260,21 @@ block_derive_array(type_t *stp, bool dim, int len)
 		tp->t_subt = gettyp(CHAR);
 	}
 #endif
-	if (len < 0)
+	if (dim < 0)
 		/* negative array dimension (%d) */
-		error(20, len);
-	else if (len == 0 && dim)
+		error(20, dim);
+	else if (dim == 0 && has_dim)
 		/* zero sized array requires C99 or later */
 		c99ism(322);
-	else if (len == 0 && !dim)
+	else if (dim == 0 && !has_dim)
 		tp->t_incomplete_array = true;
 
 	debug_step("%s: '%s'", __func__, type_name(tp));
 	return tp;
 }
 
-/*
- * If a dimension was specified, dim is true, otherwise false
- * n is the specified dimension
- */
 sym_t *
-add_array(sym_t *decl, bool dim, int n)
+add_array(sym_t *decl, bool has_dim, int dim)
 {
 
 	debug_dcs();
@@ -1259,7 +1286,7 @@ add_array(sym_t *decl, bool dim, int n)
 		lint_assert(*tpp != NULL);
 	}
 
-	*tpp = block_derive_array(dcs->d_type, dim, n);
+	*tpp = block_derive_array(dcs->d_type, has_dim, dim);
 
 	debug_step("%s: '%s'", __func__, type_name(decl->s_type));
 	return decl;
@@ -1272,7 +1299,7 @@ block_derive_function(type_t *ret, bool proto, sym_t *params, bool vararg)
 	type_t *tp = block_derive_type(ret, FUNC);
 	tp->t_proto = proto;
 	if (proto)
-		tp->t_params = params;
+		tp->u.params = params;
 	tp->t_vararg = vararg;
 	debug_step("%s: '%s'", __func__, type_name(tp));
 	return tp;
@@ -1334,7 +1361,7 @@ old_style_function(sym_t *decl, sym_t *params)
 }
 
 sym_t *
-add_function(sym_t *decl, struct parameter_list params)
+add_function(sym_t *decl, parameter_list params)
 {
 
 	debug_enter();
@@ -1431,7 +1458,7 @@ declarator_name(sym_t *sym)
 	switch (dcs->d_kind) {
 	case DLK_STRUCT:
 	case DLK_UNION:
-		sym->u.s_member.sm_containing_type = dcs->d_tag_type->t_sou;
+		sym->u.s_member.sm_containing_type = dcs->d_tag_type->u.sou;
 		sym->s_def = DEF;
 		sc = dcs->d_kind == DLK_STRUCT ? STRUCT_MEMBER : UNION_MEMBER;
 		break;
@@ -1498,6 +1525,7 @@ declarator_name(sym_t *sym)
 	dcs->d_func_proto_syms = NULL;
 
 	debug_sym("declarator_name: ", sym, "\n");
+	debug_func_dcs(__func__);
 	return sym;
 }
 
@@ -1576,6 +1604,7 @@ new_tag(sym_t *tag, scl_t scl, bool decl, bool semi)
 			dcs->d_enclosing->d_nonempty_decl = true;
 	}
 	debug_sym("new_tag: ", tag, "\n");
+	debug_dcs_all();
 	return tag;
 }
 
@@ -1638,28 +1667,29 @@ make_tag_type(sym_t *tag, tspec_t kind, bool decl, bool semi)
 	if (tp->t_tspec == NO_TSPEC) {
 		tp->t_tspec = kind;
 		if (kind != ENUM) {
-			tp->t_sou = block_zero_alloc(sizeof(*tp->t_sou),
+			tp->u.sou = block_zero_alloc(sizeof(*tp->u.sou),
 			    "struct_or_union");
-			tp->t_sou->sou_align_in_bits = CHAR_SIZE;
-			tp->t_sou->sou_tag = tag;
-			tp->t_sou->sou_incomplete = true;
+			tp->u.sou->sou_align = 1;
+			tp->u.sou->sou_tag = tag;
+			tp->u.sou->sou_incomplete = true;
 		} else {
 			tp->t_is_enum = true;
-			tp->t_enum = block_zero_alloc(sizeof(*tp->t_enum),
-			    "enumeration");
-			tp->t_enum->en_tag = tag;
-			tp->t_enum->en_incomplete = true;
+			tp->u.enumer = block_zero_alloc(
+			    sizeof(*tp->u.enumer), "enumeration");
+			tp->u.enumer->en_tag = tag;
+			tp->u.enumer->en_incomplete = true;
 		}
 	}
 	debug_printf("%s: '%s'", __func__, type_name(tp));
 	debug_sym(" ", tag, "\n");
+	debug_dcs_all();
 	return tp;
 }
 
 static bool
 has_named_member(const type_t *tp)
 {
-	for (const sym_t *mem = tp->t_sou->sou_first_member;
+	for (const sym_t *mem = tp->u.sou->sou_first_member;
 	    mem != NULL; mem = mem->s_next) {
 		if (mem->s_name != unnamed)
 			return true;
@@ -1678,10 +1708,10 @@ complete_struct_or_union(sym_t *first_member)
 	if (tp == NULL)		/* in case of syntax errors */
 		return gettyp(INT);
 
-	dcs_align(dcs->d_sou_align_in_bits, 0);
+	dcs_align(dcs->d_sou_align, 0);
 
-	struct_or_union *sou = tp->t_sou;
-	sou->sou_align_in_bits = dcs->d_sou_align_in_bits;
+	struct_or_union *sou = tp->u.sou;
+	sou->sou_align = dcs->d_sou_align;
 	sou->sou_incomplete = false;
 	sou->sou_first_member = first_member;
 	if (tp->t_packed)
@@ -1696,6 +1726,7 @@ complete_struct_or_union(sym_t *first_member)
 		/* '%s' has no named members */
 		warning(65, type_name(tp));
 	debug_step("%s: '%s'", __func__, type_name(tp));
+	debug_dcs_all();
 	return tp;
 }
 
@@ -1704,9 +1735,10 @@ complete_enum(sym_t *first_enumerator)
 {
 
 	type_t *tp = dcs->d_tag_type;
-	tp->t_enum->en_incomplete = false;
-	tp->t_enum->en_first_enumerator = first_enumerator;
+	tp->u.enumer->en_incomplete = false;
+	tp->u.enumer->en_first_enumerator = first_enumerator;
 	debug_step("%s: '%s'", __func__, type_name(tp));
+	debug_func_dcs(__func__);
 	return tp;
 }
 
@@ -1832,7 +1864,7 @@ check_old_style_definition(const sym_t *rdsym, const sym_t *dsym)
 {
 
 	const sym_t *old_params = rdsym->u.s_old_style_params;
-	const sym_t *proto_params = dsym->s_type->t_params;
+	const sym_t *proto_params = dsym->s_type->u.params;
 
 	bool msg = false;
 
@@ -1980,7 +2012,7 @@ declare_extern(sym_t *dsym, bool has_initializer, sbuf_t *renaming)
 			complete_type(dsym, rdsym);
 		}
 
-		rmsym(rdsym);
+		symtab_remove_forever(rdsym);
 	}
 
 	if (dsym->s_scl == TYPEDEF) {
@@ -2137,8 +2169,8 @@ prototypes_compatible(const type_t *tp1, const type_t *tp2, bool *dowarn)
 	if (tp1->t_vararg != tp2->t_vararg)
 		return false;
 
-	const sym_t *p1 = tp1->t_params;
-	const sym_t *p2 = tp2->t_params;
+	const sym_t *p1 = tp1->u.params;
+	const sym_t *p2 = tp2->u.params;
 
 	for (; p1 != NULL && p2 != NULL; p1 = p1->s_next, p2 = p2->s_next) {
 		if (!types_compatible(p1->s_type, p2->s_type,
@@ -2164,7 +2196,7 @@ matches_no_arg_function(const type_t *tp, bool *dowarn)
 
 	if (tp->t_vararg && dowarn != NULL)
 		*dowarn = true;
-	for (const sym_t *p = tp->t_params; p != NULL; p = p->s_next) {
+	for (const sym_t *p = tp->u.params; p != NULL; p = p->s_next) {
 		tspec_t t = p->s_type->t_tspec;
 		if (t == FLOAT ||
 		    t == CHAR || t == SCHAR || t == UCHAR ||
@@ -2214,13 +2246,13 @@ types_compatible(const type_t *tp1, const type_t *tp2,
 			return false;
 
 		if (is_struct_or_union(t))
-			return tp1->t_sou == tp2->t_sou;
+			return tp1->u.sou == tp2->u.sou;
 
 		if (t == ENUM && eflag)
-			return tp1->t_enum == tp2->t_enum;
+			return tp1->u.enumer == tp2->u.enumer;
 
-		if (t == ARRAY && tp1->t_dim != tp2->t_dim) {
-			if (tp1->t_dim != 0 && tp2->t_dim != 0)
+		if (t == ARRAY && tp1->u.dimension != tp2->u.dimension) {
+			if (tp1->u.dimension != 0 && tp2->u.dimension != 0)
 				return false;
 		}
 
@@ -2267,16 +2299,16 @@ complete_type(sym_t *dsym, sym_t *ssym)
 		lint_assert(src != NULL);
 		lint_assert(dst->t_tspec == src->t_tspec);
 		if (dst->t_tspec == ARRAY) {
-			if (dst->t_dim == 0 && src->t_dim != 0) {
+			if (dst->u.dimension == 0 && src->u.dimension != 0) {
 				*dstp = dst = block_dup_type(dst);
-				dst->t_dim = src->t_dim;
+				dst->u.dimension = src->u.dimension;
 				dst->t_incomplete_array = false;
 			}
 		} else if (dst->t_tspec == FUNC) {
 			if (!dst->t_proto && src->t_proto) {
 				*dstp = dst = block_dup_type(dst);
 				dst->t_proto = true;
-				dst->t_params = src->t_params;
+				dst->u.params = src->u.params;
 			}
 		}
 		dstp = &dst->t_subt;
@@ -2299,7 +2331,7 @@ declare_parameter(sym_t *sym, bool has_initializer)
 	    dcs->d_redeclared_symbol->s_block_level == block_level) {
 		/* redeclaration of formal parameter '%s' */
 		error(237, sym->s_name);
-		rmsym(dcs->d_redeclared_symbol);
+		symtab_remove_forever(dcs->d_redeclared_symbol);
 		sym->s_param = true;
 	}
 
@@ -2472,7 +2504,7 @@ void
 check_func_old_style_parameters(void)
 {
 	sym_t *old_params = funcsym->u.s_old_style_params;
-	sym_t *proto_params = funcsym->s_type->t_params;
+	sym_t *proto_params = funcsym->s_type->u.params;
 
 	for (sym_t *arg = old_params; arg != NULL; arg = arg->s_next) {
 		if (arg->s_defparam) {
@@ -2564,7 +2596,7 @@ check_local_redeclaration(const sym_t *dsym, sym_t *rdsym)
 				if (hflag)
 					/* declaration of '%s' hides ... */
 					warning(91, dsym->s_name);
-				rmsym(rdsym);
+				symtab_remove_forever(rdsym);
 			}
 		}
 
@@ -2575,7 +2607,7 @@ check_local_redeclaration(const sym_t *dsym, sym_t *rdsym)
 	if (rdsym->s_block_level == block_level) {
 		/* redeclaration of '%s' */
 		error(27, dsym->s_name);
-		rmsym(rdsym);
+		symtab_remove_forever(rdsym);
 	}
 }
 
@@ -2741,11 +2773,12 @@ abstract_name_level(bool enclosing)
 	 * will be updated later, adding pointers, arrays and functions as
 	 * necessary.
 	 */
-	sym->s_type = (enclosing ? dcs->d_enclosing : dcs)->d_type;
+	sym->s_type = enclosing ? dcs->d_enclosing->d_type : dcs->d_type;
 	dcs->d_redeclared_symbol = NULL;
 
 	debug_printf("%s: ", __func__);
 	debug_sym("", sym, "\n");
+	debug_func_dcs(__func__);
 	return sym;
 }
 
@@ -2795,7 +2828,7 @@ check_size(const sym_t *dsym)
 	    dsym->s_type->t_tspec != FUNC &&
 	    length_in_bits(dsym->s_type, dsym->s_name) == 0 &&
 	    dsym->s_type->t_tspec == ARRAY &&
-	    dsym->s_type->t_dim == 0) {
+	    dsym->s_type->u.dimension == 0) {
 		if (!allow_c90)
 			/* empty array declaration for '%s' */
 			warning(190, dsym->s_name);
@@ -3017,7 +3050,7 @@ check_global_variable_size(const sym_t *sym)
 	curr_pos = cpos;
 
 	if (len_in_bits == 0 &&
-	    sym->s_type->t_tspec == ARRAY && sym->s_type->t_dim == 0) {
+	    sym->s_type->t_tspec == ARRAY && sym->s_type->u.dimension == 0) {
 		/* TODO: C99 6.7.5.2p1 defines this as an error as well. */
 		if (!allow_c90 ||
 		    (sym->s_scl == EXTERN && (allow_trad || allow_c99))) {

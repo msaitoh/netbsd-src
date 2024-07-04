@@ -1,4 +1,4 @@
-/* $NetBSD: cpu.c,v 1.74 2024/02/07 04:20:26 msaitoh Exp $ */
+/* $NetBSD: cpu.c,v 1.77 2024/06/30 17:55:52 jmcneill Exp $ */
 
 /*
  * Copyright (c) 2017 Ryo Shimizu
@@ -27,7 +27,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(1, "$NetBSD: cpu.c,v 1.74 2024/02/07 04:20:26 msaitoh Exp $");
+__KERNEL_RCSID(1, "$NetBSD: cpu.c,v 1.77 2024/06/30 17:55:52 jmcneill Exp $");
 
 #include "locators.h"
 #include "opt_arm_debug.h"
@@ -60,6 +60,7 @@ __KERNEL_RCSID(1, "$NetBSD: cpu.c,v 1.74 2024/02/07 04:20:26 msaitoh Exp $");
 #include <aarch64/machdep.h>
 
 #include <arm/cpufunc.h>
+#include <arm/cpuvar.h>
 #include <arm/cpu_topology.h>
 #ifdef FDT
 #include <arm/fdt/arm_fdtvar.h>
@@ -180,6 +181,29 @@ cpu_attach(device_t dv, cpuid_t id)
 	cpu_setup_rng(dv, ci);
 	cpu_setup_aes(dv, ci);
 	cpu_setup_chacha(dv, ci);
+
+	cpu_rescan(dv, NULL, NULL);
+}
+
+int
+cpu_rescan(device_t dv, const char *ifattr, const int *locators)
+{
+	struct cpu_info *ci = device_private(dv);
+
+	if (ifattr_match(ifattr, "cpufeaturebus")) {
+		struct cpufeature_attach_args cfaa = {
+			.ci = ci,
+		};
+		config_found(dv, &cfaa, NULL, CFARGS(.iattr = "cpufeaturebus"));
+	}
+
+	return 0;
+}
+
+void
+cpu_childdetached(device_t dv, device_t child)
+{
+	/* Nada */
 }
 
 struct cpuidtab {
@@ -248,8 +272,8 @@ cpu_identify(device_t self, struct cpu_info *ci)
 
 	aprint_naive("\n");
 	aprint_normal(": %s, id 0x%lx\n", model, ci->ci_cpuid);
-	aprint_normal_dev(ci->ci_dev, "package %u, core %u, smt %u\n",
-	    ci->ci_package_id, ci->ci_core_id, ci->ci_smt_id);
+	aprint_normal_dev(ci->ci_dev, "package %u, core %u, smt %u, numa %u\n",
+	    ci->ci_package_id, ci->ci_core_id, ci->ci_smt_id, ci->ci_numa_id);
 
 	if (ci->ci_index == 0) {
 		m = cpu_getmodel();

@@ -1,4 +1,4 @@
-/* $NetBSD: read.c,v 1.90 2023/12/03 18:17:41 rillig Exp $ */
+/* $NetBSD: read.c,v 1.92 2024/05/12 18:49:36 rillig Exp $ */
 
 /*
  * Copyright (c) 1996 Christopher G. Demetriou.  All Rights Reserved.
@@ -38,7 +38,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID)
-__RCSID("$NetBSD: read.c,v 1.90 2023/12/03 18:17:41 rillig Exp $");
+__RCSID("$NetBSD: read.c,v 1.92 2024/05/12 18:49:36 rillig Exp $");
 #endif
 
 #include <ctype.h>

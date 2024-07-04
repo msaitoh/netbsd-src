@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.109 2023/10/07 12:12:58 rin Exp $
+#	$NetBSD: Makefile,v 1.113 2024/06/16 16:03:30 gutteridge Exp $
 
 .include <bsd.hostinit.mk>
 
@@ -15,6 +15,12 @@ MKNATIVE=		${.CURDIR}/mknative-gcc.old
 # Defaults
 CC_FOR_BUILD=		${HOST_CXX:Q}
 MKNATIVE?=		${.CURDIR}/mknative-gcc
+
+# Force C++11 so builds succeed on hosts where this isn't the compiler
+# default, e.g., NetBSD 8.x with GCC 5.5.
+.if ${HAVE_GCC} > 10
+HOST_CXXFLAGS+=		-std=c++11
+.endif
 
 .if ${MACHINE_ARCH} == "x86_64" || ${MACHINE_ARCH} == "sparc64"
 MULTILIB_ARGS= --enable-multilib
@@ -35,7 +41,6 @@ COMMON_CONFIGURE_ARGS=	--target=${MACHINE_GNU_PLATFORM} \
 			--with-bugurl=http://www.NetBSD.org/support/send-pr.html \
 			--with-pkgversion="NetBSD ${NETBSD_GCC_VERSION}" \
 			--with-system-zlib \
-			--without-isl \
 			--enable-__cxa_atexit \
 			--enable-libstdcxx-time=rt \
 			--enable-libstdcxx-threads \
@@ -58,12 +63,21 @@ COMMON_CONFIGURE_ARGS+=	--enable-fix-cortex-a53-835769 \
 COMMON_CONFIGURE_ARGS+=	--with-default-libstdcxx-abi=new
 .endif
 
+# We enabled isl support for GCC 12.  Move into normal segment when
+# removing GCC 10.
+.if ${HAVE_GCC} < 12
+ISL_CONFIGURE_ARGS+=	--without-isl
+.else
+ISL_CONFIGURE_ARGS+=	--with-isl=${TOOLDIR}
+.endif
+
 CONFIGURE_ARGS=	${COMMON_CONFIGURE_ARGS}
 CONFIGURE_ARGS+= \
 		--with-sysroot=${DESTDIR} \
 		--with-mpc=${TOOLDIR} \
 		--with-mpfr=${TOOLDIR} \
 		--with-gmp=${TOOLDIR} \
+		${ISL_CONFIGURE_ARGS} \
 		--disable-nls \
 		${MULTILIB_ARGS} \
 		${SOFTFLOAT_ARGS} \
@@ -267,16 +281,21 @@ PREV_GCC=
 
 CLEANFILES+=	PREV_GCC
 
+# Include the local NetBSD GCC version so that bumps to it trigger rebuilds.
+NETBSD_GCC_VERSION_NOSPACE= ${NETBSD_GCC_VERSION:S/ /-/gW}
+
 realall realdepend: .MAKE
-.if !empty(PREV_GCC) && "${PREV_GCC}" != "${EXTERNAL_GCC_SUBDIR}-${HAVE_GCC}"
+.if !empty(PREV_GCC) && "${PREV_GCC}" != "${EXTERNAL_GCC_SUBDIR}-${HAVE_GCC}-${NETBSD_GCC_VERSION_NOSPACE}"
 	@echo "*** WARNING: GCC has changed version?"
 	@echo "*** PREV_GCC '${PREV_GCC}'"
-	@echo "***     !=  EXTERNAL_GCC_SUBDIR-HAVE_GCC '${EXTERNAL_GCC_SUBDIR}-${HAVE_GCC}'"
+	@echo "*** NETBSD_GCC_VERSION_NOSPACE '${NETBSD_GCC_VERSION_NOSPACE}'"
+	@echo "***     !=  EXTERNAL_GCC_SUBDIR-HAVE_GCC-NETBSD_GCC_VERSION_NOSPACE:"
+	@echo "***     !=  '${EXTERNAL_GCC_SUBDIR}-${HAVE_GCC}-${NETBSD_GCC_VERSION_NOSPACE}'"
 	@echo "*** Cleaning mis-matched tools/gcc"
 	rm -f PREV_GCC
 	(cd ${.CURDIR} && ${MAKE} cleandir)
 .endif
-	echo ${EXTERNAL_GCC_SUBDIR}-${HAVE_GCC} >PREV_GCC
+	echo ${EXTERNAL_GCC_SUBDIR}-${HAVE_GCC}-${NETBSD_GCC_VERSION_NOSPACE} >PREV_GCC
 
 clean: clean.native
 clean.native:

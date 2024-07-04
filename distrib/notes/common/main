@@ -1,4 +1,4 @@
-.\"	$NetBSD: main,v 1.572 2023/12/15 22:09:16 gutteridge Exp $
+.\"	$NetBSD: main,v 1.576 2024/06/06 00:21:28 snj Exp $
 .\"
 .\" Copyright (c) 1999-2012 The NetBSD Foundation, Inc.
 .\" All rights reserved.
@@ -481,10 +481,8 @@ The
 \*V release contains complete binary releases for most of these
 system architectures, with preliminary support for the others included in
 source form.
-Please see the
-.Nx
-.Lk https://www.NetBSD.org/ website
-for information on them.
+For more information please visit
+.Lk https://www.NetBSD.org/ .
 .Pp
 .Nx
 is a completely integrated system.
@@ -527,9 +525,9 @@ this snapshot (yet).
 .Pp
 .\} \" !\n[RELEASE_BRANCH] \{
 One important new feature in this release is the support for extended
-attributes and access controll lists on FFS file systems.
+attributes and access control lists on FFS file systems.
 .Pp
-For new installations the installer will default to disable this features,
+For new installations the installer will by default disable these features,
 so the file system is compatible with older
 .Nx
 releases (before 10), and allow other operating systems to mount this
@@ -557,7 +555,7 @@ went into the
 .Nx
 \*V release.
 .ie \n[RELEASE_BRANCH] \{\
-The complete list of changes can be found in the following files:
+The complete list of changes can be found in
 .br
 .Lk "\*[RELEASE_URL]/CHANGES" CHANGES
 .de showdotchanges
@@ -573,7 +571,8 @@ The complete list of changes can be found in the following files:
 .  Lk "\*[RELEASE_URL]/CHANGES-\n[major].\n[nextminor]" "CHANGES-\\n[major].\n[nextminor]"
 .\}
 .br
-files in the top level directory of the NetBSD \n[major].\n[minor] release tree.
+which are also present in the top level directory of the
+NetBSD \n[major].\n[minor] release tree.
 .Pp
 .
 .\} \" \n[RELEASE_BRANCH]
@@ -724,11 +723,7 @@ All the above source sets are located in the
 subdirectory of the distribution tree.
 .Pp
 The source sets are distributed as compressed tar files.
-Except for the
-.Sy pkgsrc
-set, which is traditionally unpacked into
-.Pa /usr/pkgsrc ,
-all sets may be unpacked into
+Individual sets may be unpacked into
 .Pa /usr/src
 with the command:
 .Dl # Ic "cd / ; tar -zxpf set_name.\*[setsuffix]"

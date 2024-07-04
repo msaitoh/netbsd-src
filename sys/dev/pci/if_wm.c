@@ -1,4 +1,4 @@
-/*	$NetBSD: if_wm.c,v 1.797 2024/01/29 06:24:51 msaitoh Exp $	*/
+/*	$NetBSD: if_wm.c,v 1.799 2024/06/29 12:11:12 riastradh Exp $	*/
 
 /*
  * Copyright (c) 2001, 2002, 2003, 2004 Wasabi Systems, Inc.
@@ -82,7 +82,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_wm.c,v 1.797 2024/01/29 06:24:51 msaitoh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_wm.c,v 1.799 2024/06/29 12:11:12 riastradh Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_if_wm.h"
@@ -6820,8 +6820,8 @@ wm_update_stats(struct wm_softc *sc)
 		}
 	}
 	net_stat_ref_t nsr = IF_STAT_GETREF(ifp);
-	if_statadd_ref(nsr, if_collisions, colc);
-	if_statadd_ref(nsr, if_ierrors,
+	if_statadd_ref(ifp, nsr, if_collisions, colc);
+	if_statadd_ref(ifp, nsr, if_ierrors,
 	    crcerrs + algnerrc + symerrc + rxerrc + sec + cexterr + rlec);
 	/*
 	 * WMREG_RNBC is incremented when there are no available buffers in
@@ -6832,7 +6832,7 @@ wm_update_stats(struct wm_softc *sc)
 	 * If you want to know the nubmer of WMREG_RMBC, you should use such as
 	 * own EVCNT instead of if_iqdrops.
 	 */
-	if_statadd_ref(nsr, if_iqdrops, mpc + total_qdrop);
+	if_statadd_ref(ifp, nsr, if_iqdrops, mpc + total_qdrop);
 	IF_STAT_PUTREF(ifp);
 }
 
@@ -8909,9 +8909,9 @@ wm_transmit(struct ifnet *ifp, struct mbuf *m)
 	}
 
 	net_stat_ref_t nsr = IF_STAT_GETREF(ifp);
-	if_statadd_ref(nsr, if_obytes, m->m_pkthdr.len);
+	if_statadd_ref(ifp, nsr, if_obytes, m->m_pkthdr.len);
 	if (m->m_flags & M_MCAST)
-		if_statinc_ref(nsr, if_omcasts);
+		if_statinc_ref(ifp, nsr, if_omcasts);
 	IF_STAT_PUTREF(ifp);
 
 	if (mutex_tryenter(txq->txq_lock)) {
@@ -9516,9 +9516,9 @@ wm_nq_transmit(struct ifnet *ifp, struct mbuf *m)
 	}
 
 	net_stat_ref_t nsr = IF_STAT_GETREF(ifp);
-	if_statadd_ref(nsr, if_obytes, m->m_pkthdr.len);
+	if_statadd_ref(ifp, nsr, if_obytes, m->m_pkthdr.len);
 	if (m->m_flags & M_MCAST)
-		if_statinc_ref(nsr, if_omcasts);
+		if_statinc_ref(ifp, nsr, if_omcasts);
 	IF_STAT_PUTREF(ifp);
 
 	/*
@@ -15364,16 +15364,17 @@ printver:
 		/* Option ROM Version */
 		if ((off != 0x0000) && (off != 0xffff)) {
 			int rv;
+			uint16_t oid0, oid1;
 
 			off += NVM_COMBO_VER_OFF;
-			rv = wm_nvm_read(sc, off + 1, 1, &uid1);
-			rv |= wm_nvm_read(sc, off, 1, &uid0);
-			if ((rv == 0) && (uid0 != 0) && (uid0 != 0xffff)
-			    && (uid1 != 0) && (uid1 != 0xffff)) {
+			rv = wm_nvm_read(sc, off + 1, 1, &oid1);
+			rv |= wm_nvm_read(sc, off, 1, &oid0);
+			if ((rv == 0) && (oid0 != 0) && (oid0 != 0xffff)
+			    && (oid1 != 0) && (oid1 != 0xffff)) {
 				/* 16bits */
-				major = uid0 >> 8;
-				build = (uid0 << 8) | (uid1 >> 8);
-				patch = uid1 & 0x00ff;
+				major = oid0 >> 8;
+				build = (oid0 << 8) | (oid1 >> 8);
+				patch = oid1 & 0x00ff;
 				aprint_verbose(", option ROM Version %d.%d.%d",
 				    major, build, patch);
 			}

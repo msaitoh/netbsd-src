@@ -1,4 +1,4 @@
-/*	$NetBSD: libi386.h,v 1.47 2019/10/18 01:24:51 manu Exp $	*/
+/*	$NetBSD: libi386.h,v 1.53 2024/06/29 13:46:40 rin Exp $	*/
 
 /*
  * Copyright (c) 1996
@@ -54,7 +54,6 @@ int biosvideomode(void);
 #else
 #define getextmem() getextmemx()
 #endif
-void printmemlist(void);
 void reboot(void);
 void gateA20(void);
 
@@ -149,17 +148,6 @@ struct biosdisk_extinfo;
 __compactcall int biosdisk_getextinfo(int, struct biosdisk_extinfo *);
 int get_harddrives(void);
 void biosdisk_probe(void);
-
-int pcibios_cfgread(unsigned int, int, int *);
-int pcibios_cfgwrite(unsigned int, int, int);
-int pcibios_finddev(int, int, int, unsigned int *);
-int pcibios_present(int *);
-
-void dosclose(int);
-int dosopen(char *);
-int dosread(int, char *, int);
-int dosseek(int, int, int);
-extern int doserrno;	/* in dos_file.S */
 
 void module_add(char *);
 void splash_add(char *);

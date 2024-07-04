@@ -1,5 +1,5 @@
 #
-#	$NetBSD: GENERIC64,v 1.214 2023/10/11 07:49:29 rin Exp $
+#	$NetBSD: GENERIC64,v 1.217 2024/06/30 09:39:05 jmcneill Exp $
 #
 #	GENERIC ARM (aarch64) kernel
 #
@@ -54,6 +54,8 @@ options 	HEARTBEAT_MAX_PERIOD_DEFAULT=15
 
 # The QEMU virt machine
 #options 	EARLYCONS=plcom, CONSADDR=0x09000000
+# Ampere Altra/Altra Max
+#options 	EARLYCONS=plcom, CONSADDR=0x100002600000
 
 # Hardware management of the Access flag and dirty state (HAFDBS).
 options 	ARMV81_HAFDBS
@@ -131,7 +133,7 @@ cpus*		at fdt? pass 0
 cpu*		at fdt? pass 0
 cpu*		at acpi?
 
-vmt*		at fdt?			# VMware Tools
+vmt0		at cpu0			# VMware Tools
 
 # Performance monitors
 armpmu* 	at fdt?
@@ -448,6 +450,8 @@ vcaudio0 	at vchiq?
 # Audio support
 hdaudio*	at fdt?			# Intel HDA
 hdaudio*	at pci? dev ? function ?
+auich*		at pci? dev ? function ?	# Intel AC'97 Audio (QEMU)
+eap*		at pci? dev ? function ?	# Ensoniq AudioPCI (QEMU)
 hdafg*		at hdaudiobus?
 options 	HDAUDIOVERBOSE
 ausoc*		at fdt?			# Simple SoC audio card
