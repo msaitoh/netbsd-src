@@ -1,4 +1,4 @@
-/*	$NetBSD: cond.c,v 1.365 2024/06/02 15:31:25 rillig Exp $	*/
+/*	$NetBSD: cond.c,v 1.368 2024/08/06 18:00:16 rillig Exp $	*/
 
 /*
  * Copyright (c) 1988, 1989, 1990 The Regents of the University of California.
@@ -91,7 +91,7 @@
 #include "dir.h"
 
 /*	"@(#)cond.c	8.2 (Berkeley) 1/2/94"	*/
-MAKE_RCSID("$NetBSD: cond.c,v 1.365 2024/06/02 15:31:25 rillig Exp $");
+MAKE_RCSID("$NetBSD: cond.c,v 1.368 2024/08/06 18:00:16 rillig Exp $");
 
 /*
  * Conditional expressions conform to this grammar:
@@ -266,7 +266,8 @@ ParseFuncArg(CondParser *par, const char **pp, bool doEval, const char *func)
 			len++;
 
 		Parse_Error(PARSE_FATAL,
-		    "Missing closing parenthesis for %.*s()", len, func);
+		    "Missing ')' after argument '%s' for '%.*s'",
+		    res, len, func);
 		par->printedError = true;
 		free(res);
 		return NULL;
@@ -780,7 +781,7 @@ CondParser_Token(CondParser *par, bool doEval)
 		par->p++;
 		if (par->p[0] == '|')
 			par->p++;
-		else if (opts.strict) {
+		else {
 			Parse_Error(PARSE_FATAL, "Unknown operator '|'");
 			par->printedError = true;
 			return TOK_ERROR;
@@ -791,7 +792,7 @@ CondParser_Token(CondParser *par, bool doEval)
 		par->p++;
 		if (par->p[0] == '&')
 			par->p++;
-		else if (opts.strict) {
+		else {
 			Parse_Error(PARSE_FATAL, "Unknown operator '&'");
 			par->printedError = true;
 			return TOK_ERROR;
@@ -939,7 +940,7 @@ CondEvalExpression(const char *cond, bool plain,
 		rval = CR_ERROR;
 
 	if (rval == CR_ERROR && eprint && !par.printedError)
-		Parse_Error(PARSE_FATAL, "Malformed conditional (%s)", cond);
+		Parse_Error(PARSE_FATAL, "Malformed conditional '%s'", cond);
 
 	return rval;
 }

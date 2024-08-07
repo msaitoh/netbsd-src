@@ -1,4 +1,4 @@
-/*	$NetBSD: var.c,v 1.1127 2024/07/02 20:10:45 rillig Exp $	*/
+/*	$NetBSD: var.c,v 1.1136 2024/07/20 08:54:19 rillig Exp $	*/
 
 /*
  * Copyright (c) 1988, 1989, 1990, 1993
@@ -76,10 +76,6 @@
  * expressions like ${VAR}, ${VAR:Modifiers}, ${${VARNAME}} or ${VAR:${MODS}}.
  *
  * Interface:
- *	Var_Init	Initialize this module.
- *
- *	Var_End		Clean up the module.
- *
  *	Var_Set
  *	Var_SetExpand	Set the value of the variable, creating it if
  *			necessary.
@@ -132,7 +128,7 @@
 #include "metachar.h"
 
 /*	"@(#)var.c	8.3 (Berkeley) 3/19/94" */
-MAKE_RCSID("$NetBSD: var.c,v 1.1127 2024/07/02 20:10:45 rillig Exp $");
+MAKE_RCSID("$NetBSD: var.c,v 1.1136 2024/07/20 08:54:19 rillig Exp $");
 
 /*
  * Variables are defined using one of the VAR=value assignments.  Their
@@ -265,12 +261,14 @@ typedef enum {
 	VSK_COND,
 	VSK_COND_THEN,
 	VSK_COND_ELSE,
-	VSK_EXPR
+	VSK_EXPR,
+	VSK_EXPR_PARSE
 } EvalStackElementKind;
 
 typedef struct {
 	EvalStackElementKind kind;
 	const char *str;
+	const FStr *value;
 } EvalStackElement;
 
 typedef struct {
@@ -350,7 +348,7 @@ static EvalStack evalStack;
 
 
 static void
-EvalStack_Push(EvalStackElementKind kind, const char *str)
+EvalStack_Push(EvalStackElementKind kind, const char *str, const FStr *value)
 {
 	if (evalStack.len >= evalStack.cap) {
 		evalStack.cap = 16 + 2 * evalStack.cap;
@@ -359,6 +357,7 @@ EvalStack_Push(EvalStackElementKind kind, const char *str)
 	}
 	evalStack.elems[evalStack.len].kind = kind;
 	evalStack.elems[evalStack.len].str = str;
+	evalStack.elems[evalStack.len].value = value;
 	evalStack.len++;
 }
 
@@ -385,11 +384,18 @@ EvalStack_Details(void)
 			"while evaluating then-branch of condition",
 			"while evaluating else-branch of condition",
 			"while evaluating",
+			"while parsing",
 		};
 		EvalStackElement *elem = evalStack.elems + i;
-		Buf_AddStr(buf, descr[elem->kind]);
+		EvalStackElementKind kind = elem->kind;
+		Buf_AddStr(buf, descr[kind]);
 		Buf_AddStr(buf, " \"");
 		Buf_AddStr(buf, elem->str);
+		if (elem->value != NULL
+		    && (kind == VSK_VARNAME || kind == VSK_EXPR)) {
+			Buf_AddStr(buf, "\" with value \"");
+			Buf_AddStr(buf, elem->value->str);
+		}
 		Buf_AddStr(buf, "\": ");
 	}
 	return buf->len > 0 ? buf->data : "";
@@ -1410,21 +1416,18 @@ SepBuf_DoneData(SepBuf *buf)
 typedef void (*ModifyWordProc)(Substring word, SepBuf *buf, void *data);
 
 
-/*ARGSUSED*/
 static void
 ModifyWord_Head(Substring word, SepBuf *buf, void *dummy MAKE_ATTR_UNUSED)
 {
 	SepBuf_AddSubstring(buf, Substring_Dirname(word));
 }
 
-/*ARGSUSED*/
 static void
 ModifyWord_Tail(Substring word, SepBuf *buf, void *dummy MAKE_ATTR_UNUSED)
 {
 	SepBuf_AddSubstring(buf, Substring_Basename(word));
 }
 
-/*ARGSUSED*/
 static void
 ModifyWord_Suffix(Substring word, SepBuf *buf, void *dummy MAKE_ATTR_UNUSED)
 {
@@ -1433,7 +1436,6 @@ ModifyWord_Suffix(Substring word, SepBuf *buf, void *dummy MAKE_ATTR_UNUSED)
 		SepBuf_AddRange(buf, lastDot + 1, word.end);
 }
 
-/*ARGSUSED*/
 static void
 ModifyWord_Root(Substring word, SepBuf *buf, void *dummy MAKE_ATTR_UNUSED)
 {
@@ -1755,7 +1757,6 @@ VarSelectWords(const char *str, int first, int last,
 }
 
 
-/*ARGSUSED*/
 static void
 ModifyWord_Realpath(Substring word, SepBuf *buf, void *data MAKE_ATTR_UNUSED)
 {
@@ -1959,11 +1960,9 @@ FormatTime(const char *fmt, time_t t, bool gmt)
  * and stores the result back in ch->expr->value via Expr_SetValueOwn or
  * Expr_SetValueRefer.
  *
- * If evaluating fails, the fallback error message "Bad modifier" is printed
- * using Error.  This function has no side effects, it really just prints the
- * error message, continuing as if nothing had happened.  TODO: This should be
- * fixed by adding proper error handling to Var_Subst, Var_Parse,
- * ApplyModifiers and ModifyWords.
+ * If evaluating fails, the fallback error message "Bad modifier" is printed.
+ * TODO: Add proper error handling to Var_Subst, Var_Parse, ApplyModifiers and
+ * ModifyWords.
  *
  * Some modifiers such as :D and :U turn undefined expressions into defined
  * expressions using Expr_Define.
@@ -2802,7 +2801,7 @@ ModifyWord_Match(Substring word, SepBuf *buf, void *data)
 	res = Str_Match(word.start, args->pattern);
 	if (res.error != NULL && !args->error_reported) {
 		args->error_reported = true;
-		Parse_Error(PARSE_WARNING,
+		Parse_Error(PARSE_FATAL,
 		    "%s in pattern '%s' of modifier '%s'",
 		    res.error, args->pattern, args->neg ? ":N" : ":M");
 	}
@@ -3056,7 +3055,6 @@ ApplyModifier_Quote(const char **pp, ModChain *ch)
 	return AMR_OK;
 }
 
-/*ARGSUSED*/
 static void
 ModifyWord_Copy(Substring word, SepBuf *buf, void *data MAKE_ATTR_UNUSED)
 {
@@ -3966,9 +3964,10 @@ ApplyModifiersIndirect(ModChain *ch, const char **pp)
 	if (*p == ':')
 		p++;
 	else if (*p == '\0' && ch->endc != '\0') {
-		Error("Unclosed expression after indirect modifier, "
-		      "expecting '%c' for variable \"%s\"",
-		    ch->endc, expr->name);
+		Parse_Error(PARSE_FATAL,
+		    "Unclosed expression after indirect modifier, "
+		    "expecting '%c'",
+		    ch->endc);
 		*pp = p;
 		return AMIR_OUT;
 	}
@@ -4016,12 +4015,10 @@ ApplySingleModifier(const char **pp, ModChain *ch)
 		LogAfterApply(ch, p, mod);
 
 	if (*p == '\0' && ch->endc != '\0') {
-		Error(
+		Parse_Error(PARSE_FATAL,
 		    "Unclosed expression, expecting '%c' for "
-		    "modifier \"%.*s\" of variable \"%s\" with value \"%s\"",
-		    ch->endc,
-		    (int)(p - mod), mod,
-		    ch->expr->name, Expr_Str(ch->expr));
+		    "modifier \"%.*s\"",
+		    ch->endc, (int)(p - mod), mod);
 	} else if (*p == ':') {
 		p++;
 	} else if (opts.strict && *p != '\0' && *p != ch->endc) {
@@ -4074,9 +4071,8 @@ ApplyModifiers(
 	p = *pp;
 
 	if (*p == '\0' && endc != '\0') {
-		Error(
-		    "Unclosed expression, expecting '%c' for \"%s\"",
-		    ch.endc, expr->name);
+		Parse_Error(PARSE_FATAL,
+		    "Unclosed expression, expecting '%c'", ch.endc);
 		goto cleanup;
 	}
 
@@ -4112,8 +4108,8 @@ ApplyModifiers(
 
 bad_modifier:
 	/* Take a guess at where the modifier ends. */
-	Error("Bad modifier \":%.*s\" for variable \"%s\"",
-	    (int)strcspn(mod, ":)}"), mod, expr->name);
+	Parse_Error(PARSE_FATAL, "Bad modifier \":%.*s\"",
+	    (int)strcspn(mod, ":)}"), mod);
 
 cleanup:
 	/*
@@ -4603,10 +4599,12 @@ Var_Parse(const char **pp, GNode *scope, VarEvalMode emode)
 	 */
 	expr.value = FStr_InitRefer(v->val.data);
 
-	if (expr.name[0] != '\0')
-		EvalStack_Push(VSK_VARNAME, expr.name);
+	if (!VarEvalMode_ShouldEval(emode))
+		EvalStack_Push(VSK_EXPR_PARSE, start, NULL);
+	else if (expr.name[0] != '\0')
+		EvalStack_Push(VSK_VARNAME, expr.name, &expr.value);
 	else
-		EvalStack_Push(VSK_EXPR, start);
+		EvalStack_Push(VSK_EXPR, start, &expr.value);
 
 	/*
 	 * Before applying any modifiers, expand any nested expressions from
@@ -4679,8 +4677,7 @@ VarSubstDollarDollar(const char **pp, Buffer *res, VarEvalMode emode)
 }
 
 static void
-VarSubstExpr(const char **pp, Buffer *buf, GNode *scope,
-	     VarEvalMode emode, bool *inout_errorReported)
+VarSubstExpr(const char **pp, Buffer *buf, GNode *scope, VarEvalMode emode)
 {
 	const char *p = *pp;
 	const char *nested_p = p;
@@ -4688,28 +4685,8 @@ VarSubstExpr(const char **pp, Buffer *buf, GNode *scope,
 	/* TODO: handle errors */
 
 	if (val.str == var_Error || val.str == varUndefined) {
-		if (!VarEvalMode_ShouldKeepUndef(emode)) {
-			p = nested_p;
-		} else if (val.str == var_Error) {
-
-			/*
-			 * FIXME: The condition 'val.str == var_Error' doesn't
-			 * mean there was an undefined variable.  It could
-			 * equally well be a parse error; see
-			 * unit-tests/varmod-order.mk.
-			 */
-
-			/*
-			 * If variable is undefined, complain and skip the
-			 * variable. The complaint will stop us from doing
-			 * anything when the file is parsed.
-			 */
-			if (!*inout_errorReported) {
-				Parse_Error(PARSE_FATAL,
-				    "Undefined variable \"%.*s\"",
-				    (int)(nested_p - p), p);
-				*inout_errorReported = true;
-			}
+		if (!VarEvalMode_ShouldKeepUndef(emode)
+		    || val.str == var_Error) {
 			p = nested_p;
 		} else {
 			/*
@@ -4763,20 +4740,13 @@ Var_Subst(const char *str, GNode *scope, VarEvalMode emode)
 	const char *p = str;
 	Buffer res;
 
-	/*
-	 * Set true if an error has already been reported, to prevent a
-	 * plethora of messages when recursing
-	 */
-	static bool errorReported;
-
 	Buf_Init(&res);
-	errorReported = false;
 
 	while (*p != '\0') {
 		if (p[0] == '$' && p[1] == '$')
 			VarSubstDollarDollar(&p, &res, emode);
 		else if (p[0] == '$')
-			VarSubstExpr(&p, &res, scope, emode, &errorReported);
+			VarSubstExpr(&p, &res, scope, emode);
 		else
 			VarSubstPlain(&p, &res);
 	}
@@ -4788,7 +4758,7 @@ char *
 Var_SubstInTarget(const char *str, GNode *scope)
 {
 	char *res;
-	EvalStack_Push(VSK_TARGET, scope->name);
+	EvalStack_Push(VSK_TARGET, scope->name, NULL);
 	res = Var_Subst(str, scope, VARE_EVAL);
 	EvalStack_Pop();
 	return res;
@@ -4805,22 +4775,6 @@ Var_Expand(FStr *str, GNode *scope, VarEvalMode emode)
 	/* TODO: handle errors */
 	FStr_Done(str);
 	*str = FStr_InitOwn(expanded);
-}
-
-/* Initialize the variables module. */
-void
-Var_Init(void)
-{
-	SCOPE_INTERNAL = GNode_New("Internal");
-	SCOPE_GLOBAL = GNode_New("Global");
-	SCOPE_CMDLINE = GNode_New("Command");
-}
-
-/* Clean up the variables module. */
-void
-Var_End(void)
-{
-	Var_Stats();
 }
 
 void

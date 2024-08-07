@@ -1,10 +1,10 @@
 make: "varmod-ifelse.mk" line 29: while evaluating condition "bare words == "literal"": Bad condition
-make: "varmod-ifelse.mk" line 29: Malformed conditional (${${:Ubare words} == "literal":?bad:bad})
+make: "varmod-ifelse.mk" line 29: Malformed conditional '${${:Ubare words} == "literal":?bad:bad}'
 make: "varmod-ifelse.mk" line 40: while evaluating condition " == """: Bad condition
 make: "varmod-ifelse.mk" line 49: while evaluating condition " == """: Bad condition
-make: "varmod-ifelse.mk" line 49: Malformed conditional (${${UNDEF} == "":?bad-cond:bad-cond})
+make: "varmod-ifelse.mk" line 49: Malformed conditional '${${UNDEF} == "":?bad-cond:bad-cond}'
 make: "varmod-ifelse.mk" line 73: while evaluating condition "1 == == 2": Bad condition
-make: "varmod-ifelse.mk" line 73: Malformed conditional (${1 == == 2:?yes:no} != "")
+make: "varmod-ifelse.mk" line 73: Malformed conditional '${1 == == 2:?yes:no} != ""'
 CondParser_Eval: "${1 == == 2:?yes:no}" != ""
 CondParser_Eval: 1 == == 2
 Comparing 1.000000 == 0.000000
@@ -46,8 +46,8 @@ make: "varmod-ifelse.mk" line 293: no
 CondParser_Eval: ${DELAYED} == "two"
 Comparing "two" == "two"
 make: "varmod-ifelse.mk" line 296: yes
-make: "varmod-ifelse.mk" line 318: while evaluating then-branch of condition "1": while evaluating "${:X-then}:${:X-else}}": Unknown modifier "X-then"
-make: "varmod-ifelse.mk" line 318: while evaluating else-branch of condition "1": while evaluating "${:X-else}}": Unknown modifier "X-else"
+make: "varmod-ifelse.mk" line 318: while evaluating then-branch of condition "1": while evaluating "${:X-then}:${:X-else}}" with value "": Unknown modifier "X-then"
+make: "varmod-ifelse.mk" line 318: while evaluating else-branch of condition "1": while parsing "${:X-else}}": Unknown modifier "X-else"
 make: Fatal errors encountered -- cannot continue
 make: stopped in unit-tests
 exit status 1

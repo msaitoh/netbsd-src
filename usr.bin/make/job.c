@@ -1,4 +1,4 @@
-/*	$NetBSD: job.c,v 1.478 2024/06/28 15:20:57 rillig Exp $	*/
+/*	$NetBSD: job.c,v 1.483 2024/07/22 18:15:04 rillig Exp $	*/
 
 /*
  * Copyright (c) 1988, 1989, 1990 The Regents of the University of California.
@@ -141,7 +141,7 @@
 #include "trace.h"
 
 /*	"@(#)job.c	8.2 (Berkeley) 3/19/94"	*/
-MAKE_RCSID("$NetBSD: job.c,v 1.478 2024/06/28 15:20:57 rillig Exp $");
+MAKE_RCSID("$NetBSD: job.c,v 1.483 2024/07/22 18:15:04 rillig Exp $");
 
 /*
  * A shell defines how the commands are run.  All commands for a target are
@@ -594,7 +594,6 @@ JobCondPassSig(int signo)
  *
  * Sends a token on the child exit pipe to wake us up from select()/poll().
  */
-/*ARGSUSED*/
 static void
 JobChildSig(int signo MAKE_ATTR_UNUSED)
 {
@@ -606,7 +605,6 @@ JobChildSig(int signo MAKE_ATTR_UNUSED)
 
 
 /* Resume all stopped jobs. */
-/*ARGSUSED*/
 static void
 JobContinueSig(int signo MAKE_ATTR_UNUSED)
 {
@@ -1682,6 +1680,8 @@ JobStart(GNode *gn, bool special)
 		 * virtual targets.
 		 */
 
+		int parseErrorsBefore;
+
 		/*
 		 * We're serious here, but if the commands were bogus, we're
 		 * also dead...
@@ -1691,7 +1691,10 @@ JobStart(GNode *gn, bool special)
 			DieHorribly();
 		}
 
+		parseErrorsBefore = parseErrors;
 		JobWriteShellCommands(job, gn, &run);
+		if (parseErrors != parseErrorsBefore)
+			run = false;
 		(void)fflush(job->cmdFILE);
 	} else if (!GNode_ShouldExecute(gn)) {
 		/*
@@ -1940,31 +1943,12 @@ again:
 static void
 JobRun(GNode *targ)
 {
-#if 0
-	/*
-	 * Unfortunately it is too complicated to run .BEGIN, .END, and
-	 * .INTERRUPT job in the parallel job module.  As of 2020-09-25,
-	 * unit-tests/deptgt-end-jobs.mk hangs in an endless loop.
-	 *
-	 * Running these jobs in compat mode also guarantees that these
-	 * jobs do not overlap with other unrelated jobs.
-	 */
-	GNodeList lst = LST_INIT;
-	Lst_Append(&lst, targ);
-	(void)Make_Run(&lst);
-	Lst_Done(&lst);
-	JobStart(targ, true);
-	while (jobTokensRunning != 0) {
-		Job_CatchOutput();
-	}
-#else
+	/* Don't let these special jobs overlap with other unrelated jobs. */
 	Compat_Make(targ, targ);
-	/* XXX: Replace with GNode_IsError(gn) */
-	if (targ->made == ERROR) {
+	if (GNode_IsError(targ)) {
 		PrintOnError(targ, "\n\nStop.\n");
 		exit(1);
 	}
-#endif
 }
 
 /*
@@ -2587,14 +2571,14 @@ Job_Finish(void)
 	return job_errors;
 }
 
+#ifdef CLEANUP
 /* Clean up any memory used by the jobs module. */
 void
 Job_End(void)
 {
-#ifdef CLEANUP
 	free(shell_freeIt);
-#endif
 }
+#endif
 
 /*
  * Waits for all running jobs to finish and returns.
@@ -2903,11 +2887,6 @@ Job_RunTarget(const char *target, const char *fname)
 		Var_Set(gn, ALLSRC, fname);
 
 	JobRun(gn);
-	/* XXX: Replace with GNode_IsError(gn) */
-	if (gn->made == ERROR) {
-		PrintOnError(gn, "\n\nStop.\n");
-		exit(1);
-	}
 	return true;
 }
 

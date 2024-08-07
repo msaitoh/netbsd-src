@@ -1,4 +1,4 @@
-/*	$NetBSD: gftfb.c,v 1.14 2024/04/18 04:52:43 macallan Exp $	*/
+/*	$NetBSD: gftfb.c,v 1.17 2024/08/01 00:20:22 macallan Exp $	*/
 
 /*	$OpenBSD: sti_pci.c,v 1.7 2009/02/06 22:51:04 miod Exp $	*/
 
@@ -47,15 +47,12 @@
 #include <dev/ic/stireg.h>
 #include <dev/ic/stivar.h>
 
-#ifdef STIDEBUG
-#define	DPRINTF(s)	do {	\
-	if (stidebug)		\
-		printf s;	\
-} while(0)
+#include "opt_gftfb.h"
 
-extern int stidebug;
+#ifdef GFTFB_DEBUG
+#define	DPRINTF(s) printf(s)
 #else
-#define	DPRINTF(s)	/* */
+#define	DPRINTF(s) /* */
 #endif
 
 int	gftfb_match(device_t, cfdata_t, void *);
@@ -161,31 +158,6 @@ struct wsdisplay_accessops gftfb_accessops = {
 	NULL,	/* pollc */
 	NULL	/* scroll */
 };
-
-#define BA(F,C,S,A,J,B,I)						\
-	(((F)<<31)|((C)<<27)|((S)<<24)|((A)<<21)|((J)<<16)|((B)<<12)|(I))
-
-#define IBOvals(R,M,X,S,D,L,B,F)					\
-	(((R)<<8)|((M)<<16)|((X)<<24)|((S)<<29)|((D)<<28)|((L)<<31)|((B)<<1)|(F))
-
-#define	    IndexedDcd	0	/* Pixel data is indexed (pseudo) color */
-#define	    Otc04	2	/* Pixels in each longword transfer (4) */
-#define	    Otc32	5	/* Pixels in each longword transfer (32) */
-#define	    Ots08	3	/* Each pixel is size (8)d transfer (1) */
-#define	    OtsIndirect	6	/* Each bit goes through FG/BG color(8) */
-#define	    AddrLong	5	/* FB address is Long aligned (pixel) */
-#define	    BINovly	0x2	/* 8 bit overlay */
-#define	    BINapp0I	0x0	/* Application Buffer 0, Indexed */
-#define	    BINapp1I	0x1	/* Application Buffer 1, Indexed */
-#define	    BINapp0F8	0xa	/* Application Buffer 0, Fractional 8-8-8 */
-#define	    BINattr	0xd	/* Attribute Bitmap */
-#define	    RopSrc 	0x3
-#define	    RopInv 	0xc
-#define	    BitmapExtent08  3	/* Each write hits ( 8) bits in depth */
-#define	    BitmapExtent32  5	/* Each write hits (32) bits in depth */
-#define	    DataDynamic	    0	/* Data register reloaded by direct access */
-#define	    MaskDynamic	    1	/* Mask register reloaded by direct access */
-#define	    MaskOtc	    0	/* Mask contains Object Count valid bits */
 
 static inline void gftfb_wait_fifo(struct gftfb_softc *, uint32_t);
 
@@ -425,7 +397,7 @@ gftfb_check_rom(struct gftfb_softc *spc, struct pci_attach_args *pa)
 		    offs + 0x0c);
 		subsize <<= 9;
 
-#ifdef STIDEBUG
+#ifdef GFTFB_DEBUG
 		gftfb_disable_rom_internal(spc);
 		DPRINTF(("ROM offset %08x size %08x type %08x",
 		    (u_int)offs, (u_int)subsize, tmp));
@@ -473,7 +445,7 @@ gftfb_check_rom(struct gftfb_softc *spc, struct pci_attach_args *pa)
 			break;
 #endif
 		default:
-#ifdef STIDEBUG
+#ifdef GFTFB_DEBUG
 			DPRINTF((" (wrong architecture)"));
 #endif
 			break;
@@ -896,7 +868,7 @@ gftfb_mmap(void *v, void *vs, off_t offset, int prot)
 	if (sc->sc_mode == WSDISPLAYIO_MODE_EMUL)
 		return -1;
 
-	if (offset >= 0 || offset < sc->sc_scr.fblen) {
+	if (offset >= 0 && offset < sc->sc_scr.fblen) {
 		/* framebuffer */
 		pa = bus_space_mmap(rom->memt, sc->sc_scr.fbaddr, offset,
 		    prot, BUS_SPACE_MAP_LINEAR);
