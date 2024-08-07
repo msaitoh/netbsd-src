@@ -409,8 +409,8 @@ lagg_clone_create(struct if_clone *ifc, int unit)
 	case LAGG_IF_TYPE_ETHERNET:
 		ec = (struct ethercom *)ifp;
 		cprng_fast(sc->sc_lladdr_rand, sizeof(sc->sc_lladdr_rand));
-		sc->sc_lladdr_rand[0] &= 0xFE; /* clear I/G bit */
-		sc->sc_lladdr_rand[0] |= 0x02; /* set G/L bit */
+		sc->sc_lladdr_rand[0] &= ~ETHER_MACADDR_IG; /* Individual */
+		sc->sc_lladdr_rand[0] |= ETHER_MACADDR_UL; /* Local */
 		lagg_lladdr_cpy(sc->sc_lladdr, sc->sc_lladdr_rand);
 		ether_set_vlan_cb(ec, lagg_vlan_cb);
 

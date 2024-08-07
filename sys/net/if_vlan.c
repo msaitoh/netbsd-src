@@ -339,8 +339,8 @@ vlan_clone_create(struct if_clone *ifc, int unit)
 	ifp = &ifv->ifv_if;
 	LIST_INIT(&ifv->ifv_mc_listhead);
 	cprng_fast(ifv->ifv_lladdr, sizeof(ifv->ifv_lladdr));
-	ifv->ifv_lladdr[0] &= 0xFE; /* clear I/G bit */
-	ifv->ifv_lladdr[0] |= 0x02; /* set G/L bit */
+	ifv->ifv_lladdr[0] &= ~ETHER_MACADDR_IG; /* Individual */
+	ifv->ifv_lladdr[0] |= ETHER_MACADDR_UL; /* Local */
 
 	mib->ifvm_ifvlan = ifv;
 	mib->ifvm_p = NULL;
