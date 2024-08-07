@@ -340,7 +340,7 @@ admsw_attach(device_t parent, device_t self, void *aux)
 	pd = prop_dictionary_get(device_properties(self), "mac-address");
 
 	if (pd == NULL) {
-		enaddr[0] = 0x02;
+		enaddr[0] = 0x00 | ETHER_MACADDR_UL;
 		enaddr[1] = 0xaa;
 		enaddr[2] = 0xbb;
 		enaddr[3] = 0xcc;

@@ -903,7 +903,8 @@ ure_attach(device_t parent, device_t self, void *aux)
 		ure_read_mem(un, URE_PLA_BACKUP, URE_MCU_TYPE_PLA, eaddr,
 		    sizeof(eaddr));
 	if (ETHER_IS_ZERO(eaddr)) {
-		maclo = 0x00f2 | (cprng_strong32() & 0xffff0000);
+		maclo = 0x00f0 | ETHER_MACADDR_UL |
+		    (cprng_strong32() & 0xffff0000);
 		machi = cprng_strong32() & 0xffff;
 		eaddr[0] = maclo & 0xff;
 		eaddr[1] = (maclo >> 8) & 0xff;

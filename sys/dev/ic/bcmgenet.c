@@ -956,7 +956,8 @@ genet_get_eaddr(struct genet_softc *sc, uint8_t *eaddr)
 
 	if (maclo == 0 && machi == 0) {
 		/* Create one */
-		maclo = 0x00f2 | (cprng_strong32() & 0xffff0000);
+		maclo = 0x00f0 | ETHER_MACADDR_UL |
+		    (cprng_strong32() & 0xffff0000);
 		machi = cprng_strong32() & 0xffff;
 	}
 
