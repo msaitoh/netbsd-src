@@ -92,8 +92,14 @@ struct ether_header {
 
 #include <net/ethertypes.h>
 
-#define	ETHER_IS_MULTICAST(addr) (*(addr) & 0x01) /* is address mcast/bcast? */
-#define	ETHER_IS_LOCAL(addr) (*(addr) & 0x02) /* is address local? */
+#define ETHER_MACADDR_IG	0x01 /* I/G: Individual(unset) or Group(set) */
+#define ETHER_MACADDR_UL	0x02 /* U/L: Global(unset) or Local(set)  */
+
+/* Is address mcast/bcast? */
+#define	ETHER_IS_MULTICAST(addr) (*(addr) & ETHER_MACADDR_IG)
+
+/* Is address local? */
+#define	ETHER_IS_LOCAL(addr) (*(addr) & ETHER_MACADDR_UL)
 
 #define	ETHERMTU_JUMBO	(ETHER_MAX_LEN_JUMBO - ETHER_HDR_LEN - ETHER_CRC_LEN)
 #define	ETHERMTU	(ETHER_MAX_LEN - ETHER_HDR_LEN - ETHER_CRC_LEN)
