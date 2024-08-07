@@ -1057,6 +1057,10 @@ ether_ifattach(struct ifnet *ifp, const uint8_t *lla)
 
 	if (lla != NULL)
 		if_set_sadl(ifp, lla, ETHER_ADDR_LEN, !ETHER_IS_LOCAL(lla));
+	else {
+		ifp->if_addrlen = 0;
+		if_alloc_sadl(ifp);
+	}
 
 	LIST_INIT(&ec->ec_multiaddrs);
 	SIMPLEQ_INIT(&ec->ec_vids);
