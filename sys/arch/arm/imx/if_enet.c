@@ -187,8 +187,10 @@ enet_attach_common(device_t self)
 		if (IS_ENADDR_ZERO(sc->sc_enaddr)) {
 			/* give up. set randomly */
 			uint32_t eaddr = random();
-			/* not multicast */
-			sc->sc_enaddr[0] = (eaddr >> 24) & 0xfc;
+			/* Not multicast. Set local. */
+			sc->sc_enaddr[0] =
+			    ((eaddr >> 24) & ~ETHER_MACADDR_IG) |
+			    ETHER_MACADDR_UL;
 			sc->sc_enaddr[1] = eaddr >> 16;
 			sc->sc_enaddr[2] = eaddr >> 8;
 			sc->sc_enaddr[3] = eaddr;
