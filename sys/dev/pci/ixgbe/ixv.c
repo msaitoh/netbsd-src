@@ -477,7 +477,7 @@ ixv_attach(device_t parent, device_t dev, void *aux)
 
 		memcpy(addr, &rndval, sizeof(addr));
 		addr[0] &= 0xFE;
-		addr[0] |= 0x02;
+		addr[0] |= ETHER_MACADDR_UL;
 		bcopy(addr, hw->mac.addr, sizeof(addr));
 	}
 
