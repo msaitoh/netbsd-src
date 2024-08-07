@@ -850,7 +850,6 @@ carp_clone_create(struct if_clone *ifc, int unit)
 
 	sc->sc_suppress = 0;
 	sc->sc_advbase = CARP_DFLTINTV;
-	sc->sc_vhid = -1;	/* required setting */
 	sc->sc_advskew = 0;
 	sc->sc_init_counter = 1;
 	sc->sc_naddrs = sc->sc_naddrs6 = 0;
@@ -882,7 +881,6 @@ carp_clone_create(struct if_clone *ifc, int unit)
 	ifp->if_type = IFT_CARP;
 	ifp->if_output = carp_output;
 	ifp->if_link_state = LINK_STATE_DOWN;
-	carp_set_enaddr(sc);
 	if_register(ifp);
 
 	return (0);
@@ -1739,12 +1737,6 @@ carp_set_enaddr(struct carp_softc *sc)
 {
 	struct ifnet *ifp = &sc->sc_if;
 	uint8_t enaddr[ETHER_ADDR_LEN];
-
-	if (sc->sc_vhid == -1) {
-		ifp->if_addrlen = 0;
-		if_alloc_sadl(ifp);
-		return;
-	}
 
 	if (sc->sc_carpdev && sc->sc_carpdev->if_type == IFT_ISO88025) {
 		enaddr[0] = 3;

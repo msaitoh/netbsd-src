@@ -287,7 +287,6 @@ l2tpattach0(struct l2tp_softc *sc)
 
 	ether_ifattach(&sc->l2tp_ec.ec_if, NULL);
 
-	sc->l2tp_ec.ec_if.if_addrlen = 0;
 	sc->l2tp_ec.ec_if.if_mtu    = L2TP_MTU;
 	sc->l2tp_ec.ec_if.if_flags  = IFF_POINTOPOINT|IFF_MULTICAST|IFF_SIMPLEX;
 #ifdef NET_MPSAFE
@@ -310,7 +309,6 @@ l2tpattach0(struct l2tp_softc *sc)
 	 */
 	if_attach(&sc->l2tp_ec.ec_if);
 	if_link_state_change(&sc->l2tp_ec.ec_if, LINK_STATE_DOWN);
-	if_alloc_sadl(&sc->l2tp_ec.ec_if);
 
 	return 0;
 }
