@@ -1055,9 +1055,11 @@ ether_ifattach(struct ifnet *ifp, const uint8_t *lla)
 	if (ifp->if_baudrate == 0)
 		ifp->if_baudrate = IF_Mbps(10);		/* just a default */
 
-	if (lla != NULL)
+	if (lla != NULL) {
+		/* Allocate link level name and set the address. */
 		if_set_sadl(ifp, lla, ETHER_ADDR_LEN, !ETHER_IS_LOCAL(lla));
-	else {
+	} else {
+		/* Only allocate link level name. */
 		ifp->if_addrlen = 0;
 		if_alloc_sadl(ifp);
 	}
