@@ -1,4 +1,4 @@
-# $NetBSD: shl.mi,v 1.987 2024/08/02 17:25:38 christos Exp $
+# $NetBSD: shl.mi,v 1.991 2024/09/24 21:34:41 christos Exp $
 #
 # Note:	Don't delete entries from here - mark them as "obsolete" instead,
 #	unless otherwise stated below.
@@ -22,7 +22,7 @@
 ./lib/libblocklist.so.0.1			base-sys-shlib		dynamicroot
 ./lib/libc.so					base-sys-shlib		dynamicroot
 ./lib/libc.so.12				base-sys-shlib		dynamicroot
-./lib/libc.so.12.221				base-sys-shlib		dynamicroot
+./lib/libc.so.12.222				base-sys-shlib		dynamicroot
 ./lib/libcrypt.so				base-sys-shlib		dynamicroot
 ./lib/libcrypt.so.1				base-sys-shlib		dynamicroot
 ./lib/libcrypt.so.1.0				base-sys-shlib		dynamicroot
@@ -74,8 +74,8 @@
 ./lib/libnvpair.so.0				base-zfs-shlib		dynamicroot,zfs
 ./lib/libnvpair.so.0.0				base-zfs-shlib		dynamicroot,zfs
 ./lib/libpcap.so				base-sys-shlib		dynamicroot
-./lib/libpcap.so.9				base-sys-shlib		dynamicroot
-./lib/libpcap.so.9.0				base-sys-shlib		dynamicroot
+./lib/libpcap.so.10				base-sys-shlib		dynamicroot
+./lib/libpcap.so.10.0				base-sys-shlib		dynamicroot
 ./lib/libppath.so				base-sys-shlib		dynamicroot
 ./lib/libppath.so.0				base-sys-shlib		dynamicroot
 ./lib/libppath.so.0.0				base-sys-shlib		dynamicroot
@@ -234,8 +234,8 @@
 ./usr/lib/libbfd.so.19				base-sys-shlib		compatfile,binutils=242
 ./usr/lib/libbfd.so.19.0			base-sys-shlib		compatfile,binutils=242
 ./usr/lib/libbind9.so				base-bind-shlib		compatfile
-./usr/lib/libbind9.so.21			base-bind-shlib		compatfile
-./usr/lib/libbind9.so.21.0			base-bind-shlib		compatfile
+./usr/lib/libbind9.so.22			base-bind-shlib		compatfile
+./usr/lib/libbind9.so.22.0			base-bind-shlib		compatfile
 ./usr/lib/libblacklist.so			base-obsolete		obsolete,compatfile
 ./usr/lib/libblocklist.so			base-sys-shlib		compatfile
 ./usr/lib/libblocklist.so.0			base-sys-shlib		compatfile
@@ -257,7 +257,7 @@
 ./usr/lib/libc++.so.1.0				base-sys-shlib		compatfile,libcxx
 ./usr/lib/libc.so				base-sys-shlib		compatfile
 ./usr/lib/libc.so.12				base-sys-shlib		compatfile
-./usr/lib/libc.so.12.221			base-sys-shlib		compatfile
+./usr/lib/libc.so.12.222			base-sys-shlib		compatfile
 ./usr/lib/libcbor.so				base-sys-shlib		compatfile
 ./usr/lib/libcbor.so.0				base-sys-shlib		compatfile
 ./usr/lib/libcbor.so.0.5			base-sys-shlib		compatfile
@@ -298,8 +298,8 @@
 ./usr/lib/libdm.so.0				base-sys-shlib		compatfile
 ./usr/lib/libdm.so.0.0				base-sys-shlib		compatfile
 ./usr/lib/libdns.so				base-bind-shlib		compatfile
-./usr/lib/libdns.so.21				base-bind-shlib		compatfile
-./usr/lib/libdns.so.21.0			base-bind-shlib		compatfile
+./usr/lib/libdns.so.22				base-bind-shlib		compatfile
+./usr/lib/libdns.so.22.0			base-bind-shlib		compatfile
 ./usr/lib/libdns_sd.so				base-mdns-shlib		compatfile,mdns
 ./usr/lib/libdns_sd.so.0			base-mdns-shlib		compatfile,mdns
 ./usr/lib/libdns_sd.so.0.0			base-mdns-shlib		compatfile,mdns
@@ -375,17 +375,17 @@
 ./usr/lib/libipsec.so.3				base-net-shlib		compatfile
 ./usr/lib/libipsec.so.3.0			base-net-shlib		compatfile
 ./usr/lib/libirs.so				base-bind-shlib		compatfile
-./usr/lib/libirs.so.21				base-bind-shlib		compatfile
-./usr/lib/libirs.so.21.0			base-bind-shlib		compatfile
+./usr/lib/libirs.so.22				base-bind-shlib		compatfile
+./usr/lib/libirs.so.22.0			base-bind-shlib		compatfile
 ./usr/lib/libisc.so				base-bind-shlib		compatfile
-./usr/lib/libisc.so.21				base-bind-shlib		compatfile
-./usr/lib/libisc.so.21.0			base-bind-shlib		compatfile
+./usr/lib/libisc.so.22				base-bind-shlib		compatfile
+./usr/lib/libisc.so.22.0			base-bind-shlib		compatfile
 ./usr/lib/libisccc.so				base-bind-shlib		compatfile
-./usr/lib/libisccc.so.21			base-bind-shlib		compatfile
-./usr/lib/libisccc.so.21.0			base-bind-shlib		compatfile
+./usr/lib/libisccc.so.22			base-bind-shlib		compatfile
+./usr/lib/libisccc.so.22.0			base-bind-shlib		compatfile
 ./usr/lib/libisccfg.so				base-bind-shlib		compatfile
-./usr/lib/libisccfg.so.21			base-bind-shlib		compatfile
-./usr/lib/libisccfg.so.21.0			base-bind-shlib		compatfile
+./usr/lib/libisccfg.so.22			base-bind-shlib		compatfile
+./usr/lib/libisccfg.so.22.0			base-bind-shlib		compatfile
 ./usr/lib/libiscsi.so				base-iscsi-shlib	iscsi,compatfile
 ./usr/lib/libiscsi.so.2				base-iscsi-shlib	iscsi,compatfile
 ./usr/lib/libiscsi.so.2.0			base-iscsi-shlib	iscsi,compatfile
@@ -466,8 +466,8 @@
 ./usr/lib/libnpf.so.0				base-npf-shlib		npf,compatfile
 ./usr/lib/libnpf.so.0.1				base-npf-shlib		npf,compatfile
 ./usr/lib/libns.so				base-bind-shlib		compatfile
-./usr/lib/libns.so.21				base-bind-shlib		compatfile
-./usr/lib/libns.so.21.0				base-bind-shlib		compatfile
+./usr/lib/libns.so.22				base-bind-shlib		compatfile
+./usr/lib/libns.so.22.0				base-bind-shlib		compatfile
 ./usr/lib/libnvmm.so				base-sys-shlib		nvmm,pic
 ./usr/lib/libnvmm.so.0				base-sys-shlib		nvmm,pic
 ./usr/lib/libnvmm.so.0.1			base-sys-shlib		nvmm,pic
@@ -491,8 +491,8 @@
 ./usr/lib/libpanel.so.3				base-sys-shlib		compatfile
 ./usr/lib/libpanel.so.3.0			base-sys-shlib		compatfile
 ./usr/lib/libpcap.so				base-net-shlib		compatfile
-./usr/lib/libpcap.so.9				base-net-shlib		compatfile
-./usr/lib/libpcap.so.9.0			base-net-shlib		compatfile
+./usr/lib/libpcap.so.10				base-net-shlib		compatfile
+./usr/lib/libpcap.so.10.0			base-net-shlib		compatfile
 ./usr/lib/libpci.so				base-sys-shlib		compatfile
 ./usr/lib/libpci.so.2				base-sys-shlib		compatfile
 ./usr/lib/libpci.so.2.2				base-sys-shlib		compatfile
@@ -878,8 +878,8 @@
 ./usr/lib/libsqlite3.so.1.5			base-sys-shlib		compatfile
 ./usr/lib/libss.so				base-obsolete		obsolete
 ./usr/lib/libssh.so				base-secsh-shlib	compatfile
-./usr/lib/libssh.so.47				base-secsh-shlib	compatfile
-./usr/lib/libssh.so.47.0			base-secsh-shlib	compatfile
+./usr/lib/libssh.so.48				base-secsh-shlib	compatfile
+./usr/lib/libssh.so.48.0			base-secsh-shlib	compatfile
 ./usr/lib/libssl.so				base-crypto-shlib	compatfile
 ./usr/lib/libssl.so.12				base-crypto-shlib	compatfile,openssl=10
 ./usr/lib/libssl.so.12.0			base-crypto-shlib	compatfile,openssl=10

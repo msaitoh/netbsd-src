@@ -1,4 +1,4 @@
-# $NetBSD: mi,v 1.5 2024/08/01 14:29:07 martin Exp $
+# $NetBSD: mi,v 1.9 2024/09/02 05:17:45 ozaki-r Exp $
 #
 # Note: don't delete entries from here - mark them as "obsolete" instead.
 #
@@ -153,6 +153,7 @@
 ./usr/share/man/html1/fstat.html		man-util-htmlman	html
 ./usr/share/man/html1/ftp.html			man-netutil-htmlman	html
 ./usr/share/man/html1/gcpp.html			man-util-htmlman	gcccmds,html
+./usr/share/man/html1/gdbserver.html		man-util-htmlman	gdb,gdbserver,html
 ./usr/share/man/html1/gencat.html		man-locale-htmlman	html
 ./usr/share/man/html1/getaddrinfo.html		man-netutil-htmlman	html
 ./usr/share/man/html1/getcap.html		man-util-htmlman	html
@@ -556,6 +557,7 @@
 ./usr/share/man/html1/shar.html			man-util-htmlman	html
 ./usr/share/man/html1/shlock.html		man-util-htmlman	html
 ./usr/share/man/html1/shmif_dumpbus.html	man-util-htmlman	rump,html
+./usr/share/man/html1/shmif_pcapin.html		man-util-htmlman	rump,html
 ./usr/share/man/html1/shuffle.html		man-util-htmlman	html
 ./usr/share/man/html1/skey.html			man-util-htmlman	skey,html
 ./usr/share/man/html1/skeyaudit.html		man-util-htmlman	skey,html
@@ -747,12 +749,14 @@
 ./usr/share/man/html4/acpiec.html		man-sys-htmlman		html
 ./usr/share/man/html4/acpiecdt.html		man-sys-htmlman		html
 ./usr/share/man/html4/acpifan.html		man-sys-htmlman		html
+./usr/share/man/html4/acpihed.html		man-sys-htmlman		html
 ./usr/share/man/html4/acpilid.html		man-sys-htmlman		html
 ./usr/share/man/html4/acpiout.html		man-sys-htmlman		html
 ./usr/share/man/html4/acpipmtr.html		man-sys-htmlman		html
 ./usr/share/man/html4/acpismbus.html		man-sys-htmlman		html
 ./usr/share/man/html4/acpitz.html		man-sys-htmlman		html
 ./usr/share/man/html4/acpivga.html		man-sys-htmlman		html
+./usr/share/man/html4/acpivmgenid.html		man-sys-htmlman		html
 ./usr/share/man/html4/acpiwdrt.html		man-sys-htmlman		html
 ./usr/share/man/html4/acpiwmi.html		man-sys-htmlman		html
 ./usr/share/man/html4/adb.html			man-sys-htmlman		html
@@ -874,6 +878,7 @@
 ./usr/share/man/html4/amr.html			man-sys-htmlman		html
 ./usr/share/man/html4/ams.html			man-sys-htmlman		html
 ./usr/share/man/html4/an.html			man-sys-htmlman		html
+./usr/share/man/html4/apei.html			man-sys-htmlman		html
 ./usr/share/man/html4/aps.html			man-sys-htmlman		html
 ./usr/share/man/html4/aq.html			man-sys-htmlman		html
 ./usr/share/man/html4/arc/intro.html		man-sys-htmlman		html

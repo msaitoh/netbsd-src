@@ -1,4 +1,4 @@
-/*	$NetBSD: externs1.h,v 1.230 2024/06/17 17:06:47 rillig Exp $	*/
+/*	$NetBSD: externs1.h,v 1.233 2024/09/28 15:51:40 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -131,10 +131,12 @@ void expr_restore_memory(memory_pool);
  */
 
 #ifdef DEBUG
+extern bool debug_enabled;
 const char *decl_level_kind_name(decl_level_kind);
 const char *scl_name(scl_t);
 const char *symbol_kind_name(symbol_kind);
 const char *type_qualifiers_string(type_qualifiers);
+const char *type_attributes_string(type_attributes);
 const char *function_specifier_name(function_specifier);
 const char *named_constant_name(named_constant);
 void debug_dcs(void);
@@ -247,11 +249,11 @@ type_t *complete_struct_or_union(sym_t *);
 type_t *complete_enum(sym_t *);
 sym_t *enumeration_constant(sym_t *, int, bool);
 void declare(sym_t *, bool, sbuf_t *);
-void copy_usage_info(sym_t *, sym_t *);
+void copy_usage_info(sym_t *, const sym_t *);
 bool check_redeclaration(sym_t *, bool *);
 bool pointer_types_are_compatible(const type_t *, const type_t *, bool);
 bool types_compatible(const type_t *, const type_t *, bool, bool, bool *);
-void complete_type(sym_t *, sym_t *);
+void complete_type(sym_t *, const sym_t *);
 sym_t *declare_parameter(sym_t *, bool);
 void check_func_lint_directives(void);
 void check_func_old_style_parameters(void);

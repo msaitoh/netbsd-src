@@ -1,4 +1,4 @@
-/* $NetBSD: dwc_gmac.c,v 1.91 2024/07/27 12:56:27 skrll Exp $ */
+/* $NetBSD: dwc_gmac.c,v 1.95 2024/09/07 06:17:37 andvar Exp $ */
 
 /*-
  * Copyright (c) 2013, 2014 The NetBSD Foundation, Inc.
@@ -39,9 +39,16 @@
  *  http://www.synopsys.com/dw/ipdir.php?ds=dwc_ether_mac10_100_1000_unive
  */
 
+/*
+ * Lock order:
+ *
+ *	IFNET_LOCK -> sc_mcast_lock
+ *	IFNET_LOCK -> sc_intr_lock -> {sc_txq.t_mtx, sc_rxq.r_mtx}
+ */
+
 #include <sys/cdefs.h>
 
-__KERNEL_RCSID(1, "$NetBSD: dwc_gmac.c,v 1.91 2024/07/27 12:56:27 skrll Exp $");
+__KERNEL_RCSID(1, "$NetBSD: dwc_gmac.c,v 1.95 2024/09/07 06:17:37 andvar Exp $");
 
 /* #define	DWC_GMAC_DEBUG	1 */
 
@@ -87,9 +94,7 @@ static void dwc_gmac_reset_tx_ring(struct dwc_gmac_softc *, struct dwc_gmac_tx_r
 static void dwc_gmac_free_tx_ring(struct dwc_gmac_softc *, struct dwc_gmac_tx_ring *);
 static void dwc_gmac_txdesc_sync(struct dwc_gmac_softc *, int, int, int);
 static int dwc_gmac_init(struct ifnet *);
-static int dwc_gmac_init_locked(struct ifnet *);
 static void dwc_gmac_stop(struct ifnet *, int);
-static void dwc_gmac_stop_locked(struct ifnet *, int);
 static void dwc_gmac_start(struct ifnet *);
 static void dwc_gmac_start_locked(struct ifnet *);
 static int dwc_gmac_queue(struct dwc_gmac_softc *, struct mbuf *);
@@ -202,7 +207,7 @@ dwc_gmac_attach(struct dwc_gmac_softc *sc, int phy_id, uint32_t mii_clk)
 		memcpy(enaddr, prop_data_value(ea), ETHER_ADDR_LEN);
 	} else {
 		/*
-		 * If we did not get an externaly configure address,
+		 * If we did not get an externally configure address,
 		 * try to read one from the current filter setup,
 		 * before resetting the chip.
 		 */
@@ -294,7 +299,11 @@ dwc_gmac_attach(struct dwc_gmac_softc *sc, int phy_id, uint32_t mii_clk)
 		goto fail;
 	}
 
-	sc->sc_lock = mutex_obj_alloc(MUTEX_DEFAULT, IPL_NET);
+	sc->sc_stopping = false;
+	sc->sc_txbusy = false;
+
+	sc->sc_mcast_lock = mutex_obj_alloc(MUTEX_DEFAULT, IPL_SOFTNET);
+	sc->sc_intr_lock = mutex_obj_alloc(MUTEX_DEFAULT, IPL_NET);
 	mutex_init(&sc->sc_txq.t_mtx, MUTEX_DEFAULT, IPL_NET);
 	mutex_init(&sc->sc_rxq.r_mtx, MUTEX_DEFAULT, IPL_NET);
 
@@ -304,9 +313,7 @@ dwc_gmac_attach(struct dwc_gmac_softc *sc, int phy_id, uint32_t mii_clk)
 	ifp->if_softc = sc;
 	strlcpy(ifp->if_xname, device_xname(sc->sc_dev), IFNAMSIZ);
 	ifp->if_flags = IFF_BROADCAST | IFF_SIMPLEX | IFF_MULTICAST;
-#ifdef DWCGMAC_MPSAFE
 	ifp->if_extflags = IFEF_MPSAFE;
-#endif
 	ifp->if_ioctl = dwc_gmac_ioctl;
 	ifp->if_start = dwc_gmac_start;
 	ifp->if_init = dwc_gmac_init;
@@ -355,12 +362,12 @@ dwc_gmac_attach(struct dwc_gmac_softc *sc, int phy_id, uint32_t mii_clk)
 	/*
 	 * Enable interrupts
 	 */
-	mutex_enter(sc->sc_lock);
+	mutex_enter(sc->sc_intr_lock);
 	bus_space_write_4(sc->sc_bst, sc->sc_bsh, AWIN_GMAC_MAC_INTMASK,
 	    AWIN_DEF_MAC_INTRMASK);
 	bus_space_write_4(sc->sc_bst, sc->sc_bsh, AWIN_GMAC_DMA_INTENABLE,
 	    GMAC_DEF_DMA_INT_MASK);
-	mutex_exit(sc->sc_lock);
+	mutex_exit(sc->sc_intr_lock);
 
 	return 0;
 
@@ -860,25 +867,14 @@ dwc_gmac_miibus_statchg(struct ifnet *ifp)
 static int
 dwc_gmac_init(struct ifnet *ifp)
 {
-	struct dwc_gmac_softc *sc = ifp->if_softc;
-
-	mutex_enter(sc->sc_lock);
-	int ret = dwc_gmac_init_locked(ifp);
-	mutex_exit(sc->sc_lock);
-
-	return ret;
-}
-
-static int
-dwc_gmac_init_locked(struct ifnet *ifp)
-{
-	struct dwc_gmac_softc *sc = ifp->if_softc;
+	struct dwc_gmac_softc * const sc = ifp->if_softc;
 	uint32_t ffilt;
 
-	if (ifp->if_flags & IFF_RUNNING)
-		return 0;
+	ASSERT_SLEEPABLE();
+	KASSERT(IFNET_LOCKED(ifp));
+	KASSERT(ifp == &sc->sc_ec.ec_if);
 
-	dwc_gmac_stop_locked(ifp, 0);
+	dwc_gmac_stop(ifp, 0);
 
 	/*
 	 * Configure DMA burst/transfer mode and RX/TX priorities.
@@ -908,7 +904,9 @@ dwc_gmac_init_locked(struct ifnet *ifp)
 	/*
 	 * Set up multicast filter
 	 */
+	mutex_enter(sc->sc_mcast_lock);
 	dwc_gmac_setmulti(sc);
+	mutex_exit(sc->sc_mcast_lock);
 
 	/*
 	 * Set up dma pointer for RX and TX ring
@@ -931,10 +929,16 @@ dwc_gmac_init_locked(struct ifnet *ifp)
 	    "setting DMA opmode register: %08x\n", opmode);
 #endif
 
-	sc->sc_stopping = false;
-
 	ifp->if_flags |= IFF_RUNNING;
+	sc->sc_if_flags = ifp->if_flags;
+
+	mutex_enter(sc->sc_intr_lock);
+	sc->sc_stopping = false;
+	mutex_exit(sc->sc_intr_lock);
+
+	mutex_enter(&sc->sc_txq.t_mtx);
 	sc->sc_txbusy = false;
+	mutex_exit(&sc->sc_txq.t_mtx);
 
 	return 0;
 }
@@ -942,32 +946,31 @@ dwc_gmac_init_locked(struct ifnet *ifp)
 static void
 dwc_gmac_start(struct ifnet *ifp)
 {
-	struct dwc_gmac_softc *sc = ifp->if_softc;
-#ifdef DWCGMAC_MPSAFE
+	struct dwc_gmac_softc * const sc = ifp->if_softc;
 	KASSERT(if_is_mpsafe(ifp));
-#endif
 
-	mutex_enter(sc->sc_lock);
+	mutex_enter(sc->sc_intr_lock);
 	if (!sc->sc_stopping) {
-		mutex_enter(&sc->sc_txq.t_mtx);
 		dwc_gmac_start_locked(ifp);
-		mutex_exit(&sc->sc_txq.t_mtx);
 	}
-	mutex_exit(sc->sc_lock);
+	mutex_exit(sc->sc_intr_lock);
 }
 
 static void
 dwc_gmac_start_locked(struct ifnet *ifp)
 {
-	struct dwc_gmac_softc *sc = ifp->if_softc;
+	struct dwc_gmac_softc * const sc = ifp->if_softc;
 	int old = sc->sc_txq.t_queued;
 	int start = sc->sc_txq.t_cur;
 	struct mbuf *m0;
 
-	if ((ifp->if_flags & IFF_RUNNING) == 0)
+	KASSERT(mutex_owned(sc->sc_intr_lock));
+
+	mutex_enter(&sc->sc_txq.t_mtx);
+	if (sc->sc_txbusy) {
+		mutex_exit(&sc->sc_txq.t_mtx);
 		return;
-	if (sc->sc_txbusy)
-		return;
+	}
 
 	for (;;) {
 		IFQ_POLL(&ifp->if_snd, m0);
@@ -996,24 +999,30 @@ dwc_gmac_start_locked(struct ifnet *ifp)
 		bus_space_write_4(sc->sc_bst, sc->sc_bsh,
 		    AWIN_GMAC_DMA_TXPOLL, ~0U);
 	}
+	mutex_exit(&sc->sc_txq.t_mtx);
 }
 
 static void
 dwc_gmac_stop(struct ifnet *ifp, int disable)
 {
-	struct dwc_gmac_softc *sc = ifp->if_softc;
+	struct dwc_gmac_softc * const sc = ifp->if_softc;
 
-	mutex_enter(sc->sc_lock);
-	dwc_gmac_stop_locked(ifp, disable);
-	mutex_exit(sc->sc_lock);
-}
+	ASSERT_SLEEPABLE();
+	KASSERT(IFNET_LOCKED(ifp));
 
-static void
-dwc_gmac_stop_locked(struct ifnet *ifp, int disable)
-{
-	struct dwc_gmac_softc *sc = ifp->if_softc;
+	ifp->if_flags &= ~IFF_RUNNING;
 
+	mutex_enter(sc->sc_mcast_lock);
+	sc->sc_if_flags = ifp->if_flags;
+	mutex_exit(sc->sc_mcast_lock);
+
+	mutex_enter(sc->sc_intr_lock);
 	sc->sc_stopping = true;
+	mutex_exit(sc->sc_intr_lock);
+
+	mutex_enter(&sc->sc_txq.t_mtx);
+	sc->sc_txbusy = false;
+	mutex_exit(&sc->sc_txq.t_mtx);
 
 	bus_space_write_4(sc->sc_bst, sc->sc_bsh,
 	    AWIN_GMAC_DMA_OPMODE,
@@ -1028,9 +1037,6 @@ dwc_gmac_stop_locked(struct ifnet *ifp, int disable)
 	mii_down(&sc->sc_mii);
 	dwc_gmac_reset_tx_ring(sc, &sc->sc_txq);
 	dwc_gmac_reset_rx_ring(sc, &sc->sc_rxq);
-
-	ifp->if_flags &= ~IFF_RUNNING;
-	sc->sc_txbusy = false;
 }
 
 /*
@@ -1122,23 +1128,23 @@ dwc_gmac_queue(struct dwc_gmac_softc *sc, struct mbuf *m0)
 static int
 dwc_gmac_ifflags_cb(struct ethercom *ec)
 {
-	struct ifnet *ifp = &ec->ec_if;
-	struct dwc_gmac_softc *sc = ifp->if_softc;
+	struct ifnet * const ifp = &ec->ec_if;
+	struct dwc_gmac_softc * const sc = ifp->if_softc;
 	int ret = 0;
 
-	mutex_enter(sc->sc_lock);
+	KASSERT(IFNET_LOCKED(ifp));
+	mutex_enter(sc->sc_mcast_lock);
+
 	u_short change = ifp->if_flags ^ sc->sc_if_flags;
 	sc->sc_if_flags = ifp->if_flags;
 
 	if ((change & ~(IFF_CANTCHANGE | IFF_DEBUG)) != 0) {
 		ret = ENETRESET;
-		goto out;
-	}
-	if ((change & IFF_PROMISC) != 0) {
+	} else  if ((change & IFF_PROMISC) != 0) {
 		dwc_gmac_setmulti(sc);
 	}
-out:
-	mutex_exit(sc->sc_lock);
+
+	mutex_exit(sc->sc_mcast_lock);
 
 	return ret;
 }
@@ -1146,39 +1152,35 @@ out:
 static int
 dwc_gmac_ioctl(struct ifnet *ifp, u_long cmd, void *data)
 {
-	struct dwc_gmac_softc *sc = ifp->if_softc;
+	struct dwc_gmac_softc * const sc = ifp->if_softc;
 	int error = 0;
 
-	int s = splnet();
-	error = ether_ioctl(ifp, cmd, data);
+	switch (cmd) {
+	case SIOCADDMULTI:
+	case SIOCDELMULTI:
+		break;
+	default:
+		KASSERT(IFNET_LOCKED(ifp));
+	}
 
-#ifdef DWCGMAC_MPSAFE
+	const int s = splnet();
+	error = ether_ioctl(ifp, cmd, data);
 	splx(s);
-#endif
 
 	if (error == ENETRESET) {
 		error = 0;
-		if (cmd != SIOCADDMULTI && cmd != SIOCDELMULTI)
-			;
-		else if (ifp->if_flags & IFF_RUNNING) {
-			/*
-			 * Multicast list has changed; set the hardware filter
-			 * accordingly.
-			 */
-			mutex_enter(sc->sc_lock);
-			dwc_gmac_setmulti(sc);
-			mutex_exit(sc->sc_lock);
+		if (cmd == SIOCADDMULTI || cmd == SIOCDELMULTI) {
+			mutex_enter(sc->sc_mcast_lock);
+			if (sc->sc_if_flags & IFF_RUNNING) {
+				/*
+				 * Multicast list has changed; set the hardware
+				 * filter accordingly.
+				 */
+				dwc_gmac_setmulti(sc);
+			}
+			mutex_exit(sc->sc_mcast_lock);
 		}
 	}
-
-	/* Try to get things going again */
-	if (ifp->if_flags & IFF_UP)
-		dwc_gmac_start(ifp);
-	sc->sc_if_flags = sc->sc_ec.ec_if.if_flags;
-
-#ifndef DWCGMAC_MPSAFE
-	splx(s);
-#endif
 
 	return error;
 }
@@ -1186,7 +1188,7 @@ dwc_gmac_ioctl(struct ifnet *ifp, u_long cmd, void *data)
 static void
 dwc_gmac_tx_intr(struct dwc_gmac_softc *sc)
 {
-	struct ifnet *ifp = &sc->sc_ec.ec_if;
+	struct ifnet * const ifp = &sc->sc_ec.ec_if;
 	struct dwc_gmac_tx_data *data;
 	struct dwc_gmac_dev_dmadesc *desc;
 	int i, nsegs;
@@ -1245,7 +1247,7 @@ dwc_gmac_tx_intr(struct dwc_gmac_softc *sc)
 static void
 dwc_gmac_rx_intr(struct dwc_gmac_softc *sc)
 {
-	struct ifnet *ifp = &sc->sc_ec.ec_if;
+	struct ifnet * const ifp = &sc->sc_ec.ec_if;
 	struct dwc_gmac_dev_dmadesc *desc;
 	struct dwc_gmac_rx_data *data;
 	bus_addr_t physaddr;
@@ -1374,7 +1376,6 @@ skip:
 static void
 dwc_gmac_setmulti(struct dwc_gmac_softc *sc)
 {
-	struct ifnet * const ifp = &sc->sc_ec.ec_if;
 	struct ether_multi *enm;
 	struct ether_multistep step;
 	struct ethercom *ec = &sc->sc_ec;
@@ -1382,11 +1383,11 @@ dwc_gmac_setmulti(struct dwc_gmac_softc *sc)
 	uint32_t ffilt, h;
 	int mcnt;
 
-	KASSERT(mutex_owned(sc->sc_lock));
+	KASSERT(mutex_owned(sc->sc_mcast_lock));
 
 	ffilt = bus_space_read_4(sc->sc_bst, sc->sc_bsh, AWIN_GMAC_MAC_FFILT);
 
-	if (ifp->if_flags & IFF_PROMISC) {
+	if (sc->sc_if_flags & IFF_PROMISC) {
 		ffilt |= AWIN_GMAC_MAC_FFILT_PR;
 		goto special_filter;
 	}
@@ -1427,7 +1428,6 @@ dwc_gmac_setmulti(struct dwc_gmac_softc *sc)
 	    hashes[0]);
 	bus_space_write_4(sc->sc_bst, sc->sc_bsh, AWIN_GMAC_MAC_HTHIGH,
 	    hashes[1]);
-	sc->sc_if_flags = ifp->if_flags;
 
 #ifdef DWC_GMAC_DEBUG
 	dwc_gmac_dump_ffilt(sc, ffilt);
@@ -1445,7 +1445,6 @@ special_filter:
 	    0xffffffff);
 	bus_space_write_4(sc->sc_bst, sc->sc_bsh, AWIN_GMAC_MAC_HTHIGH,
 	    0xffffffff);
-	sc->sc_if_flags = sc->sc_ec.ec_if.if_flags;
 }
 
 int
@@ -1454,8 +1453,11 @@ dwc_gmac_intr(struct dwc_gmac_softc *sc)
 	uint32_t status, dma_status;
 	int rv = 0;
 
-	if (sc->sc_stopping)
+	mutex_enter(sc->sc_intr_lock);
+	if (sc->sc_stopping) {
+		mutex_exit(sc->sc_intr_lock);
 		return 0;
+	}
 
 	status = bus_space_read_4(sc->sc_bst, sc->sc_bsh, AWIN_GMAC_MAC_INTR);
 	if (status & AWIN_GMAC_MII_IRQ) {
@@ -1499,6 +1501,8 @@ dwc_gmac_intr(struct dwc_gmac_softc *sc)
 	 */
 	if (rv)
 		if_schedule_deferred_start(&sc->sc_ec.ec_if);
+
+	mutex_exit(sc->sc_intr_lock);
 
 	return rv;
 }

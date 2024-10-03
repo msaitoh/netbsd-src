@@ -1,4 +1,4 @@
-/*	$NetBSD: hd64570.c,v 1.60 2024/07/05 04:31:51 rin Exp $	*/
+/*	$NetBSD: hd64570.c,v 1.62 2024/09/14 21:22:37 andvar Exp $	*/
 
 /*
  * Copyright (c) 1999 Christian E. Hopps
@@ -65,7 +65,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: hd64570.c,v 1.60 2024/07/05 04:31:51 rin Exp $");
+__KERNEL_RCSID(0, "$NetBSD: hd64570.c,v 1.62 2024/09/14 21:22:37 andvar Exp $");
 
 #include "opt_inet.h"
 
@@ -358,7 +358,7 @@ sca_init(struct sca_softc *sc)
 	sca_write_1(sc, SCA_ITCR,
 	    SCA_ITCR_INTR_PRI_MSCI | SCA_ITCR_ACK_NONE | SCA_ITCR_VOUT_IVR);
 #if 0
-	/* these are for the intrerrupt ack cycle which we don't use */
+	/* these are for the interrupt ack cycle which we don't use */
 	sca_write_1(sc, SCA_IVR, 0x40);
 	sca_write_1(sc, SCA_IMVR, 0x40);
 #endif
@@ -1205,7 +1205,7 @@ sca_hardintr(struct sca_softc *sc)
 			     (isr1 & 0xf0) >> 4);
 
 		/*
-		 * mcsi intterupts
+		 * msci interrupts
 		 */
 		if (isr0 & 0x0f)
 			ret += sca_msci_intr(&sc->sc_ports[0], isr0 & 0x0f);

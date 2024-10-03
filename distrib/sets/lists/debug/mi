@@ -1,4 +1,4 @@
-# $NetBSD: mi,v 1.440 2024/07/11 08:13:49 riastradh Exp $
+# $NetBSD: mi,v 1.449 2024/09/19 19:43:13 gdt Exp $
 #
 ./etc/mtree/set.debug                           comp-sys-root
 ./usr/lib					comp-sys-usr		compatdir
@@ -576,6 +576,7 @@
 ./usr/libdata/debug/usr/bin/gcov.debug		comp-debug-debug	gcccmds,debug
 ./usr/libdata/debug/usr/bin/gdb.debug		comp-debug-debug	gdb,debug
 ./usr/libdata/debug/usr/bin/gdbtui.debug	comp-debug-debug	gdb,debug
+./usr/libdata/debug/usr/bin/gdbserver.debug	base-util-debug		gdb,gdbserver,debug
 ./usr/libdata/debug/usr/bin/gencat.debug	comp-locale-debug	debug
 ./usr/libdata/debug/usr/bin/getaddrinfo.debug	comp-util-debug	debug
 ./usr/libdata/debug/usr/bin/getconf.debug	comp-util-debug		debug
@@ -798,6 +799,7 @@
 ./usr/libdata/debug/usr/bin/sftp.debug		comp-secsh-debug	debug
 ./usr/libdata/debug/usr/bin/shlock.debug	comp-util-debug		debug
 ./usr/libdata/debug/usr/bin/shmif_dumpbus.debug	comp-util-debug		debug,rump
+./usr/libdata/debug/usr/bin/shmif_pcapin.debug	comp-util-debug		debug,rump
 ./usr/libdata/debug/usr/bin/showmount.debug	comp-nfsclient-debug	debug
 ./usr/libdata/debug/usr/bin/shuffle.debug	comp-util-debug		debug
 ./usr/libdata/debug/usr/bin/size.debug		comp-util-debug		binutils,debug
@@ -1831,6 +1833,7 @@
 ./usr/libdata/debug/usr/tests/kernel/t_time.debug			tests-obsolete		obsolete,compattestfile
 ./usr/libdata/debug/usr/tests/kernel/t_timeleft.debug			tests-kernel-tests	debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/kernel/t_ucontext.debug			tests-obsolete		obsolete,compattestfile
+./usr/libdata/debug/usr/tests/kernel/t_unmount.debug			tests-kernel-tests	debug,atf,rump
 ./usr/libdata/debug/usr/tests/kernel/t_writev.debug			tests-obsolete		obsolete,compattestfile
 ./usr/libdata/debug/usr/tests/kernel/t_zombie.debug			tests-kernel-tests	debug,atf
 ./usr/libdata/debug/usr/tests/kernel/tty/t_pr.debug			tests-kernel-tests	debug,atf,rump
@@ -2007,6 +2010,7 @@
 ./usr/libdata/debug/usr/tests/lib/libc/gen/posix_spawn/t_spawn.debug		tests-kernel-tests	debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libc/gen/posix_spawn/t_spawnattr.debug	tests-kernel-tests	debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libc/gen/t_alarm.debug		tests-lib-debug		debug,atf,compattestfile
+./usr/libdata/debug/usr/tests/lib/libc/gen/t_arc4random.debug		tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libc/gen/t_assert.debug		tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libc/gen/t_basedirname.debug		tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libc/gen/t_closefrom.debug		tests-lib-debug		debug,atf,compattestfile
@@ -2057,11 +2061,17 @@
 ./usr/libdata/debug/usr/tests/lib/libc/inet/t_inet_network.debug	tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libc/kevent_nullmnt/h_nullmnt.debug	tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libc/locale/t_btowc.debug		tests-lib-debug		debug,atf,compattestfile
+./usr/libdata/debug/usr/tests/lib/libc/locale/t_c16rtomb.debug		tests-lib-debug		debug,atf,compattestfile
+./usr/libdata/debug/usr/tests/lib/libc/locale/t_c32rtomb.debug		tests-lib-debug		debug,atf,compattestfile
+./usr/libdata/debug/usr/tests/lib/libc/locale/t_c8rtomb.debug		tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libc/locale/t_ctype1.debug		tests-obsolete		obsolete,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libc/locale/t_ctype2.debug		tests-obsolete		obsolete,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libc/locale/t_digittoint.debug	tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libc/locale/t_ducet.debug		tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libc/locale/t_io.debug		tests-lib-debug		debug,atf,compattestfile
+./usr/libdata/debug/usr/tests/lib/libc/locale/t_mbrtoc16.debug		tests-lib-debug		debug,atf,compattestfile
+./usr/libdata/debug/usr/tests/lib/libc/locale/t_mbrtoc32.debug		tests-lib-debug		debug,atf,compattestfile
+./usr/libdata/debug/usr/tests/lib/libc/locale/t_mbrtoc8.debug		tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libc/locale/t_mbrtowc.debug		tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libc/locale/t_mbsnrtowcs.debug	tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libc/locale/t_mbstowcs.debug		tests-lib-debug		debug,atf,compattestfile
@@ -2069,6 +2079,7 @@
 ./usr/libdata/debug/usr/tests/lib/libc/locale/t_sprintf.debug		tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libc/locale/t_strfmon.debug		tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libc/locale/t_toupper.debug		tests-lib-debug		debug,atf,compattestfile
+./usr/libdata/debug/usr/tests/lib/libc/locale/t_uchar.debug		tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libc/locale/t_wcscoll.debug		tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libc/locale/t_wcscspn.debug		tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libc/locale/t_wcspbrk.debug		tests-lib-debug		debug,atf,compattestfile
@@ -2310,6 +2321,7 @@
 ./usr/libdata/debug/usr/tests/lib/libm/t_cos.debug			tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libm/t_cosh.debug			tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libm/t_erf.debug			tests-lib-debug		debug,atf,compattestfile
+./usr/libdata/debug/usr/tests/lib/libm/t_errhandling.debug		tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libm/t_exp.debug			tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libm/t_fe_round.debug			tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libm/t_fenv.debug			tests-lib-debug		debug,atf,compattestfile
@@ -2325,6 +2337,7 @@
 ./usr/libdata/debug/usr/tests/lib/libm/t_next.debug			tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libm/t_pow.debug			tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libm/t_precision.debug		tests-lib-debug		debug,atf,compattestfile
+./usr/libdata/debug/usr/tests/lib/libm/t_remquo.debug			tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libm/t_round.debug			tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libm/t_scalbn.debug			tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libm/t_sin.debug			tests-lib-debug		debug,atf,compattestfile

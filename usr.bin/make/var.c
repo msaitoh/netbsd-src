@@ -1,4 +1,4 @@
-/*	$NetBSD: var.c,v 1.1136 2024/07/20 08:54:19 rillig Exp $	*/
+/*	$NetBSD: var.c,v 1.1140 2024/08/31 06:21:27 rillig Exp $	*/
 
 /*
  * Copyright (c) 1988, 1989, 1990, 1993
@@ -128,7 +128,7 @@
 #include "metachar.h"
 
 /*	"@(#)var.c	8.3 (Berkeley) 3/19/94" */
-MAKE_RCSID("$NetBSD: var.c,v 1.1136 2024/07/20 08:54:19 rillig Exp $");
+MAKE_RCSID("$NetBSD: var.c,v 1.1140 2024/08/31 06:21:27 rillig Exp $");
 
 /*
  * Variables are defined using one of the VAR=value assignments.  Their
@@ -275,7 +275,6 @@ typedef struct {
 	EvalStackElement *elems;
 	size_t len;
 	size_t cap;
-	Buffer details;
 } EvalStack;
 
 /* Whether we have replaced the original environ (which we cannot free). */
@@ -368,15 +367,12 @@ EvalStack_Pop(void)
 	evalStack.len--;
 }
 
-const char *
-EvalStack_Details(void)
+void
+EvalStack_PrintDetails(void)
 {
 	size_t i;
-	Buffer *buf = &evalStack.details;
 
-
-	buf->len = 0;
-	for (i = 0; i < evalStack.len; i++) {
+	for (i = evalStack.len; i > 0; i--) {
 		static const char descr[][42] = {
 			"in target",
 			"while evaluating variable",
@@ -386,19 +382,16 @@ EvalStack_Details(void)
 			"while evaluating",
 			"while parsing",
 		};
-		EvalStackElement *elem = evalStack.elems + i;
+		EvalStackElement *elem = evalStack.elems + i - 1;
 		EvalStackElementKind kind = elem->kind;
-		Buf_AddStr(buf, descr[kind]);
-		Buf_AddStr(buf, " \"");
-		Buf_AddStr(buf, elem->str);
-		if (elem->value != NULL
-		    && (kind == VSK_VARNAME || kind == VSK_EXPR)) {
-			Buf_AddStr(buf, "\" with value \"");
-			Buf_AddStr(buf, elem->value->str);
-		}
-		Buf_AddStr(buf, "\": ");
+		const char* value = elem->value != NULL
+		    && (kind == VSK_VARNAME || kind == VSK_EXPR)
+		    ? elem->value->str : NULL;
+
+		debug_printf("\t%s \"%s%s%s\"\n", descr[kind], elem->str,
+		    value != NULL ? "\" with value \"" : "",
+		    value != NULL ? value : "");
 	}
-	return buf->len > 0 ? buf->data : "";
 }
 
 static Var *
@@ -4572,11 +4565,13 @@ Var_Parse(const char **pp, GNode *scope, VarEvalMode emode)
 
 	expr.name = v->name.str;
 	if (v->inUse && VarEvalMode_ShouldEval(emode)) {
-		if (scope->fname != NULL) {
-			fprintf(stderr, "In a command near ");
-			PrintLocation(stderr, false, scope);
-		}
-		Fatal("Variable %s is recursive.", v->name.str);
+		Parse_Error(PARSE_FATAL, "Variable %s is recursive.",
+		    v->name.str);
+		FStr_Done(&val);
+		if (*p != '\0')
+			p++;
+		*pp = p;
+		return FStr_InitRefer(var_Error);
 	}
 
 	/*

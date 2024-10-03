@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile.inc,v 1.218 2024/07/08 22:14:31 christos Exp $
+#	$NetBSD: Makefile.inc,v 1.221 2024/10/02 18:12:35 christos Exp $
 #	from: @(#)Makefile.inc	8.6 (Berkeley) 5/4/95
 
 # gen sources
@@ -38,6 +38,9 @@ SRCS+=	alarm.c alphasort.c arc4random.c assert.c asysctl.c \
 	utmpx.c valloc.c vis.c wait.c wait3.c waitid.c waitpid.c warn.c \
 	warnx.c warnc.c wordexp.c xsyslog.c \
 	vwarn.c vwarnx.c vwarnc.c verr.c verrx.c verrc.c
+
+LINTFLAGS.arc4random.c+=-Ac11	# stdatomic.h
+LINTFLAGS.arc4random.c+=-X 129	# expression has null effect (in atomic macros)
 
 # uses alloca
 COPTS.execvp.c = -Wno-stack-protector
@@ -215,5 +218,7 @@ errlist.c: errlist.awk ${NETBSDSRCDIR}/sys/sys/errno.h
 LINTFLAGS.rb.c += -X 231	# XXX: marked as unused already why?
 LINTFLAGS.siglist.c += -X 351	# XXX: renames
 LINTFLAGS.signame.c += -X 351	# XXX: renames
+# missing atomic decls
+LINTFLAGS.arc4random.c += ${${ACTIVE_CC} == "clang":? -X 215 :}
 
 CLEANFILES+= errlist.c

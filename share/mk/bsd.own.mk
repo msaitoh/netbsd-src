@@ -1,4 +1,4 @@
-#	$NetBSD: bsd.own.mk,v 1.1392 2024/07/16 21:10:16 skrll Exp $
+#	$NetBSD: bsd.own.mk,v 1.1406 2024/09/24 14:08:14 christos Exp $
 
 # This needs to be before bsd.init.mk
 .if defined(BSD_MK_COMPAT_FILE)
@@ -78,9 +78,11 @@ TOOLCHAIN_MISSING?=	no
 .if \
     ${MACHINE_CPU} == "aarch64" || \
     ${MACHINE_CPU} == "arm" || \
+    ${MACHINE_CPU} == "m68k" || \
     ${MACHINE_CPU} == "mips" || \
     ${MACHINE_CPU} == "powerpc" || \
     ${MACHINE_CPU} == "riscv" || \
+    ${MACHINE_CPU} == "sh3" || \
     ${MACHINE_ARCH} == "x86_64" || \
     ${MACHINE_ARCH} == "i386" || \
     ${MACHINE} == "hppa" || \
@@ -115,19 +117,17 @@ MKGCCCMDS?=	no
 .endif	# MKGCC == no							# }
 
 #
+# Build GCC with the "isl" library enabled.
+# The alpha port does not work with it, see GCC PR's 84204 and 84353.
+#
+.if ${MACHINE} == "alpha"
+NOGCCISL=	# defined
+.endif
+
+#
 # What binutils is used?
 #
-.if \
-    ${MACHINE_CPU} == "aarch64" || \
-    ${MACHINE_CPU} == "arm" || \
-    ${MACHINE_CPU} == "hppa" || \
-    ${MACHINE_CPU} == "mips" || \
-    ${MACHINE_CPU} == "riscv" || \
-    ${MACHINE_ARCH} == "x86_64"
 HAVE_BINUTILS?= 242
-.else
-HAVE_BINUTILS?=	239
-.endif
 
 .if ${HAVE_BINUTILS} == 242
 EXTERNAL_BINUTILS_SUBDIR=	binutils
@@ -140,15 +140,20 @@ EXTERNAL_BINUTILS_SUBDIR=	/does/not/exist
 #
 # What GDB is used?
 #
-HAVE_GDB?=	1320
+HAVE_GDB?=	1510
 
-.if ${HAVE_GDB} == 1320
+.if ${HAVE_GDB} == 1510
 EXTERNAL_GDB_SUBDIR=		gdb
-.elif ${HAVE_GDB} == 1100
+.elif ${HAVE_GDB} == 1320
 EXTERNAL_GDB_SUBDIR=		gdb.old
 .else
 EXTERNAL_GDB_SUBDIR=		/does/not/exist
 .endif
+
+.if ${MACHINE_ARCH} == "x86_64"
+MKGDBSERVER?=	yes
+.endif
+MKGDBSERVER?=	no
 
 #
 # What OpenSSL is used?
@@ -246,8 +251,18 @@ USE_SSP?=	yes
 #
 .if ${MACHINE_ARCH} == "vax" || ${MACHINE} == "sun2"
 HAVE_JEMALLOC?=		100
+.elif ${MACHINE_ARCH} == "x86_64" || ${MACHINE_ARCH} == "i386"
+HAVE_JEMALLOC?=		530
 .else
 HAVE_JEMALLOC?=		510
+.endif
+
+.if ${HAVE_JEMALLOC} == 530
+EXTERNAL_JEMALLOC_SUBDIR = jemalloc
+.elif ${HAVE_JEMALLOC} == 510 || ${HAVE_JEMALLOC} == 100
+EXTERNAL_JEMALLOC_SUBDIR = jemalloc.old
+.else
+EXTERNAL_JEMALLOC_SUBDIR = /does/not/exist
 .endif
 
 .if empty(.MAKEFLAGS:tW:M*-V .OBJDIR*)
@@ -499,6 +514,7 @@ TOOL_LLVM_TBLGEN=	${TOOLDIR}/bin/${_TOOL_PREFIX}llvm-tblgen
 TOOL_M4=		${TOOLDIR}/bin/${_TOOL_PREFIX}m4
 TOOL_MACPPCFIXCOFF=	${TOOLDIR}/bin/${_TOOL_PREFIX}macppc-fixcoff
 TOOL_MACPPCINSTALLBOOT=	${TOOLDIR}/bin/${_TOOL_PREFIX}macppc_installboot
+TOOL_MACPPCMKBOOTHFS=	${TOOLDIR}/bin/${_TOOL_PREFIX}macppc_mkboothfs
 TOOL_MAKEFS=		${TOOLDIR}/bin/${_TOOL_PREFIX}makefs
 TOOL_MAKEINFO=		${TOOLDIR}/bin/${_TOOL_PREFIX}makeinfo
 TOOL_MAKEKEYS=		${TOOLDIR}/bin/${_TOOL_PREFIX}makekeys
@@ -1366,7 +1382,7 @@ HAVE_XORG_SERVER_VER?=120
 # Newer Mesa does not build with old X server
 # VAX build triggers a gcc internal error
 .if ${HAVE_XORG_SERVER_VER} != "120" || ${MACHINE} == "vax"
-HAVE_MESA_VER=19
+HAVE_MESA_VER?=19
 .endif
 
 HAVE_MESA_VER?=	21
@@ -1760,7 +1776,10 @@ HAVE_XORG_GLAMOR?=	no
 	font-bitstream-100dpi font-bitstream-75dpi font-bitstream-type1 \
 	font-cursor-misc font-daewoo-misc font-dec-misc font-ibm-type1 \
 	font-isas-misc font-jis-misc font-misc-misc font-mutt-misc \
-	font-sony-misc font-util ttf-bitstream-vera encodings
+	font-sony-misc font-util ttf-bitstream-vera encodings \
+	font-arabic-misc font-micro-misc font-schumacher-misc \
+	font-sun-misc font-cronyx-cyrillic font-misc-cyrillic \
+	font-screen-cyrillic font-winitzki-cyrillic font-xfree86-type1
 X11SRCDIR.${_dir}?=		${X11SRCDIRMIT}/${_dir}/dist
 .endfor
 

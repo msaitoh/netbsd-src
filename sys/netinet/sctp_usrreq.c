@@ -1,5 +1,5 @@
 /*	$KAME: sctp_usrreq.c,v 1.50 2005/06/16 20:45:29 jinmei Exp $	*/
-/*	$NetBSD: sctp_usrreq.c,v 1.25 2024/07/05 04:31:54 rin Exp $	*/
+/*	$NetBSD: sctp_usrreq.c,v 1.27 2024/09/08 17:28:37 rillig Exp $	*/
 
 /*
  * Copyright (c) 2001, 2002, 2003, 2004 Cisco Systems, Inc.
@@ -33,7 +33,7 @@
  * SUCH DAMAGE.
  */
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: sctp_usrreq.c,v 1.25 2024/07/05 04:31:54 rin Exp $");
+__KERNEL_RCSID(0, "$NetBSD: sctp_usrreq.c,v 1.27 2024/09/08 17:28:37 rillig Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_inet.h"
@@ -610,7 +610,7 @@ sctp_send(struct socket *so, struct mbuf *m, struct sockaddr *addr,
 		sctp_m_freem(m);
 		return EINVAL;
 	}
-	/* Got to have an to address if we are NOT a connected socket */
+	/* Got to have a to address if we are NOT a connected socket */
 	if ((addr == NULL) &&
 	    ((inp->sctp_flags & SCTP_PCB_FLAGS_CONNECTED) ||
 	     (inp->sctp_flags & SCTP_PCB_FLAGS_TCPTYPE))
@@ -1095,7 +1095,7 @@ sctp_count_max_addresses(struct sctp_inpcb *inp)
 {
 	int cnt = 0;
 	/*
-	 * In both sub-set bound an bound_all cases we return the MAXIMUM
+	 * In both sub-set bound and bound_all cases we return the MAXIMUM
 	 * number of addresses that you COULD get. In reality the sub-set
 	 * bound may have an exclusion list for a given TCB OR in the
 	 * bound-all case a TCB may NOT include the loopback or other
@@ -2431,7 +2431,7 @@ sctp_optsset(struct socket *so, struct sockopt *sopt)
 			set_opt = SCTP_PCB_FLAGS_AUTOCLOSE;
 			/*
 			 * The value is in ticks.
-			 * Note this does not effect old associations, only
+			 * Note this does not affect old associations, only
 			 * new ones.
 			 */
 			inp->sctp_ep.auto_close_time = (*mopt * hz);
