@@ -1,4 +1,4 @@
-# $NetBSD: mi,v 1.1340 2024/10/03 17:14:12 christos Exp $
+# $NetBSD: mi,v 1.1344 2024/10/18 23:24:52 christos Exp $
 #
 # Note: don't delete entries from here - mark them as "obsolete" instead.
 #
@@ -2331,6 +2331,7 @@
 ./usr/tests/kernel/t_memfd_create			tests-kernel-tests	compattestfile,atf
 ./usr/tests/kernel/t_mkdir				tests-obsolete		obsolete
 ./usr/tests/kernel/t_mqueue				tests-kernel-tests	compattestfile,atf
+./usr/tests/kernel/t_nanosleep				tests-kernel-tests	atf
 ./usr/tests/kernel/t_nointerpreter			tests-kernel-tests	atf
 ./usr/tests/kernel/t_open_pr_57260			tests-kernel-tests	compattestfile,atf
 ./usr/tests/kernel/t_origin				tests-kernel-tests	compattestfile,atf
@@ -2692,6 +2693,7 @@
 ./usr/tests/lib/libarchive/test_read_format_7zip_encryption.7z.uu				tests-lib-tests		compattestfile,atf
 ./usr/tests/lib/libarchive/test_read_format_7zip_encryption_header.7z.uu			tests-lib-tests		compattestfile,atf
 ./usr/tests/lib/libarchive/test_read_format_7zip_encryption_partially.7z.uu			tests-lib-tests		compattestfile,atf
+./usr/tests/lib/libarchive/test_read_format_7zip_extract_second.7z.uu				tests-lib-tests		compattestfile,atf
 ./usr/tests/lib/libarchive/test_read_format_7zip_lzma1.7z.uu					tests-lib-tests		compattestfile,atf
 ./usr/tests/lib/libarchive/test_read_format_7zip_lzma1_2.7z.uu					tests-lib-tests		compattestfile,atf
 ./usr/tests/lib/libarchive/test_read_format_7zip_lzma1_lzma2.7z.uu				tests-lib-tests		compattestfile,atf
@@ -2728,6 +2730,7 @@
 ./usr/tests/lib/libarchive/test_read_format_gtar_sparse_skip_entry.tar.Z.uu			tests-lib-tests		compattestfile,atf
 ./usr/tests/lib/libarchive/test_read_format_iso.iso.Z.uu					tests-lib-tests		compattestfile,atf
 ./usr/tests/lib/libarchive/test_read_format_iso_2.iso.Z.uu					tests-lib-tests		compattestfile,atf
+./usr/tests/lib/libarchive/test_read_format_iso_3.iso.Z.uu					tests-lib-tests		compattestfile,atf
 ./usr/tests/lib/libarchive/test_read_format_iso_joliet.iso.Z.uu					tests-lib-tests		compattestfile,atf
 ./usr/tests/lib/libarchive/test_read_format_iso_joliet_by_nero.iso.Z.uu				tests-lib-tests		compattestfile,atf
 ./usr/tests/lib/libarchive/test_read_format_iso_joliet_long.iso.Z.uu				tests-lib-tests		compattestfile,atf
@@ -2762,6 +2765,7 @@
 ./usr/tests/lib/libarchive/test_read_format_rar5_blake2.rar.uu					tests-lib-tests		compattestfile,atf
 ./usr/tests/lib/libarchive/test_read_format_rar5_block_size_is_too_small.rar.uu			tests-lib-tests		compattestfile,atf
 ./usr/tests/lib/libarchive/test_read_format_rar5_compressed.rar.uu				tests-lib-tests		compattestfile,atf
+./usr/tests/lib/libarchive/test_read_format_rar5_data_ready_pointer_leak.rar.uu			tests-lib-tests		compattestfile,atf
 ./usr/tests/lib/libarchive/test_read_format_rar5_decode_number_out_of_bounds_read.rar.uu	tests-lib-tests		compattestfile,atf
 ./usr/tests/lib/libarchive/test_read_format_rar5_different_solid_window_size.rar.uu		tests-lib-tests		compattestfile,atf
 ./usr/tests/lib/libarchive/test_read_format_rar5_different_window_size.rar.uu			tests-lib-tests		compattestfile,atf
@@ -2831,6 +2835,7 @@
 ./usr/tests/lib/libarchive/test_read_format_ustar_filename_eucjp.tar.Z.uu			tests-lib-tests		compattestfile,atf
 ./usr/tests/lib/libarchive/test_read_format_ustar_filename_koi8r.tar.Z.uu			tests-lib-tests		compattestfile,atf
 ./usr/tests/lib/libarchive/test_read_format_warc.warc.uu					tests-lib-tests		compattestfile,atf
+./usr/tests/lib/libarchive/test_read_format_xar_duplicate_filename_node.xar.uu			tests-lib-tests		compattestfile,atf
 ./usr/tests/lib/libarchive/test_read_format_zip.zip.uu						tests-lib-tests		compattestfile,atf
 ./usr/tests/lib/libarchive/test_read_format_zip_7075_utf8_paths.zip.uu				tests-lib-tests		compattestfile,atf
 ./usr/tests/lib/libarchive/test_read_format_zip_7z_deflate.zip.uu				tests-lib-tests		compattestfile,atf
@@ -4917,6 +4922,11 @@
 ./usr/tests/usr.bin/fstat/Atffile			tests-usr.bin-tests	compattestfile,atf
 ./usr/tests/usr.bin/fstat/Kyuafile			tests-usr.bin-tests	compattestfile,atf,kyua
 ./usr/tests/usr.bin/fstat/t_fstat			tests-usr.bin-tests	compattestfile,atf
+./usr/tests/usr.bin/ftp					tests-usr.bin-tests	compattestfile,atf
+./usr/tests/usr.bin/ftp/Atffile				tests-usr.bin-tests	compattestfile,atf
+./usr/tests/usr.bin/ftp/Kyuafile			tests-usr.bin-tests	compattestfile,atf,kyua
+./usr/tests/usr.bin/ftp/custom_headers.sh		tests-usr.bin-tests	compattestfile,atf
+./usr/tests/usr.bin/ftp/t_custom_headers		tests-usr.bin-tests	compattestfile,atf
 ./usr/tests/usr.bin/gdb					tests-usr.bin-tests	compattestfile,atf
 ./usr/tests/usr.bin/gdb/Atffile				tests-usr.bin-tests	compattestfile,atf
 ./usr/tests/usr.bin/gdb/Kyuafile			tests-usr.bin-tests	compattestfile,atf,kyua
@@ -7712,6 +7722,10 @@
 ./usr/tests/usr.sbin/inetd/inetd_ratelimit.conf		tests-usr.sbin-tests	compattestfile,atf
 ./usr/tests/usr.sbin/inetd/t_inetd			tests-usr.sbin-tests	compattestfile,atf
 ./usr/tests/usr.sbin/inetd/test_server			tests-usr.sbin-tests	compattestfile,atf
+./usr/tests/usr.sbin/makefs				tests-usr.sbin-tests	compattestfile,atf
+./usr/tests/usr.sbin/makefs/Atffile			tests-usr.sbin-tests	compattestfile,atf
+./usr/tests/usr.sbin/makefs/Kyuafile			tests-usr.sbin-tests	compattestfile,atf,kyua
+./usr/tests/usr.sbin/makefs/t_makefs			tests-usr.sbin-tests	compattestfile,atf
 ./usr/tests/usr.sbin/mtree				tests-usr.sbin-tests	compattestfile,atf
 ./usr/tests/usr.sbin/mtree/Atffile			tests-usr.sbin-tests	compattestfile,atf
 ./usr/tests/usr.sbin/mtree/Kyuafile			tests-usr.sbin-tests	compattestfile,atf,kyua

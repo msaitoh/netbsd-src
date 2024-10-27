@@ -1,4 +1,4 @@
-#	$NetBSD: bsd.own.mk,v 1.1406 2024/09/24 14:08:14 christos Exp $
+#	$NetBSD: bsd.own.mk,v 1.1408 2024/10/23 00:50:47 kalvisd Exp $
 
 # This needs to be before bsd.init.mk
 .if defined(BSD_MK_COMPAT_FILE)
@@ -569,6 +569,7 @@ TOOL_SUNLABEL=		${TOOLDIR}/bin/${_TOOL_PREFIX}sunlabel
 TOOL_TBL=		${TOOLDIR}/bin/${_TOOL_PREFIX}tbl
 TOOL_TIC=		${TOOLDIR}/bin/${_TOOL_PREFIX}tic
 TOOL_UUDECODE=		${TOOLDIR}/bin/${_TOOL_PREFIX}uudecode
+TOOL_VAXMOPCOPY=	${TOOLDIR}/bin/${_TOOL_PREFIX}vax-mopcopy
 TOOL_VGRIND=		${TOOLDIR}/bin/${_TOOL_PREFIX}vgrind -f
 TOOL_VFONTEDPR=		${TOOLDIR}/libexec/${_TOOL_PREFIX}vfontedpr
 TOOL_ZIC=		${TOOLDIR}/bin/${_TOOL_PREFIX}zic
@@ -685,6 +686,7 @@ TOOL_SUNLABEL=		sunlabel
 TOOL_TBL=		tbl
 TOOL_TIC=		tic
 TOOL_UUDECODE=		uudecode
+TOOL_VAXMOPCOPY=	vax-mopcopy
 TOOL_VGRIND=		vgrind -f
 TOOL_VFONTEDPR=		/usr/libexec/vfontedpr
 TOOL_ZIC=		zic
@@ -1802,8 +1804,8 @@ EXTRA_DRIVERS=	modesetting
 .for _v in \
 	ag10e amdgpu apm ark ast ati ati-kms chips cirrus crime \
 	geode glint i128 i740 igs imstt intel intel-old intel-2014 \
-	${EXTRA_DRIVERS} mach64 mga \
-	neomagic newport nouveau nsc nv openchrome pnozz \
+	${EXTRA_DRIVERS} mach64 mga mgx \
+	neomagic newport ngle nouveau nsc nv openchrome pnozz \
 	r128 rendition \
 	s3 s3virge savage siliconmotion sis suncg14 \
 	suncg6 sunffb sunleo suntcx \

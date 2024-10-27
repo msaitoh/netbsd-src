@@ -1,4 +1,4 @@
-/*	$NetBSD: specialreg.h,v 1.214 2024/10/06 09:32:31 msaitoh Exp $	*/
+/*	$NetBSD: specialreg.h,v 1.216 2024/10/19 06:35:09 msaitoh Exp $	*/
 
 /*
  * Copyright (c) 2014-2020 The NetBSD Foundation, Inc.
@@ -945,6 +945,7 @@
 #define CPUID_AMD_SVM_VMCBADRCHKCHG   __BIT(28) /* VMCB addr check changed */
 #define CPUID_AMD_SVM_BUSLOCKTHRESH   __BIT(29) /* Bus Lock Threshold */
 #define CPUID_AMD_SVM_IDLEHLTINTERCEPT __BIT(30) /* Idle HLT Intercept */
+#define CPUID_AMD_SVM_ESHUTDOWN	      __BIT(31) /* Enhanced Shutdown Intr. */
 
 #define CPUID_AMD_SVM_FLAGS	 "\20"					\
 	"\1" "NP"	"\2" "LbrVirt"	"\3" "SVML"	"\4" "NRIPS"	\
@@ -957,7 +958,7 @@
 	"\25" "SPEC_CTRL" "\26" "ROGPT"		"\30HOST_MCE_OVERRIDE"	\
 	"\31" "TLBICTL"	"\32VNMI" "\33IBSVIRT" "\34ExtLvtOffsetFaultChg" \
 	"\35VmcbAddrChkChg" "\36BusLockThreshold" "\37IdleHltIntercept" \
-							"\40B31"
+						"\40EnhancedShutdownInterrupt"
 
 /*
  * AMD Instruction-Based Sampling Capabilities.
@@ -975,15 +976,17 @@
 #define CPUID_IBS_OPBRNFUSE	__BIT(8)  /* Fused branch micro-op indicate */
 #define CPUID_IBS_FETCHCTLEXTD	__BIT(9)  /* IC_IBS_EXTD_CTL MSR */
 #define CPUID_IBS_OPDATA4	__BIT(10) /* IBS op data 4 MSR */
-#define CPUID_IBS_L3MISSFILT	__BIT(11) /* L3 Miss Filtering */
+#define CPUID_IBS_ZEN4E		__BIT(11) /* Zen4 IBS Extensions */
+#define CPUID_IBS_LOADLATFILT	__BIT(12) /* Load Latency Filtering */
+#define CPUID_IBS_UPDDTLBSTAT	__BIT(19) /* Updated DTLB stats */
 
 #define CPUID_IBS_FLAGS	 "\20"						   \
 	"\1IBSFFV"	"\2FetchSam"	"\3OpSam"	"\4RdWrOpCnt"	   \
 	"\5OpCnt"	"\6BrnTrgt"	"\7OpCntExt"	"\10RipInvalidChk" \
 	"\11OpBrnFuse" "\12IbsFetchCtlExtd" "\13IbsOpData4"		   \
-						   "\14IbsL3MissFiltering" \
-	"\15B12"							   \
-							"\24B19"
+						   "\14Zen4IbsExtensions" \
+	"\15IbsLoadLatencyFiltering"					   \
+						    "\24IbsUpdtdDtlbStats"
 
 /*
  * AMD Cache Topology Information.
@@ -1042,6 +1045,8 @@
 #define CPUID_AMD_ENCMEM_IBSVGUEST __BIT(19) /* IBS Virt. for SEV-ES guest */
 #define CPUID_AMD_ENCMEM_PMCVGUEST __BIT(20) /* PMC Virt. for SEV-ES guest */
 #define CPUID_AMD_ENCMEM_RMPREAD __BIT(21)  /* RMPREAD instruction */
+#define CPUID_AMD_ENCMEM_GUESTINTERCEPT __BIT(22) /* Guest Intercept 4SEV-ES */
+#define CPUID_AMD_ENCMEM_SEGRMP __BIT(23)  /* Segmented RMP */
 #define CPUID_AMD_ENCMEM_VMSA_REGPROT __BIT(24) /* VmsaRegProt */
 #define CPUID_AMD_ENCMEM_SMTPROTECT __BIT(25) /* SMT Protection */
 #define CPUID_AMD_ENCMEM_SECAVIC __BIT(26) /* Secure AVIC */
@@ -1058,6 +1063,7 @@
 	"\15" "RSTRINJ"	"\16" "ALTINJ"	"\17" "DebugSwap" "\20PreventHostIbs" \
 	"\21VTE"      "\22VmgexitParam" "\23VirtualTomMsr" "\24IbsVirtGuest"  \
 	"\25PmcVirtGuest" "\26RMPREAD"					      \
+				"\27GuestInterceptControl" "\30SegmentedRmp"  \
 	"\31VmsaRegProt" "\32SmtProtection" "\33SecureAvic" "\34AllowedSev"   \
 	"\35SvsmCommPageMSR" "\36NestedVirtSnpMsr" "\37HvInuseWrAllowed"      \
 	"\40IbpbOnEntry"
@@ -1078,20 +1084,37 @@
 #define CPUID_AMDEXT2_NOSMMCTL	  __BIT(9) /* SMM_CTL MSR is not supported */
 #define CPUID_AMDEXT2_FSRS	  __BIT(10) /* Fast Short Rep Stosb */
 #define CPUID_AMDEXT2_FSRC	  __BIT(11) /* Fast Short Rep Cmpsb */
+#define CPUID_AMDEXT2_PMCPRECISERETIRE __BIT(12) /* PMC Presize Retire */
 #define CPUID_AMDEXT2_PREFETCHCTL __BIT(13) /* Prefetch control MSR */
+#define CPUID_AMDEXT2_L2TLBSIZEX32 __BIT(14) /* L2TLB size encoded as x32 */
+#define CPUID_AMDEXT2_ERMSB	  __BIT(15) /* AMD implementation of ERMSB */
+#define CPUID_AMDEXT2_OPF17RECLAIM __BIT(16) /* Reserve opcode 0f 01/7 */
 #define CPUID_AMDEXT2_CPUIDUSRDIS __BIT(17) /* CPUID dis. for non-priv. soft */
 #define CPUID_AMDEXT2_EPSF	  __BIT(18) /* Enhanced Predictive Store Fwd */
+#define CPUID_AMDEXT2_0F017_RECLAIM __BIT(19) /* Opecode 0f 01/7 reserved */
+#define CPUID_AMDEXT2_PREFETCHI	  __BIT(20) /* IC prefetch support */
+#define CPUID_AMDEXT2_FP512_DOWNGRADE __BIT(21) /* FP512 dpath down to 256 */
+#define CPUID_AMDEXT2_WL_CLASS	  __BIT(22) /* wkld based heuristic feedback */
+#define CPUID_AMDEXT2_ERAPS	  __BIT(24) /* Enhn. Retn. Addr. Pred. Sec. */
+#define CPUID_AMDEXT2_SBPB	  __BIT(27) /* Selective Brnc. Pred. Barrier */
+#define CPUID_AMDEXT2_IBPB_BRTYPE __BIT(28) /* BRanch TYPE prediction flush */
+#define CPUID_AMDEXT2_SRSO_NO	  __BIT(29) /* Not vulnerable to SRSO */
+#define CPUID_AMDEXT2_SRSO_UK_NO  __BIT(30) /* SRSO_NO at user-kern boundary */
+#define CPUID_AMDEXT2_SRSO_MSR_FIX __BIT(31) /* SRSO mitig. bit in BP_CFG[4] */
 
 #define CPUID_AMDEXT2_FLAGS	 "\20"					      \
 	"\1NoNestedDataBp" "\2FsGsKernelGsBaseNonSerializing"		      \
 				"\3LfenceAlwaysSerialize" "\4SmmPgCfgLock"    \
 			     "\7NullSelectClearsBase" "\10UpperAddressIgnore" \
 	"\11AutomaticIBRS" "\12NoSmmCtlMSR"	"\13FSRS"	"\14FSRC"     \
-	"\15B12"	"\16PrefetchCtlMSR"	"\17B14"	"\20B15"      \
-	"\21B16"	"\22CpuidUserDis"	"\23EPSF"	"\24B19"      \
-	"\25B20"	"\26B21"					      \
-	"\31B24"						"\34B27"      \
-	"\35B28"				"\37B30"
+	"\15PMC2PreciseRetire" "\16PrefetchCtlMSR" "\17L2TlbsizeX32"	      \
+							       "\20AMD_ERMSB" \
+	"\21OPCODE_0F017_RECLAIM" "\22CpuidUserDis" "\23EPSF"		      \
+							  "\24FAST_REP_SCASB" \
+	"\25PREFETCHI"	"\26FP512_DOWNGRADE" "\27WL_CLASS_SUPPORT"	      \
+	"\31ERAPS"						"\34SBPB"     \
+	"\35IBPB_BRTYPE" "\36SRSO_NO" "\37SRSO_USER_KERNEL_NO"		      \
+							    "\40SRSO_MSR_FIX"
 
 /*
  * AMD Extended Performance Monitoring and Debug
@@ -1110,7 +1133,16 @@
 #define CPUID_AXPERF_NCPC      __BITS(3, 0)	/* Num of Core PMC counters */
 #define CPUID_AXPERF_NLBRSTACK __BITS(9, 4)	/* Num of LBR Stack entries */
 #define CPUID_AXPERF_NNBPC     __BITS(15, 10)	/* Num of NorthBridge PMCs */
-#define CPUID_AXPERF_NUMCPC    __BITS(21, 16)	/* Num of UMC PMCs */
+#define CPUID_AXPERF_NUMCPC    __BITS(23, 16)	/* Num of UMC PMCs */
+
+/*
+ * AMD Hetero Workload Classification
+ * CPUID Fn8000_0027
+ */
+
+/* %eax */
+
+#define CPUID_HWC_NWC	        __BITS(3, 0) /* Number of Workload Class IDs */
 
 /*
  * Centaur Extended Feature flags.

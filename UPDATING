@@ -1,4 +1,4 @@
-$NetBSD: UPDATING,v 1.360 2024/09/26 20:08:44 wiz Exp $
+$NetBSD: UPDATING,v 1.362 2024/10/16 11:45:37 martin Exp $
 
 This file (UPDATING) is intended to be a brief reference to recent
 changes that might cause problems in the build process, and a guide for

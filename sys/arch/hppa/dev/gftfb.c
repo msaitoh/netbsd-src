@@ -1,4 +1,4 @@
-/*	$NetBSD: gftfb.c,v 1.22 2024/10/01 07:02:14 macallan Exp $	*/
+/*	$NetBSD: gftfb.c,v 1.25 2024/10/27 10:55:10 macallan Exp $	*/
 
 /*	$OpenBSD: sti_pci.c,v 1.7 2009/02/06 22:51:04 miod Exp $	*/
 
@@ -662,7 +662,8 @@ static inline void
 gftfb_setup_fb(struct gftfb_softc *sc)
 {
 	gftfb_wait(sc);
-	gftfb_write4(sc, NGLE_REG_10, 0x13601000);
+	gftfb_write4(sc, NGLE_REG_10,
+	    BA(IndexedDcd, Otc04, Ots08, AddrByte, 0, BINapp0I, 0));
 	gftfb_write4(sc, NGLE_REG_14, 0x83000300);
 	gftfb_wait(sc);
 	gftfb_write1(sc, NGLE_REG_16b1, 1);
@@ -728,7 +729,8 @@ gftfb_setup(struct gftfb_softc *sc)
 	gftfb_wait(sc);
 	gftfb_write4(sc, NGLE_REG_14, 0x300);
 	gftfb_write4(sc, NGLE_REG_13, 0xffffffff);
-	gftfb_write4(sc, NGLE_REG_11, 0x28A07000);
+	gftfb_write4(sc, NGLE_REG_11,
+	    BA(IndexedDcd, Otc32, 0, AddrLong, 0, BINcmask, 0));
 	gftfb_write4(sc, NGLE_REG_3, 0);
 	for (i = 0; i < 64; i++) {
 		gftfb_write4(sc, NGLE_REG_4, 0xffffffff);
@@ -739,7 +741,8 @@ gftfb_setup(struct gftfb_softc *sc)
 	gftfb_wait(sc);
 	gftfb_write4(sc, NGLE_REG_14, 0x300);
 	gftfb_write4(sc, NGLE_REG_13, 0xffffffff);
-	gftfb_write4(sc, NGLE_REG_11, 0x28A06000);
+	gftfb_write4(sc, NGLE_REG_11,
+	    BA(IndexedDcd, Otc32, 0, AddrLong, 0, BINcursor, 0));
 	gftfb_write4(sc, NGLE_REG_3, 0);
 	for (i = 0; i < 64; i++) {
 		gftfb_write4(sc, NGLE_REG_4, 0xff00ff00);
@@ -748,7 +751,8 @@ gftfb_setup(struct gftfb_softc *sc)
 
 	/* colour map */
 	gftfb_wait(sc);
-	gftfb_write4(sc, NGLE_REG_10, 0xBBE0F000);
+	gftfb_write4(sc, NGLE_REG_10, 
+	    BA(FractDcd, Otc24, Ots08, Addr24, 0, BINcmap, 0));
 	gftfb_write4(sc, NGLE_REG_14, 0x03000300);
 	gftfb_write4(sc, NGLE_REG_13, 0xffffffff);
 	gftfb_wait(sc);
@@ -903,7 +907,7 @@ gftfb_mmap(void *v, void *vs, off_t offset, int prot)
 		/* framebuffer */
 		pa = bus_space_mmap(rom->memt, sc->sc_scr.fbaddr, offset,
 		    prot, BUS_SPACE_MAP_LINEAR);
-	} else if (offset >= 0x80000000 && offset < 0x8040000) {
+	} else if (offset >= 0x80000000 && offset < 0x80400000) {
 		/* blitter registers etc. */
 		pa = bus_space_mmap(rom->memt, rom->regh[2],
 		    offset - 0x80000000, prot, BUS_SPACE_MAP_LINEAR);
@@ -1032,7 +1036,8 @@ gftfb_putpalreg(struct gftfb_softc *sc, uint8_t idx, uint8_t r, uint8_t g,
 {
 	mutex_enter(&sc->sc_hwlock);
 	gftfb_wait(sc);
-	gftfb_write4(sc, NGLE_REG_10, 0xbbe0f000);
+	gftfb_write4(sc, NGLE_REG_10,
+	    BA(FractDcd, Otc24, Ots08, Addr24, 0, BINcmap, 0));
 	gftfb_write4(sc, NGLE_REG_14, 0x03000300);
 	gftfb_write4(sc, NGLE_REG_13, 0xffffffff);
 
@@ -1097,11 +1102,13 @@ gftfb_bitblt(void *cookie, int xs, int ys, int xd, int yd, int wi,
 
 	if (sc->sc_hwmode != HW_BLIT) {
 		gftfb_wait(sc);
-		gftfb_write4(sc, NGLE_REG_10, 0x13a01000);
+		gftfb_write4(sc, NGLE_REG_10,
+		    BA(IndexedDcd, Otc04, Ots08, AddrLong, 0, BINapp0I, 0));
 		sc->sc_hwmode = HW_BLIT;
 	}
 	gftfb_wait_fifo(sc, 5);
-	gftfb_write4(sc, NGLE_REG_14, ((rop << 8) & 0xf00) | 0x23000000);
+	gftfb_write4(sc, NGLE_REG_14,
+	   IBOvals(rop, 0, BitmapExtent08, 1, DataDynamic, MaskOtc, 0, 0));
 	gftfb_write4(sc, NGLE_REG_13, 0xff);
 	gftfb_write4(sc, NGLE_REG_24, (xs << 16) | ys);
 	gftfb_write4(sc, NGLE_REG_7, (wi << 16) | he);
@@ -1435,7 +1442,8 @@ gftfb_do_cursor(struct gftfb_softc *sc, struct wsdisplay_cursor *cur)
 		copyin(cur->cmap.red, r, 2);
 		mutex_enter(&sc->sc_hwlock);
 		gftfb_wait(sc);
-		gftfb_write4(sc, NGLE_REG_10, 0xBBE0F000);
+		gftfb_write4(sc, NGLE_REG_10,
+		    BA(FractDcd, Otc24, Ots08, Addr24, 0, BINcmap, 0));
 		gftfb_write4(sc, NGLE_REG_14, 0x03000300);
 		gftfb_write4(sc, NGLE_REG_13, 0xffffffff);
 		gftfb_wait(sc);
@@ -1460,7 +1468,8 @@ gftfb_do_cursor(struct gftfb_softc *sc, struct wsdisplay_cursor *cur)
 		gftfb_wait(sc);
 		gftfb_write4(sc, NGLE_REG_14, 0x300);
 		gftfb_write4(sc, NGLE_REG_13, 0xffffffff);
-		gftfb_write4(sc, NGLE_REG_11, 0x28A07000);
+		gftfb_write4(sc, NGLE_REG_11,
+		    BA(IndexedDcd, Otc32, 0, AddrLong, 0, BINcmask, 0));
 		gftfb_write4(sc, NGLE_REG_3, 0);
 		for (i = 0; i < 128; i += 2) {
 			latch = 0;
@@ -1505,7 +1514,8 @@ gftfb_do_cursor(struct gftfb_softc *sc, struct wsdisplay_cursor *cur)
 		gftfb_wait(sc);
 		gftfb_write4(sc, NGLE_REG_14, 0x300);
 		gftfb_write4(sc, NGLE_REG_13, 0xffffffff);
-		gftfb_write4(sc, NGLE_REG_11, 0x28A06000);
+		gftfb_write4(sc, NGLE_REG_11,
+		    BA(IndexedDcd, Otc32, 0, AddrLong, 0, BINcursor, 0));
 		gftfb_write4(sc, NGLE_REG_3, 0);
 		for (i = 0; i < 128; i += 2) {
 			latch = 0;
