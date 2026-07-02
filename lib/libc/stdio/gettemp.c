@@ -1,4 +1,4 @@
-/*	$NetBSD: gettemp.c,v 1.22 2024/01/20 14:52:49 christos Exp $	*/
+/*	$NetBSD: gettemp.c,v 1.25 2025/12/18 17:45:29 christos Exp $	*/
 
 /*
  * Copyright (c) 1987, 1993
@@ -38,7 +38,7 @@
 #if 0
 static char sccsid[] = "@(#)mktemp.c	8.1 (Berkeley) 6/4/93";
 #else
-__RCSID("$NetBSD: gettemp.c,v 1.22 2024/01/20 14:52:49 christos Exp $");
+__RCSID("$NetBSD: gettemp.c,v 1.25 2025/12/18 17:45:29 christos Exp $");
 #endif
 #endif /* LIBC_SCCS and not lint */
 
@@ -49,6 +49,31 @@ __RCSID("$NetBSD: gettemp.c,v 1.22 2024/01/20 14:52:49 christos Exp $");
 
 static const unsigned char padchar[] =
 "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
+#ifndef O_DIRECT
+#define O_DIRECT 0
+#endif
+#ifndef O_CLOFORK
+#define O_CLOFORK 0
+#endif
+
+#if HAVE_NBTOOL_CONFIG_H
+static uint32_t
+arc4random_uniform(uint32_t upper_bound)
+{
+	if (upper_bound == 0)
+		return 0;
+
+	uint32_t r;
+	uint32_t limit = RAND_MAX - (RAND_MAX % upper_bound);
+
+	do
+		r = (uint32_t)rand();
+	while (r >= limit);
+
+	return r % upper_bound;
+}
+#endif
 
 int
 GETTEMP(char *path, int *doopen, int domkdir, int slen, int oflags)
@@ -64,7 +89,7 @@ GETTEMP(char *path, int *doopen, int domkdir, int slen, int oflags)
 	/* doopen may be NULL */
 	if ((doopen != NULL && domkdir) || slen < 0 ||
 	    (oflags & ~(O_APPEND | O_DIRECT | O_SHLOCK | O_EXLOCK | O_SYNC |
-	    O_CLOEXEC)) != 0) {
+	    O_CLOEXEC | O_CLOFORK)) != 0) {
 		errno = EINVAL;
 		return 0;
 	}

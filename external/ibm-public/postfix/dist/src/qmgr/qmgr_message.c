@@ -1,4 +1,4 @@
-/*	$NetBSD: qmgr_message.c,v 1.4 2022/10/08 16:12:48 christos Exp $	*/
+/*	$NetBSD: qmgr_message.c,v 1.6 2026/05/09 18:49:20 christos Exp $	*/
 
 /*++
 /* NAME
@@ -100,6 +100,9 @@
 /*	111 8th Avenue
 /*	New York, NY 10011, USA
 /*
+/*	Wietse Venema
+/*	porcupine.org
+/*
 /*	Preemptive scheduler enhancements:
 /*	Patrik Rak
 /*	Modra 6
@@ -148,6 +151,7 @@
 #include <split_addr.h>
 #include <dsn_mask.h>
 #include <rec_attr_map.h>
+#include <sendopts.h>
 
 /* Client stubs. */
 
@@ -191,7 +195,7 @@ static QMGR_MESSAGE *qmgr_message_create(const char *queue_name,
     message->sender = 0;
     message->dsn_envid = 0;
     message->dsn_ret = 0;
-    message->smtputf8 = 0;
+    message->sendopts = 0;
     message->filter_xport = 0;
     message->inspect_xport = 0;
     message->redirect_addr = 0;
@@ -591,7 +595,7 @@ static int qmgr_message_read(QMGR_MESSAGE *message)
 				 &message->data_size, &message->data_offset,
 				    &message->rcpt_unread, &message->rflags,
 				    &message->cont_length,
-				    &message->smtputf8)) >= 3) {
+				    &message->sendopts)) >= 3) {
 		    /* Postfix >= 1.0 (a.k.a. 20010228). */
 		    if (message->data_offset <= 0 || message->data_size <= 0) {
 			msg_warn("%s: invalid size record: %.100s",
@@ -605,6 +609,8 @@ static int qmgr_message_read(QMGR_MESSAGE *message)
 			rec_type = REC_TYPE_ERROR;
 			break;
 		    }
+		    /* Forward compatibility. */
+		    message->sendopts &= SOPT_FLAG_ALL;
 		} else if (count == 1) {
 		    /* Postfix < 1.0 (a.k.a. 20010228). */
 		    qmgr_message_oldstyle_scan(message);
@@ -1188,7 +1194,7 @@ static void qmgr_message_resolve(QMGR_MESSAGE *message)
 		&& !var_double_bounce_sender[len]) {
 		status = sent(message->tflags, message->queue_id,
 			      QMGR_MSG_STATS(&stats, message), recipient,
-			      "none", DSN_SIMPLE(&dsn, "2.0.0",
+			      "none", NO_TLS_STATS, DSN_SIMPLE(&dsn, "2.0.0",
 			"undeliverable postmaster notification discarded"));
 		if (status == 0) {
 		    deliver_completed(message->fp, recipient->offset);

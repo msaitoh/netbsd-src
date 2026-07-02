@@ -1,4 +1,4 @@
-/*	$NetBSD: machdep.c,v 1.58 2024/02/05 22:08:05 andvar Exp $	*/
+/*	$NetBSD: machdep.c,v 1.61 2026/06/10 21:24:11 andvar Exp $	*/
 
 /*-
  * Copyright (c) 1996, 1997, 1998 The NetBSD Foundation, Inc.
@@ -65,7 +65,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: machdep.c,v 1.58 2024/02/05 22:08:05 andvar Exp $");
+__KERNEL_RCSID(0, "$NetBSD: machdep.c,v 1.61 2026/06/10 21:24:11 andvar Exp $");
 
 #include "opt_ddb.h"
 #include "opt_memsize.h"
@@ -282,7 +282,7 @@ initSH3(void *pc, u_int bim, int32_t bip)	/* XXX return address */
 	/* Start to determine heap area */
 	kernend = (vaddr_t)sh3_round_page(end + symbolsize);
 
-	/* Initilize CPU ops. */
+	/* Initialize CPU ops. */
 #if defined(SH7708R)
 	sh_cpu_init(CPU_ARCH_SH3, CPU_PRODUCT_7708R);
 #elif defined(SH7708)
@@ -533,7 +533,7 @@ LoadAndReset(const char *osimage)
 	u_long csum2 = 0;
 	u_long size2;
 
-	MMTA_IMASK = 0; /* mask all externel interrupt */
+	MMTA_IMASK = 0; /* mask all external interrupts */
 
 	printf("LoadAndReset: copy start\n");
 	buf_addr = (void *)OSIMAGE_BUF_ADDR;
@@ -824,16 +824,6 @@ lookup_bootinfo(unsigned int type)
 
 	return NULL;
 }
-
-#ifdef MODULAR
-/*
- * Push any modules loaded by the boot loader.
- */
-void
-module_init_md(void)
-{
-}
-#endif /* MODULAR */
 
 #if defined(MMEYE_EPC_WDT)
 callout_t epc_wdtc;

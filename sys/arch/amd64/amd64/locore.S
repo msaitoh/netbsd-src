@@ -1,4 +1,4 @@
-/*	$NetBSD: locore.S,v 1.225 2024/07/31 20:05:28 andvar Exp $	*/
+/*	$NetBSD: locore.S,v 1.236 2026/01/17 10:53:19 bouyer Exp $	*/
 
 /*
  * Copyright-o-rama!
@@ -275,14 +275,20 @@
 	addq	$PDE_SIZE,%rbx	; \
 	loop	1b		;
 
+/* record boot start cycle count */
+#define getstarttsc \
+	rdtsc					; \
+	movl	%eax, RELOC(starttsc_lo)	; \
+	movl	%edx, RELOC(starttsc_hi)	;
 
 #ifdef XEN
 #define __ASSEMBLY__
+#include <xen/include/public/arch-x86/cpuid.h>
 #include <xen/include/public/elfnote.h>
 #include <xen/include/public/xen.h>
 
 #define ELFNOTE(name, type, desctype, descdata...) \
-.pushsection .note.name			;	\
+.pushsection .note.name, "a", @note	;	\
   .align 4				;	\
   .long 2f - 1f		/* namesz */	;	\
   .long 4f - 3f		/* descsz */	;	\
@@ -306,7 +312,7 @@
 	ELFNOTE(Xen, XEN_ELFNOTE_ENTRY,          .quad,  start)
 #else
 	ELFNOTE(Xen, XEN_ELFNOTE_PADDR_OFFSET,   .quad,  0)
-	ELFNOTE(Xen, XEN_ELFNOTE_PHYS32_ENTRY,   .long,  RELOC(start_xen32))
+	ELFNOTE(Xen, XEN_ELFNOTE_PHYS32_ENTRY,   .long,  RELOC(start_pvh))
 #endif /* XENPV */
 	ELFNOTE(Xen, XEN_ELFNOTE_HYPERCALL_PAGE, .quad,  hypercall_page)
 	ELFNOTE(Xen, XEN_ELFNOTE_HV_START_LOW,   .quad,  HYPERVISOR_VIRT_START)
@@ -385,6 +391,12 @@ END(biosextmem)
 	.type	_C_LABEL(lwp0uarea), @object
 LABEL(lwp0uarea)	.quad	0
 END(lwp0uarea)
+	.type	_C_LABEL(starttsc_lo), @object
+LABEL(starttsc_lo)		.long	0	/* low part of rdtsc */
+END(starttsc_lo)
+	.type	_C_LABEL(starttsc_hi), @object
+LABEL(starttsc_hi)		.long	0	/* high part of rdtsc */
+END(starttsc_hi)
 
 #ifndef XENPV
 	.globl	gdt64_lo
@@ -456,6 +468,9 @@ tmpstk:
 ENTRY(start)
 #ifndef XENPV
 	.code32
+#ifdef BOOT_DURATION
+	getstarttsc
+#endif
 
 #ifdef SELFRELOC
 	call	next
@@ -841,6 +856,7 @@ next:	pop	%edi
 	jmp	compat
 compat:
 
+	movl	$RELOC(tmpstk),%esp
 	/*
 	 * 5. Not quite done yet, we're now in a compatibility segment, in
 	 *    legacy mode. We must jump to a long mode segment. Need to set up
@@ -1035,7 +1051,10 @@ END(start)
 # if !defined(XENPV)
 /* entry point for Xen PVH */
 	.code32
-ENTRY(start_xen32)
+ENTRY(start_pvh)
+#ifdef BOOT_DURATION
+	getstarttsc
+#endif
 	/* Xen doesn't start us with a valid gdt */
 	movl    $RELOC(gdtdesc32), %eax
 	lgdt    (%eax)
@@ -1059,35 +1078,239 @@ ENTRY(start_xen32)
 	stosb
 
 	/*
-	 * save addr of the hvm_start_info structure. This is also the end
-	 * of the symbol table
+	 * Here, we have 2 cases :
+	 *
+	 *  1) We have been started by Xen
+	 *  2) We have been started by another VMM (Qemu, Firecracker, ...)
+	 *
+	 * The main difference is that, when we are started by Xen,
+	 * %ebx (addr of the hvm_start_info structure) is pointing to a
+	 * location that will be mapped correctly later.
+	 *
+	 * In the second case, we have to copy this structure (and all
+	 * the information contained in it) to a location that will be
+	 * mapped later : __kernel_end
+	 *
+	 * To distinguish between the 2 cases, we'll use the 'cpuid' instruction
 	 */
-	movl	%ebx, RELOC(hvm_start_paddr)
-	movl	%ebx, %eax
-	addl	$KERNBASE_LO,%eax
-	movl	$RELOC(esym),%ebp
-	movl	%eax,(%ebp)
-	movl	$KERNBASE_HI,4(%ebp)
-	/* get a page for HYPERVISOR_shared_info */
-	addl	$PAGE_SIZE, %ebx
-	addl	$PGOFSET,%ebx
-	andl	$~PGOFSET,%ebx
-	movl	$RELOC(HYPERVISOR_shared_info_pa),%ebp
-	movl	%ebx,(%ebp)
-	movl	$0,4(%ebp)
-	/* XXX assume hvm_start_info+dependant structure fits in a single page */
-	addl	$PAGE_SIZE, %ebx
-	addl	$PGOFSET,%ebx
-	andl	$~PGOFSET,%ebx
-	addl	$KERNBASE_LO,%ebx
-	movl	$RELOC(eblob),%ebp
-	movl	%ebx,(%ebp)
-	movl	$KERNBASE_HI,4(%ebp)
+	push %ebx
+	xorl %eax, %eax
+	cpuid
+	cmpl $0x1, %eax		/* Check if we can call CPUID with eax=1 */
+	jb .start_genpvh
+	xorl %eax, %eax
+	inc %eax
+	cpuid
+	shr $31, %ecx
+	testb $1, %cl		/* Check if bit 31 of ECX (hypervisor) is set */
+	jz .start_genpvh
+	xorl %eax, %eax
+	inc %eax
+	shl $30, %eax
+	cpuid			/* Calling cpuid with eax=0x40000000 */
+	cmp $XEN_CPUID_SIGNATURE_EBX, %ebx	/* "VneX" */
+	je .start_xen32
+
+	/* We have been started by a VMM that is *not* Xen */
+
+.start_genpvh:
 
 	/* announce ourself */
-	movl	$VM_GUEST_XENPVH, RELOC(vm_guest)
+	movl $VM_GUEST_GENPVH, RELOC(vm_guest)
+
+	pop %ebx
+	movl $RELOC(__kernel_end), %eax
+	movl %eax, %ecx
+	addl $KERNBASE_LO,%ecx
+	movl $RELOC(esym),%ebp
+	movl %ecx,(%ebp)
+	movl $KERNBASE_HI,4(%ebp)
+
+	jmp .copy_hvm_info
+
+.start_xen32:
+	movl $VM_GUEST_XENPVH, RELOC(vm_guest)
+	/*
+	 * Read the size of the symbol table, sanity-check and compute the end
+	 * We have:
+	 * |   kernel   |
+	 * -------------- kernel_end
+	 *     alignment
+	 * -------------- bsd_symtab
+	 * | size (int) |
+	 * | elf_header |
+	 * 
+	 */
+	movl $RELOC(__kernel_end), %ebp
+	addl $3, %ebp
+	andl $~3, %ebp
+	movl 0(%ebp), %eax /* read size */
+	testl $~0x00ffffff, %eax /* more than 16MB ? */
+	jnz .bad_esym
+	addl %ebp, %eax /* compute esym */
+	/* check if start_info is within symbol table */
+	movl 0(%esp), %ebx
+	cmp %ebp, %ebx
+	jb .save_esym /* %ebx < __kernel_end */
+	cmp %eax, %ebx
+	jae .save_esym /* %ebx >= esym */
+
+.bad_esym:
+	movl $RELOC(__kernel_end), %eax
+.save_esym:
+	movl %eax, %ebx
+	addl $KERNBASE_LO,%ebx
+	movl $RELOC(esym),%ebp
+	movl %ebx,(%ebp)
+	movl $KERNBASE_HI,4(%ebp)
+	/* advance to next page boundary, this will be our hvm_start_info */
+	addl $PGOFSET,%eax
+	andl $~PGOFSET,%eax
+	pop %ebx
+	
+.copy_hvm_info:
+ 	/*
+	 * %ebx points to physical address provided by Xen
+	 * %eax points to where we want it to be copied to
+	 */
+	/* check if %ebx and %eax are in the same page */
+	movl %ebx, %esi
+	addl $PGOFSET,%esi
+	andl $~PGOFSET,%esi
+	cmp %esi, %eax
+	je .same_hvm_info
+
+	/* First, copy the hvm_start_info structure to %eax */
+	movl %ebx, %esi
+	movl %eax, %edi
+	movl $HVM_START_INFO_SIZE, %ecx
+	shrl $2, %ecx
+	rep movsl
+
+	/* Copy hvm_modlist_entry[] after hvm_start_info */
+	xor %ecx, %ecx
+	mov %ecx, START_INFO_MODLIST_PADDR(%eax)
+	movl START_INFO_NR_MODULES(%eax), %ecx	/* Get nr_modules */
+	testl %ecx, %ecx			/* if(nr_modules == 0) */
+	jz .modlist_copy_done			/*   goto modlist_copy_done */
+	movl %edi, START_INFO_MODLIST_PADDR(%eax) /* Set new modlist_paddr in hvm_start_info */
+	movl START_INFO_MODLIST_PADDR(%ebx), %esi
+	pushl %eax
+	movl $HVM_MODLIST_ENTRY_SIZE, %eax	/* eax = sizeof(hvm_modlist_entry) */
+	mull %ecx				/* eax * ecx => edx:eax */
+	movl %eax, %ecx
+	shrl $2, %ecx
+	rep movsl
+	popl %eax
+
+	/* Copy the modules after the hvm_modlist_entry[] */
+	xorl %ecx, %ecx				/* ecx = i = 0 */
+.module_copy:
+	/* eax points to our hvm_start_info */
+	/* ecx is our counter (i) */
+	/* Copy the module */
+	movl START_INFO_MODLIST_PADDR(%eax), %edx /* edx = &hvm_modlist_entry[0] */
+	pushl %eax
+	movl $HVM_MODLIST_ENTRY_SIZE, %eax	/* eax = sizeof(hvm_modlist_entry) */
+	pushl %ecx
+	pushl %edx
+	mull %ecx				/* eax * ecx => edx:eax */
+	popl %edx
+	addl %eax, %edx				/* edx = &hvm_modlist_entry[i] */
+	popl %ecx
+	/* Copy the module's cmdline */
+	movl MODLIST_ENTRY_CMDLINE(%edx), %esi
+	xorl %eax, %eax
+	movl %eax, MODLIST_ENTRY_CMDLINE(%edx)	/* hvm_modlist_entry[i].cmdline = NULL */
+	cmpl %eax, %esi
+	popl %eax
+	je .module_cmdline_copy_done
+	movl %edi, MODLIST_ENTRY_CMDLINE(%edx)	/* Set new cmdline_paddr in hvm_modlist_entry */
+	pushl %eax
+.module_cmdline_copy:
+	movb (%esi), %al
+	movsb
+	cmp $0, %al
+	jne .module_cmdline_copy
+	popl %eax
+.module_cmdline_copy_done:
+	/* Copy the module's content */
+	movl MODLIST_ENTRY_PADDR(%edx), %esi	/* esi = hvm_modlist_entry[i].paddr */
+	movl %edi, MODLIST_ENTRY_PADDR(%edx)	/* Set new paddr in hvm_modlist_entry */
+	pushl %ecx
+	movl MODLIST_ENTRY_SIZE(%edx), %ecx	/* ecx = hvm_modlist_entry[i].size */
+	rep movsb
+	popl %ecx
+	inc %ecx				/* i++ */
+	pushl %eax
+	movl START_INFO_NR_MODULES(%ebx), %eax	/* eax = nr_modules */
+	cmpl %eax, %ecx				/* if (ecx != nr_modules) */
+	popl %eax
+	jne .module_copy			/*   goto module_copy */
+.modlist_copy_done:
+
+	/* Copy cmdline_paddr after the modules */
+	movl CMDLINE_PADDR(%ebx), %esi
+	movl %edi, CMDLINE_PADDR(%eax)	/* Set new cmdline_paddr in hvm_start_info */
+.cmdline_copy:
+	movb (%esi), %cl
+	movsb
+	cmp $0, %cl
+	jne .cmdline_copy
+
+	/* Copy memmap_paddr after cmdline (only if hvm_start_info->version != 0) */
+	xorl %ecx, %ecx
+	cmpl START_INFO_VERSION(%ebx), %ecx
+	je .save_hvm_info
+	pushl %eax
+	movl MMAP_PADDR(%ebx), %esi
+	movl %edi, MMAP_PADDR(%eax)	/* Set new memmap_paddr in hvm_start_info */
+	movl MMAP_ENTRIES(%ebx), %eax	/* Get memmap_entries */
+	movl $MMAP_ENTRY_SIZE, %ebx
+	mull %ebx			/* eax * ebx => edx:eax */
+	movl %eax, %ecx
+	shrl $2, %ecx
+	rep movsl
+	popl %eax
+
+.save_hvm_info:
+	/*
+	 * %eax points to the start of hvm_start_info
+	 * %edi points to the end
+	 */
+	addl 	$KERNBASE_LO,%eax
+	movl	$RELOC(hvm_start_info),%ebp
+	movl	%eax,(%ebp)
+	movl	$KERNBASE_HI,4(%ebp)
+
+	/* round end to next page boundary */
+	addl	$PGOFSET,%edi
+	andl	$~PGOFSET,%edi
+
+	/* get a page for HYPERVISOR_shared_info */
+	/* this is only needed if we are running on Xen */
+	cmpl	$VM_GUEST_XENPVH, RELOC(vm_guest)
+	jne	.save_eblob
+	movl	$RELOC(HYPERVISOR_shared_info_pa),%ebp
+	movl	%edi,(%ebp)
+	movl	$0,4(%ebp)
+	addl	$PAGE_SIZE, %edi
+.save_eblob:
+	addl	$KERNBASE_LO,%edi
+	movl	$RELOC(eblob),%ebp
+	movl	%edi,(%ebp)
+	movl	$KERNBASE_HI,4(%ebp)
+
 	jmp .Lbiosbasemem_finished
-END(start_xen32)
+
+.same_hvm_info:
+	/* just use the provided %ebx */
+	/* XXX assume hvm_start_info+dependent structure fits in a single page */
+	movl %ebx, %eax
+	movl %ebx, %edi
+	addl	$PAGE_SIZE, %edi
+	jmp .save_hvm_info
+END(start_pvh)
 	.code64
 # endif /* !XENPV */
 /* space for the hypercall call page */
@@ -1235,7 +1458,7 @@ ENTRY(cpu_switchto)
 #ifdef XENPV
 	/* if we are there, we're obviously not in user context.
 	 * reset ci_xen_clockf_* in case the splx() at the end of mi_switch()
-	 * triggers a deffered call do xen_timer_handler()
+	 * triggers a deferred call do xen_timer_handler()
 	 */
 	movb    $0, CPUVAR(XEN_CLOCKF_USERMODE)
 	movq    $_C_LABEL(cpu_switchto), CPUVAR(XEN_CLOCKF_PC)
@@ -1418,7 +1641,7 @@ ENTRY(handle_syscall)
 	 * to ensure we don't take an interrupt with some of the user
 	 * registers loaded.
 	 */
-	CLI(si)
+	CLI2(si, rax)
 	/* Check for ASTs on exit to user mode. */
 	movl	L_MD_ASTPENDING(%r14),%eax
 	orl	CPUVAR(WANT_PMAPLOAD),%eax
@@ -1545,7 +1768,9 @@ IDTVEC(\name)
 	 * But it didn't disable events
 	 */
 	pushq	%rsi
-	CLI(si)
+	pushq	%rdi
+	CLI2(si, rdi)
+	popq	%rdi
 	popq	%rsi
 	addq	$0x10,%rsp	/* gap to match cs:rip */
 	pushq	$2		/* error code */
@@ -1590,7 +1815,9 @@ IDTVEC_END(syscall32)
 IDTVEC(osyscall)
 #ifdef XENPV
 	pushq	%rsi
-	CLI(si)
+	pushq	%rdi
+	CLI2(si, rdi)
+	popq	%rdi
 	popq	%rsi
 	movq (%rsp),%rcx
 	movq 8(%rsp),%r11
@@ -1861,7 +2088,7 @@ ENTRY(selfreloc_start)
 .Lcopy_done:
 	cld			/* LynxOS depends on it */
 
-	/* load current selfreloc_start addesss in $edi */
+	/* load current selfreloc_start address in $edi */
 	movl	%ebx, %edi	/* loadaddr was saved in ebx */
 	addl	$(selfreloc_start - kernel_text), %edi
 

@@ -1,4 +1,4 @@
-/*	$NetBSD: msg.mi.de,v 1.50 2024/06/20 19:00:35 rillig Exp $	*/
+/*	$NetBSD: msg.mi.de,v 1.55 2026/04/26 13:31:47 martin Exp $	*/
 
 /*
  * Copyright 1997 Piermont Information Systems Inc.
@@ -138,7 +138,11 @@ NetBSD daher darauf %s.
 }
 
 message ask_disk
-{Auf welcher Festplatte möchten Sie NetBSD %s? }
+{Auf welcher Festplatte möchten Sie NetBSD %s? 
+	- wd: SATA, ATA oder IDE 
+	- sd: SCSI oder USB-Speicher 
+	- ld: NVMe (z.B. M.2-Karte), SD/MMC-Karte oder virtueller Speicher 
+}
 
 message Available_disks
 {Verfügbare Festplatten}
@@ -243,7 +247,7 @@ message ptnheaders_size		{Größe}
 message ptnheaders_filesystem	{Dateisystem}
 
 message askfsmount
-{Mount-Verzeichnis?}
+{Mount-Verzeichnis (leer lassen, um abzubrechen)?}
 
 message askfssize
 {Größe für %s in %s?}
@@ -728,8 +732,8 @@ gefunden und %d wegen eines Fehlers übersprungen.
 Von %d zu entpackenden Paketen sind %d erfolgreich und %d
 mit Fehler entpackt worden.
 
-Die Installation wird abgebrochen. Bitte prüfen Sie die Bezugsquellen Ihrer
-Distribution und installieren Sie gegebenfalls die Pakete erneut.}
+Bitte prüfen Sie die Bezugsquellen Ihrer Distribution und installieren
+Sie gegebenfalls die Pakete erneut.}
 
 message abort_inst {Installation abgebrochen.}
 message abort_part {Partitionierung abgebrochen.}
@@ -1145,6 +1149,7 @@ message Sectors		{Sektoren}
 message Select_medium {Medium auswählen}
 message ftp {FTP}
 message http {HTTP}
+message https {HTTPS}
 message nfs {NFS}
 .if HAVE_INSTALL_IMAGE
 message cdrom {CD-ROM / DVD / Medium mit Abbilddatei}
@@ -1255,13 +1260,13 @@ message empty {***LEER***}
 message timezone {Zeitzone}
 message change_rootpw {root-Passwort setzen}
 message enable_binpkg {Installation von Binärpaketen vorbereiten}
-message enable_sshd {sshd aktivieren}
+message enable_sshd {sshd (Secure Shell daemon) aktivieren}
 message enable_ntpd {ntpd aktivieren}
 message run_ntpdate {ntpdate beim Starten ausführen}
-message enable_mdnsd {mdnsd aktivieren}
-message enable_xdm {xdm aktivieren}
-message enable_cgd {cgd aktivieren}
-message enable_lvm {lvm aktivieren}
+message enable_mdnsd {Multicast DNS aktivieren}
+message enable_xdm {xdm (X Display Manager) aktivieren}
+message enable_cgd {cgd aktivieren (kryptografische Laufwerkskonfiguration)}
+message enable_lvm {lvm (Logical Volume Manager) aktivieren}
 message enable_raid {raidframe aktivieren}
 message add_a_user {Benutzer hinzufügen}
 message configmenu {Zusätzliche Einstellungen konfigurieren.}
@@ -1292,7 +1297,7 @@ message pkgin_failed
 vorhanden sind. Bitte den Pfad der Pakete überprüfen und noch einmal versuchen.}
 message failed {Fehlgeschlagen}
 message askfsmountadv {Mountpoint oder 'raid' oder 'cgd' oder 'lvm'?}
-message partman {Erweiterte Partitionierung}
+message partman {Erweiterte Partitionierung (Software-RAID, ...)}
 message editpart {Partitionen bearbeiten}
 message selectwedge {Bereits existierende "wedges" dk(4)}
 
@@ -1307,7 +1312,8 @@ message cantsave {Änderungen können nicht gespeichert werden.}
 message noroot {Fortsetzen unmöglich, da keine Root-Partition definiert ist\n}
 
 message addusername {Benutzername (maximal 8 Zeichen)}
-message addusertowheel {Diesen Benutzer der Gruppe 'wheel' hinzufügen?}
+message addusertowheel {Diesen Benutzer der Gruppe 'wheel' hinzufügen?
+So können Sie 'su' verwenden, um Superuser zu werden.}
 
 message Delete_partition
 {Partition löschen}
@@ -1587,3 +1593,33 @@ message network_ok
 {Ihr Netzwerk scheint bereits zu funktionieren. 
 Möchten Sie die Konfiguration überspringen 
 und die bisherigen Einstellungen verwenden?}
+
+message todr_old
+{Die Uhr scheint falsch zu gehen!}
+
+message setdatetime
+{Datum und Uhrzeit einstellen}
+
+message time_ok
+{Datum und Uhrzeit wie eingestellt übernehmen}
+
+
+/* Called with:				Example
+ *  $0 = header message			The clock is off!
+ *  $1 = current date/time string	Sun, 12 Apr 2026 21:04:50
+ */
+message date_and_time_hdr
+{$0
+
+Bitte geben sie das aktuelle Datum und Uhrzeit ein.
+
+Eingestellte Zeit: $1
+
+
+}
+
+message year {Jahr}
+message month {Monat (1-12)}
+message day {Tag (1-31)}
+message hour {Stunde (0-23)}
+message minute {Minute (0-59)}

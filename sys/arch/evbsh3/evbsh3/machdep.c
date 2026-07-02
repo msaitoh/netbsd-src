@@ -1,4 +1,4 @@
-/*	$NetBSD: machdep.c,v 1.77 2024/02/05 22:08:05 andvar Exp $	*/
+/*	$NetBSD: machdep.c,v 1.79 2026/06/10 21:24:10 andvar Exp $	*/
 
 /*-
  * Copyright (c) 1996, 1997, 1998 The NetBSD Foundation, Inc.
@@ -65,7 +65,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: machdep.c,v 1.77 2024/02/05 22:08:05 andvar Exp $");
+__KERNEL_RCSID(0, "$NetBSD: machdep.c,v 1.79 2026/06/10 21:24:10 andvar Exp $");
 
 #include "opt_ddb.h"
 #include "opt_kgdb.h"
@@ -256,7 +256,7 @@ initSH3(void *pc)	/* XXX return address */
 	/* Clear bss */
 	memset(edata, 0, end - edata);
 
-	/* Initilize CPU ops. */
+	/* Initialize CPU ops. */
 #if defined(SH3) && defined(SH4)
 #error "don't define both SH3 and SH4"
 #elif defined(SH3)
@@ -521,7 +521,7 @@ LoadAndReset(const char *osimage)
 	printf("LoadAndReset: copy end[%lx,%lx]\n", csum, csum2);
 	printf("start XLoadAndReset\n");
 
-	/* mask all externel interrupt (XXX) */
+	/* mask all external interrupts (XXX) */
 
 	XLoadAndReset(buf_addr);
 }

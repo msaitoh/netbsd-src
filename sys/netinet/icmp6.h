@@ -1,4 +1,4 @@
-/*	$NetBSD: icmp6.h,v 1.59 2022/08/29 09:14:02 knakahara Exp $	*/
+/*	$NetBSD: icmp6.h,v 1.63 2026/04/05 10:19:57 andvar Exp $	*/
 /*	$KAME: icmp6.h,v 1.84 2003/04/23 10:26:51 itojun Exp $	*/
 
 
@@ -64,6 +64,10 @@
 
 #ifndef _NETINET_ICMP6_H_
 #define _NETINET_ICMP6_H_
+
+#include <sys/types.h>
+
+#include <netinet/in.h>
 
 #define ICMPV6_PLD_MAXLEN	1232	/* IPV6_MMTU - sizeof(struct ip6_hdr)
 					   - sizeof(struct icmp6_hdr) */
@@ -591,9 +595,9 @@ struct icmp6_filter {
 		/* space for 13 counters */
 #define	ICMP6_STAT_PMTUCHG	534	/* path MTU changes */
 #define	ICMP6_STAT_ND_BADOPT	535	/* bad ND options */
-#define	ICMP6_STAT_BADNS	536	/* bad neighbor solicititation */
+#define	ICMP6_STAT_BADNS	536	/* bad neighbor solicitation */
 #define	ICMP6_STAT_BADNA	537	/* bad neighbor advertisement */
-#define	ICMP6_STAT_BADRS	538	/* bad router solicitiation */
+#define	ICMP6_STAT_BADRS	538	/* bad router solicitation */
 #define	ICMP6_STAT_BADRA	539	/* bad router advertisement */
 #define	ICMP6_STAT_BADREDIRECT	540	/* bad redirect message */
 #define ICMP6_STAT_DROPPED_RAROUTE 541	/* discarded routes from router advertisement */
@@ -642,6 +646,7 @@ struct icmp6_filter {
 #define	ICMPV6CTL_ND6_MAXQLEN	24
 #define	ICMPV6CTL_REFLECT_PMTU	25
 #define	ICMPV6CTL_DYNAMIC_RT_MSG	26
+#define	ICMPV6CTL_ND6_GCTIMER	27
 
 #ifdef _KERNEL
 struct	rtentry;
@@ -757,7 +762,7 @@ static const char * const icmp6_code_timxceed[] = {
 
 static const char * const icmp6_code_paramprob[] = {
 	"hdr_field", "nxthdr_type", "option", NULL
-};      
+};
 
 /* not all informational icmps that have codes have a names array */
 #endif

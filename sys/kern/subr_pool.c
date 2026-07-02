@@ -1,4 +1,4 @@
-/*	$NetBSD: subr_pool.c,v 1.290 2023/04/09 12:21:59 riastradh Exp $	*/
+/*	$NetBSD: subr_pool.c,v 1.297 2026/01/04 03:20:29 riastradh Exp $	*/
 
 /*
  * Copyright (c) 1997, 1999, 2000, 2002, 2007, 2008, 2010, 2014, 2015, 2018,
@@ -33,7 +33,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: subr_pool.c,v 1.290 2023/04/09 12:21:59 riastradh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: subr_pool.c,v 1.297 2026/01/04 03:20:29 riastradh Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_ddb.h"
@@ -42,24 +42,27 @@ __KERNEL_RCSID(0, "$NetBSD: subr_pool.c,v 1.290 2023/04/09 12:21:59 riastradh Ex
 #endif
 
 #include <sys/param.h>
-#include <sys/systm.h>
-#include <sys/sysctl.h>
+#include <sys/types.h>
+
+#include <sys/asan.h>
+#include <sys/atomic.h>
 #include <sys/bitops.h>
-#include <sys/proc.h>
-#include <sys/errno.h>
-#include <sys/kernel.h>
-#include <sys/vmem.h>
-#include <sys/pool.h>
-#include <sys/syslog.h>
+#include <sys/cpu.h>
 #include <sys/debug.h>
+#include <sys/errno.h>
+#include <sys/fault.h>
+#include <sys/kernel.h>
 #include <sys/lock.h>
 #include <sys/lockdebug.h>
-#include <sys/xcall.h>
-#include <sys/cpu.h>
-#include <sys/atomic.h>
-#include <sys/asan.h>
 #include <sys/msan.h>
-#include <sys/fault.h>
+#include <sys/pool.h>
+#include <sys/proc.h>
+#include <sys/sdt.h>
+#include <sys/sysctl.h>
+#include <sys/syslog.h>
+#include <sys/systm.h>
+#include <sys/vmem.h>
+#include <sys/xcall.h>
 
 #include <uvm/uvm_extern.h>
 
@@ -830,8 +833,18 @@ pool_init(struct pool *pp, size_t size, u_int align, u_int ioff, int flags,
 		mutex_exit(&pool_head_lock);
 #endif
 
-	if (palloc == NULL)
-		palloc = &pool_allocator_kmem;
+	if (palloc == NULL) {
+		if (size > PAGE_SIZE) {
+			int bigidx = pool_bigidx(size);
+
+			palloc = &pool_allocator_big[bigidx];
+			flags |= PR_NOALIGN;
+		} else if (ipl == IPL_NONE) {
+			palloc = &pool_allocator_nointr;
+		} else {
+			palloc = &pool_allocator_kmem;
+		}
+	}
 
 	if (!cold)
 		mutex_enter(&pool_allocator_lock);
@@ -879,6 +892,7 @@ pool_init(struct pool *pp, size_t size, u_int align, u_int ioff, int flags,
 	pp->pr_npages = 0;
 	pp->pr_minitems = 0;
 	pp->pr_minpages = 0;
+	pp->pr_maxitems = UINT_MAX;
 	pp->pr_maxpages = UINT_MAX;
 	pp->pr_roflags = flags;
 	pp->pr_flags = 0;
@@ -1320,7 +1334,8 @@ pool_do_put(struct pool *pp, void *v, struct pool_pagelist *pq)
 		pp->pr_nidle++;
 		if (pp->pr_nitems - pp->pr_itemsperpage >= pp->pr_minitems &&
 		    pp->pr_npages > pp->pr_minpages &&
-		    pp->pr_npages > pp->pr_maxpages) {
+		    (pp->pr_npages > pp->pr_maxpages ||
+		     pp->pr_nitems > pp->pr_maxitems)) {
 			pr_rmpage(pp, ph, pq);
 		} else {
 			LIST_REMOVE(ph, ph_pagelist);
@@ -1392,7 +1407,7 @@ pool_grow(struct pool *pp, int flags)
 			do {
 				cv_wait(&pp->pr_cv, &pp->pr_lock);
 			} while (pp->pr_flags & PR_GROWING);
-			return ERESTART;
+			return SET_ERROR(ERESTART);
 		} else {
 			if (pp->pr_flags & PR_GROWINGNOWAIT) {
 				/*
@@ -1403,9 +1418,9 @@ pool_grow(struct pool *pp, int flags)
 				 */
 				mutex_exit(&pp->pr_lock);
 				mutex_enter(&pp->pr_lock);
-				return ERESTART;
+				return SET_ERROR(ERESTART);
 			}
-			return EWOULDBLOCK;
+			return SET_ERROR(EWOULDBLOCK);
 		}
 	}
 	pp->pr_flags |= PR_GROWING;
@@ -1441,7 +1456,7 @@ out:
 		mutex_enter(&pp->pr_lock);
 	KASSERT(pp->pr_flags & PR_GROWING);
 	pp->pr_flags &= ~(PR_GROWING|PR_GROWINGNOWAIT);
-	return ENOMEM;
+	return SET_ERROR(ENOMEM);
 }
 
 void
@@ -1894,16 +1909,18 @@ pool_print1(struct pool *pp, const char *modif, void (*pr)(const char *, ...))
 
 	/* Single line output. */
 	if (print_short) {
-		(*pr)(" %s:%p:%u:%u:%u:%u:%u:%u:%u:%u:%u:%u\n",
+		(*pr)(" %s:%p:%u:%u:%u:%u:%u:%u:%u:%u:%u:%u:%zu\n",
 		    pp->pr_wchan, pp, pp->pr_size, pp->pr_align, pp->pr_npages,
 		    pp->pr_nitems, pp->pr_nout, pp->pr_nget, pp->pr_nput,
-		    pp->pr_npagealloc, pp->pr_npagefree, pp->pr_nidle);
+		    pp->pr_npagealloc, pp->pr_npagefree, pp->pr_nidle,
+		    (size_t)pp->pr_npagealloc * pp->pr_alloc->pa_pagesz);
 		return;
 	}
 
-	(*pr)(" %s: size %u, align %u, ioff %u, roflags 0x%08x\n",
-	    pp->pr_wchan, pp->pr_size, pp->pr_align, pp->pr_itemoffset,
-	    pp->pr_roflags);
+	(*pr)(" %s: itemsize %u, totalmem %zu align %u, ioff %u, roflags 0x%08x\n",
+	    pp->pr_wchan, pp->pr_size,
+	    (size_t)pp->pr_npagealloc * pp->pr_alloc->pa_pagesz,
+	    pp->pr_align, pp->pr_itemoffset, pp->pr_roflags);
 	(*pr)("\tpool %p, alloc %p\n", pp, pp->pr_alloc);
 	(*pr)("\tminitems %u, minpages %u, maxpages %u, npages %u\n",
 	    pp->pr_minitems, pp->pr_minpages, pp->pr_maxpages, pp->pr_npages);
@@ -2115,16 +2132,6 @@ pool_cache_bootstrap(pool_cache_t pc, size_t size, u_int align,
 	unsigned int ppflags;
 
 	pp = &pc->pc_pool;
-	if (palloc == NULL && ipl == IPL_NONE) {
-		if (size > PAGE_SIZE) {
-			int bigidx = pool_bigidx(size);
-
-			palloc = &pool_allocator_big[bigidx];
-			flags |= PR_NOALIGN;
-		} else
-			palloc = &pool_allocator_nointr;
-	}
-
 	ppflags = flags;
 	if (ctor == NULL) {
 		ctor = NO_CTOR;
@@ -2966,17 +2973,6 @@ pool_allocator_alloc(struct pool *pp, int flags)
 	void *res;
 
 	res = (*pa->pa_alloc)(pp, flags);
-	if (res == NULL && (flags & PR_WAITOK) == 0) {
-		/*
-		 * We only run the drain hook here if PR_NOWAIT.
-		 * In other cases, the hook will be run in
-		 * pool_reclaim().
-		 */
-		if (pp->pr_drain_hook != NULL) {
-			(*pp->pr_drain_hook)(pp->pr_drain_hook_arg, flags);
-			res = (*pa->pa_alloc)(pp, flags);
-		}
-	}
 	return res;
 }
 

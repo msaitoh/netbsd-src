@@ -91,6 +91,7 @@ screen_init(struct screen *s, u_int sx, u_int sy, u_int hlimit)
 
 #ifdef ENABLE_SIXEL
 	TAILQ_INIT(&s->images);
+	TAILQ_INIT(&s->saved_images);
 #endif
 
 	s->write_list = NULL;
@@ -110,10 +111,11 @@ screen_reinit(struct screen *s)
 	s->rlower = screen_size_y(s) - 1;
 
 	s->mode = MODE_CURSOR|MODE_WRAP|(s->mode & MODE_CRLF);
-	if (options_get_number(global_options, "extended-keys") == 2)
-		s->mode |= MODE_KEXTENDED;
 
-	if (s->saved_grid != NULL)
+	if (options_get_number(global_options, "extended-keys") == 2)
+		s->mode = (s->mode & ~EXTENDED_KEY_MODES)|MODE_KEYS_EXTENDED;
+
+	if (SCREEN_IS_ALTERNATE(s))
 		screen_alternate_off(s, NULL, 0);
 	s->saved_cx = UINT_MAX;
 	s->saved_cy = UINT_MAX;
@@ -154,7 +156,7 @@ screen_free(struct screen *s)
 	if (s->write_list != NULL)
 		screen_write_free_list(s);
 
-	if (s->saved_grid != NULL)
+	if (SCREEN_IS_ALTERNATE(s))
 		grid_destroy(s->saved_grid);
 	grid_destroy(s->grid);
 
@@ -179,6 +181,20 @@ screen_reset_tabs(struct screen *s)
 		fatal("bit_alloc failed");
 	for (i = 8; i < screen_size_x(s); i += 8)
 		bit_set(s->tabs, i);
+}
+
+/* Set default cursor style and colour from options. */
+void
+screen_set_default_cursor(struct screen *s, struct options *oo)
+{
+	int	c;
+
+	c = options_get_number(oo, "cursor-colour");
+	s->default_ccolour = c;
+
+	c = options_get_number(oo, "cursor-style");
+	s->default_mode = 0;
+	screen_set_cursor_style(c, &s->default_cstyle, &s->default_mode);
 }
 
 /* Set screen cursor style and mode. */
@@ -308,12 +324,12 @@ screen_resize_cursor(struct screen *s, u_int sx, u_int sy, int reflow,
 	if (sy != screen_size_y(s))
 		screen_resize_y(s, sy, eat_empty, &cy);
 
-	if (reflow) {
 #ifdef ENABLE_SIXEL
-		image_free_all(s);
+	image_free_all(s);
 #endif
+
+	if (reflow)
 		screen_reflow(s, sx, &cx, &cy, cursor);
-	}
 
 	if (cy >= s->grid->hsize) {
 		s->cx = cx;
@@ -400,7 +416,7 @@ screen_resize_y(struct screen *s, u_int sy, int eat_empty, u_int *cy)
 
 		/*
 		 * Try to pull as much as possible out of scrolled history, if
-		 * is is enabled.
+		 * it is enabled.
 		 */
 		available = gd->hscrolled;
 		if (gd->flags & GRID_HISTORY && available > 0) {
@@ -573,11 +589,17 @@ screen_select_cell(struct screen *s, struct grid_cell *dst,
 		return;
 
 	memcpy(dst, &s->sel->cell, sizeof *dst);
-
+	if (COLOUR_DEFAULT(dst->fg))
+		dst->fg = src->fg;
+	if (COLOUR_DEFAULT(dst->bg))
+		dst->bg = src->bg;
 	utf8_copy(&dst->data, &src->data);
-	dst->attr = dst->attr & ~GRID_ATTR_CHARSET;
-	dst->attr |= src->attr & GRID_ATTR_CHARSET;
 	dst->flags = src->flags;
+
+	if (dst->attr & GRID_ATTR_NOATTR)
+		dst->attr |= (src->attr & GRID_ATTR_CHARSET);
+	else
+		dst->attr |= src->attr;
 }
 
 /* Reflow wrapped lines. */
@@ -611,9 +633,12 @@ screen_reflow(struct screen *s, u_int new_x, u_int *cx, u_int *cy, int cursor)
 void
 screen_alternate_on(struct screen *s, struct grid_cell *gc, int cursor)
 {
-	u_int	sx, sy;
+	u_int		 sx, sy;
+#ifdef ENABLE_SIXEL
+	struct image	*im;
+#endif
 
-	if (s->saved_grid != NULL)
+	if (SCREEN_IS_ALTERNATE(s))
 		return;
 	sx = screen_size_x(s);
 	sy = screen_size_y(s);
@@ -626,6 +651,12 @@ screen_alternate_on(struct screen *s, struct grid_cell *gc, int cursor)
 	}
 	memcpy(&s->saved_cell, gc, sizeof s->saved_cell);
 
+#ifdef ENABLE_SIXEL
+	TAILQ_CONCAT(&s->saved_images, &s->images, entry);
+	TAILQ_FOREACH(im, &s->saved_images, entry)
+	    im->list = &s->saved_images;
+#endif
+
 	grid_view_clear(s->grid, 0, 0, sx, sy, 8);
 
 	s->saved_flags = s->grid->flags;
@@ -636,13 +667,16 @@ screen_alternate_on(struct screen *s, struct grid_cell *gc, int cursor)
 void
 screen_alternate_off(struct screen *s, struct grid_cell *gc, int cursor)
 {
-	u_int	sx = screen_size_x(s), sy = screen_size_y(s);
+	u_int		 sx = screen_size_x(s), sy = screen_size_y(s);
+#ifdef ENABLE_SIXEL
+	struct image	*im;
+#endif
 
 	/*
 	 * If the current size is different, temporarily resize to the old size
 	 * before copying back.
 	 */
-	if (s->saved_grid != NULL)
+	if (SCREEN_IS_ALTERNATE(s))
 		screen_resize(s, s->saved_grid->sx, s->saved_grid->sy, 0);
 
 	/*
@@ -657,7 +691,7 @@ screen_alternate_off(struct screen *s, struct grid_cell *gc, int cursor)
 	}
 
 	/* If not in the alternate screen, do nothing more. */
-	if (s->saved_grid == NULL) {
+	if (!SCREEN_IS_ALTERNATE(s)) {
 		if (s->cx > screen_size_x(s) - 1)
 			s->cx = screen_size_x(s) - 1;
 		if (s->cy > screen_size_y(s) - 1)
@@ -679,6 +713,13 @@ screen_alternate_off(struct screen *s, struct grid_cell *gc, int cursor)
 
 	grid_destroy(s->saved_grid);
 	s->saved_grid = NULL;
+
+#ifdef ENABLE_SIXEL
+	image_free_all(s);
+	TAILQ_CONCAT(&s->images, &s->saved_images, entry);
+	TAILQ_FOREACH(im, &s->images, entry)
+	    im->list = &s->images;
+#endif
 
 	if (s->cx > screen_size_x(s) - 1)
 		s->cx = screen_size_x(s) - 1;
@@ -730,8 +771,10 @@ screen_mode_to_string(int mode)
 		strlcat(tmp, "ORIGIN,", sizeof tmp);
 	if (mode & MODE_CRLF)
 		strlcat(tmp, "CRLF,", sizeof tmp);
-	if (mode & MODE_KEXTENDED)
-		strlcat(tmp, "KEXTENDED,", sizeof tmp);
+	if (mode & MODE_KEYS_EXTENDED)
+		strlcat(tmp, "KEYS_EXTENDED,", sizeof tmp);
+	if (mode & MODE_KEYS_EXTENDED_2)
+		strlcat(tmp, "KEYS_EXTENDED_2,", sizeof tmp);
 	tmp[strlen(tmp) - 1] = '\0';
 	return (tmp);
 }

@@ -1,4 +1,4 @@
-/* $NetBSD: decl.c,v 1.406 2024/10/14 18:43:23 rillig Exp $ */
+/* $NetBSD: decl.c,v 1.429 2026/06/16 05:27:57 rillig Exp $ */
 
 /*
  * Copyright (c) 1996 Christopher G. Demetriou.  All Rights Reserved.
@@ -38,7 +38,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID)
-__RCSID("$NetBSD: decl.c,v 1.406 2024/10/14 18:43:23 rillig Exp $");
+__RCSID("$NetBSD: decl.c,v 1.429 2026/06/16 05:27:57 rillig Exp $");
 #endif
 
 #include <sys/param.h>
@@ -191,6 +191,8 @@ dcs_add_function_specifier(function_specifier fs)
 			warning(10, "inline");
 		dcs->d_inline = true;
 	}
+	if (fs == FS_NORETURN)
+		dcs->d_noreturn = true;
 	debug_func_dcs(__func__);
 }
 
@@ -230,6 +232,7 @@ merge_signedness(tspec_t t, tspec_t s)
 	    : t == INT ? UINT
 	    : t == LONG ? ULONG
 	    : t == LLONG ? ULLONG
+	    : t == INT128 ? UINT128
 	    : t;
 }
 
@@ -349,11 +352,8 @@ dcs_add_type(type_t *tp)
 			t = FCOMPLEX;
 		else if (dcs->d_complex_mod == DOUBLE)
 			t = DCOMPLEX;
-		else {
-			/* invalid type for _Complex */
-			error(308);
-			t = DCOMPLEX;	/* just as a fallback */
-		}
+		else if (dcs->d_abstract_type == NO_TSPEC)
+			t = COMPLEX;
 		dcs->d_complex_mod = NO_TSPEC;
 	}
 
@@ -377,7 +377,7 @@ dcs_add_type(type_t *tp)
 		if (dcs->d_sign_mod != NO_TSPEC)
 			dcs->d_invalid_type_combination = true;
 		dcs->d_sign_mod = t;
-	} else if (t == SHORT || t == LONG || t == LLONG) {
+	} else if (t == SHORT || t == LONG || t == LLONG || t == INT128) {
 		if (dcs->d_rank_mod != NO_TSPEC)
 			dcs->d_invalid_type_combination = true;
 		dcs->d_rank_mod = t;
@@ -392,9 +392,11 @@ dcs_add_type(type_t *tp)
 				dcs->d_invalid_type_combination = true;
 			dcs->d_abstract_type = t;
 		}
-	} else if (t == PTR) {
+	} else if (t == PTR)
 		dcs->d_type = tp;
-	} else {
+	else if (t == COMPLEX && dcs->d_abstract_type == NO_TSPEC)
+		dcs->d_abstract_type = t;
+	else {
 		if (dcs->d_abstract_type != NO_TSPEC)
 			dcs->d_invalid_type_combination = true;
 		dcs->d_abstract_type = t;
@@ -463,11 +465,11 @@ pack_struct_or_union(type_t *tp)
 }
 
 void
-dcs_add_alignas(tnode_t *tn)
+dcs_add_alignas(unsigned int al)
 {
-	dcs->d_mem_align = to_int_constant(tn, true);
-	if (dcs->d_type != NULL && is_struct_or_union(dcs->d_type->t_tspec))
-		// FIXME: The type must not be modified.
+	dcs->d_mem_align = al;
+	if (dcs->d_type != NULL && is_struct_or_union(dcs->d_type->t_tspec)
+	    && !dcs->d_finished)
 		dcs->d_type->u.sou->sou_align = dcs->d_mem_align;
 	debug_func_dcs(__func__);
 }
@@ -499,6 +501,19 @@ dcs_add_qualifiers(type_qualifiers qs)
 {
 	add_type_qualifiers(&dcs->d_qual, qs);
 	debug_func_dcs(__func__);
+}
+
+void
+dcs_add_type_attributes(type_attributes attrs)
+{
+	if (attrs.used)
+		dcs_set_used();
+	if (attrs.noreturn)
+		dcs->d_noreturn = true;
+	if (attrs.bit_width == 128)
+		dcs->d_rank_mod = INT128;
+	if (attrs.bit_width == 64)
+		dcs->d_rank_mod = LLONG;
 }
 
 void
@@ -572,7 +587,7 @@ end_declaration_level(void)
 		/* there is nothing around an external declaration */
 		/* FALLTHROUGH */
 	default:
-		lint_assert(/*CONSTCOND*/false);
+		lint_assert(false);
 	}
 	free(dl);
 	debug_leave();
@@ -628,12 +643,14 @@ dcs_begin_type(void)
 	// keep d_asm
 	dcs->d_packed = false;
 	dcs->d_used = false;
+	dcs->d_noreturn = false;
 	// keep d_tag_type
 	dcs->d_func_params = NULL;
 	dcs->d_func_def_pos = (pos_t){ NULL, 0, 0 };
 	// keep d_first_dlsym
 	// keep d_last_dlsym
 	dcs->d_func_proto_syms = NULL;
+	dcs->d_finished = false;
 	// keep d_enclosing
 
 	debug_func_dcs(__func__);
@@ -644,7 +661,7 @@ dcs_adjust_storage_class(void)
 {
 	if (dcs->d_kind == DLK_EXTERN) {
 		if (dcs->d_scl == REG || dcs->d_scl == AUTO) {
-			/* illegal storage class */
+			/* invalid storage class */
 			error(8);
 			dcs->d_scl = NO_SCL;
 		}
@@ -704,8 +721,19 @@ dcs_merge_declaration_specifiers(void)
 		t = LDOUBLE;
 	}
 	if (t == LDOUBLE && !allow_c90)
-		/* 'long double' is illegal in traditional C */
+		/* 'long double' requires C90 or later */
 		warning(266);
+	if (t == COMPLEX && c == FLOAT)
+		t = FCOMPLEX;
+	else if (t == COMPLEX && c == DOUBLE)
+		t = DCOMPLEX;
+	else if (t == COMPLEX && c == LDOUBLE)
+		t = LCOMPLEX;
+	else if (t == COMPLEX) {
+		/* invalid type for _Complex */
+		error(308);
+		t = DCOMPLEX;
+	}
 	if (l == LONG && t == DCOMPLEX) {
 		l = NO_TSPEC;
 		t = LCOMPLEX;
@@ -734,7 +762,7 @@ dcs_end_type(void)
 		/* only one storage class allowed */
 		error(7);
 	if (dcs->d_invalid_type_combination)
-		/* illegal type combination */
+		/* invalid type combination */
 		error(4);
 
 	dcs_adjust_storage_class();
@@ -767,6 +795,7 @@ dcs_end_type(void)
 		    & -align_in_bits;
 	}
 
+	dcs->d_finished = true;
 	debug_dcs();
 	debug_leave();
 }
@@ -881,30 +910,25 @@ check_type(sym_t *sym)
 		 * better warning is printed in begin_function().
 		 */
 		if (t == FUNC && !tp->t_proto &&
-		    !(to == NO_TSPEC && sym->s_osdef)) {
-			/* TODO: Make this an error in C99 mode as well. */
-			if (!allow_trad && !allow_c99 && hflag)
-				/* function declaration is not a prototype */
-				warning(287);
-		}
+		    !(to == NO_TSPEC && sym->s_osdef) &&
+		    !allow_trad && hflag && !allow_c23)
+			/* function declaration for '%s' is not a prototype */
+			warning(287, sym->s_name);
 		if (to == FUNC) {
 			if (t == FUNC || t == ARRAY) {
-				/* function returns illegal type '%s' */
+				/* function returns invalid type '%s' */
 				error(15, type_name(tp));
 				*tpp = block_derive_type(
 				    t == FUNC ? *tpp : (*tpp)->t_subt, PTR);
 				return;
 			}
-			if (tp->t_const || tp->t_volatile) {
-				/* TODO: Make this a warning in C99 mode as well. */
-				if (!allow_trad && !allow_c99) {	/* XXX or better allow_c90? */
-					/* function cannot return const... */
-					warning(228);
-				}
-			}
+			if (tp->t_const || tp->t_volatile)
+				/* returning the type qualifier '%s' has ... */
+				warning(228,
+				    tp->t_const ? "const" : "volatile");
 		} else if (to == ARRAY) {
 			if (t == FUNC) {
-				/* array of function is illegal */
+				/* array of function is invalid */
 				error(16);
 				*tpp = gettyp(INT);
 				return;
@@ -915,7 +939,7 @@ check_type(sym_t *sym)
 				return;
 			}
 			if (t == VOID) {
-				/* illegal use of 'void' */
+				/* invalid use of 'void' */
 				error(18);
 				*tpp = gettyp(INT);
 			}
@@ -994,7 +1018,7 @@ check_bit_field_type(sym_t *dsym, type_t **inout_tp, tspec_t *inout_t)
 
 		type_t *btp = block_dup_type(tp);
 		btp->t_bitfield = false;
-		/* illegal bit-field type '%s' */
+		/* invalid bit-field type '%s' */
 		warning(35, type_name(btp));
 
 		unsigned int width = tp->t_bit_field_width;
@@ -1016,7 +1040,7 @@ check_bit_field(sym_t *dsym, tspec_t *inout_t, type_t **inout_tp)
 	tspec_t t = *inout_t;
 	unsigned int t_width = size_in_bits(t);
 	if (tp->t_bit_field_width > t_width) {
-		/* illegal bit-field size: %d */
+		/* invalid bit-field size: %d */
 		error(36, (int)tp->t_bit_field_width);
 		tp->t_bit_field_width = t_width;
 	} else if (tp->t_bit_field_width == 0 && dsym->s_name != unnamed) {
@@ -1126,7 +1150,7 @@ declare_member(sym_t *dsym)
 	if (dsym->s_bitfield)
 		check_bit_field(dsym, &t, &tp);
 	else if (t == FUNC) {
-		/* function illegal in structure or union */
+		/* function invalid in structure or union */
 		error(38);
 		dsym->s_type = tp = block_derive_type(tp, t = PTR);
 	}
@@ -1293,14 +1317,17 @@ add_array(sym_t *decl, bool has_dim, int dim)
 }
 
 static type_t *
-block_derive_function(type_t *ret, bool proto, sym_t *params, bool vararg)
+block_derive_function(type_t *ret, bool proto, sym_t *params, bool vararg,
+    bool noreturn, bool identifier_params)
 {
 
 	type_t *tp = block_derive_type(ret, FUNC);
 	tp->t_proto = proto;
 	if (proto)
 		tp->u.params = params;
+	tp->t_noreturn = noreturn;
 	tp->t_vararg = vararg;
+	tp->t_identifier_params = identifier_params;
 	debug_step("%s: '%s'", __func__, type_name(tp));
 	return tp;
 }
@@ -1372,9 +1399,16 @@ add_function(sym_t *decl, parameter_list params)
 		debug_sym("param: ", p, "\n");
 #endif
 
+	if (params.identifier && allow_c23)
+		/* function definition for '%s' with identifier list is ... */
+		error_at(384, &decl->s_def_pos, decl->s_name);
+	else if (params.identifier && allow_c99)
+		/* function definition for '%s' with identifier list is ... */
+		warning_at(384, &decl->s_def_pos, decl->s_name);
+
 	if (params.prototype) {
 		if (!allow_c90)
-			/* function prototypes are illegal in traditional C */
+			/* function prototypes require C90 or later */
 			warning(270);
 		check_prototype_parameters(params.first);
 		if (params.first != NULL
@@ -1410,7 +1444,9 @@ add_function(sym_t *decl, parameter_list params)
 	}
 
 	*tpp = block_derive_function(dcs->d_enclosing->d_type,
-	    params.prototype, params.first, params.vararg);
+	    params.prototype, params.first, params.vararg,
+	    params.noreturn || dcs->d_enclosing->d_noreturn,
+	    params.identifier);
 
 	debug_step("add_function: '%s'", type_name(decl->s_type));
 	debug_dcs_all();
@@ -1752,7 +1788,7 @@ enumeration_constant(sym_t *sym, int val, bool implicit)
 
 	if (sym->s_scl != NO_SCL) {
 		if (sym->s_block_level == block_level) {
-			/* no hflag, because this is illegal */
+			/* no hflag, because this is invalid */
 			if (sym->s_param)
 				/* enumeration constant '%s' hides parameter */
 				warning(57, sym->s_name);
@@ -1811,8 +1847,7 @@ check_extern_declaration(const sym_t *sym)
 		warning(351, sym->s_type->t_tspec == FUNC ? "" : " 'extern'",
 		    sym->s_name);
 	}
-	if (any_query_enabled &&
-	    sym->s_type->t_tspec == FUNC &&
+	if (sym->s_type->t_tspec == FUNC &&
 	    sym->s_scl == EXTERN &&
 	    sym->s_def == DECL &&
 	    !in_system_header)
@@ -2016,6 +2051,24 @@ declare_extern(sym_t *dsym, bool has_initializer, const sbuf_t *renaming)
 		dsym->s_type = block_dup_type(dsym->s_type);
 		dsym->s_type->t_typedef = true;
 		set_first_typedef(dsym->s_type, dsym);
+		if (dsym->s_type->t_tspec == STRUCT)
+			/* typedef '%s' of struct type '%s' */
+			query_message(21, dsym->s_name,
+			    type_name(dsym->s_type));
+		else if (dsym->s_type->t_tspec == UNION)
+			/* typedef '%s' of union type '%s' */
+			query_message(22, dsym->s_name,
+			    type_name(dsym->s_type));
+		else if (dsym->s_type->t_tspec == PTR
+		    && dsym->s_type->t_subt->t_tspec == STRUCT)
+			/* typedef '%s' of pointer to struct type '%s' */
+			query_message(23, dsym->s_name,
+			    type_name(dsym->s_type));
+		else if (dsym->s_type->t_tspec == PTR
+		    && dsym->s_type->t_subt->t_tspec == UNION)
+			/* typedef '%s' of pointer to union type '%s' */
+			query_message(24, dsym->s_name,
+			    type_name(dsym->s_type));
 	}
 	debug_printf("%s: ", __func__);
 	debug_sym("", dsym, "\n");
@@ -2077,9 +2130,11 @@ check_redeclaration(sym_t *dsym, bool *dowarn)
 		return true;
 	}
 	if (rdsym->s_scl == TYPEDEF) {
-		/* typedef '%s' redeclared */
-		error(89, dsym->s_name);
-		print_previous_declaration(rdsym);
+		if (!allow_c11) {
+			/* typedef '%s' redeclared */
+			error(89, dsym->s_name);
+			print_previous_declaration(rdsym);
+		}
 		return true;
 	}
 	if (dsym->s_scl == TYPEDEF) {
@@ -2221,7 +2276,6 @@ types_compatible(const type_t *tp1, const type_t *tp2,
 			else if (t == SHORT)
 				t = INT;
 			else if (t == USHORT) {
-				/* CONSTCOND */
 				t = TARG_INT_MAX < TARG_USHRT_MAX || !allow_c90
 				    ? UINT : INT;
 			}
@@ -2267,8 +2321,8 @@ types_compatible(const type_t *tp1, const type_t *tp2,
  * second compatible type.
  *
  * Following lines are legal:
- *  "typedef a[]; a b; a b[10]; a c; a c[20];"
- *  "typedef ft(); ft f; f(int); ft g; g(long);"
+ *	"typedef a[]; a b; a b[10]; a c; a c[20];"
+ *	"typedef ft(); ft f; f(int); ft g; g(long);"
  * This means that, if a type is completed, the type structure must be
  * duplicated.
  */
@@ -2333,8 +2387,14 @@ declare_parameter(sym_t *sym, bool has_initializer)
 		sym->s_type = gettyp(VOID);
 
 	tspec_t t = sym->s_type->t_tspec;
-	if (t == ARRAY)
-		sym->s_type = block_derive_type(sym->s_type->t_subt, PTR);
+	if (t == ARRAY) {
+		type_t *subt = block_dup_type(sym->s_type->t_subt);
+		if (sym->s_type->t_const)
+			subt->t_const = true;
+		if (sym->s_type->t_volatile)
+			subt->t_volatile = true;
+		sym->s_type = block_derive_type(subt, PTR);
+	}
 	if (t == FUNC) {
 		if (!allow_c90)
 			/* parameter '%s' has function type, should be ... */
@@ -2348,7 +2408,7 @@ declare_parameter(sym_t *sym, bool has_initializer)
 		/* parameter '%s' declared inline */
 		warning(269, sym->s_name);
 
-	if (any_query_enabled && sym->s_type->t_const
+	if (sym->s_type->t_const
 	    && (sym->s_scl == AUTO || sym->s_scl == REG)) {
 		/* const automatic variable '%s' */
 		query_message(18, sym->s_name);
@@ -2384,7 +2444,7 @@ void
 check_func_lint_directives(void)
 {
 
-	/* check for illegal combinations of lint directives */
+	/* check for invalid combinations of lint directives */
 	if (printflike_argnum != -1 && scanflike_argnum != -1) {
 		/* ** PRINTFLIKE ** and ** SCANFLIKE ** cannot be combined */
 		warning(289);
@@ -2557,7 +2617,7 @@ check_local_hiding(const sym_t *dsym, const sym_t *rdsym)
 		/* Already checked in declare_external_in_block. */
 		break;
 	default:
-		lint_assert(/*CONSTCOND*/false);
+		lint_assert(false);
 	}
 }
 
@@ -2570,7 +2630,7 @@ check_local_redeclaration(const sym_t *dsym, sym_t *rdsym)
 
 	} else if (rdsym->s_block_level == block_level) {
 
-		/* no hflag, because it's illegal! */
+		/* no hflag, because it's invalid! */
 		if (rdsym->s_param) {
 			/*
 			 * if allow_c90, a "redeclaration of '%s'" error is
@@ -2669,7 +2729,7 @@ declare_local(sym_t *dsym, bool has_initializer)
 			warning(93, dsym->s_name);
 			dsym->s_scl = EXTERN;
 		} else if (dsym->s_scl != EXTERN && dsym->s_scl != TYPEDEF) {
-			/* function '%s' has illegal storage class */
+			/* function '%s' has invalid storage class */
 			error(94, dsym->s_name);
 			dsym->s_scl = EXTERN;
 		}
@@ -2691,7 +2751,7 @@ declare_local(sym_t *dsym, bool has_initializer)
 		}
 	}
 
-	if (any_query_enabled && dsym->s_type->t_const
+	if (dsym->s_type->t_const
 	    && (dsym->s_scl == AUTO || dsym->s_scl == REG)) {
 		/* const automatic variable '%s' */
 		query_message(18, dsym->s_name);
@@ -2729,7 +2789,7 @@ declare_local(sym_t *dsym, bool has_initializer)
 		set_first_typedef(dsym->s_type, dsym);
 	}
 
-	if (dsym->s_scl == STATIC && any_query_enabled)
+	if (dsym->s_scl == STATIC)
 		/* static variable '%s' in function */
 		query_message(11, dsym->s_name);
 
@@ -3171,8 +3231,15 @@ to_int_constant(tnode_t *tn, bool required)
 	bool out_of_bounds = is_unsigned
 	    ? (uint64_t)val > (uint64_t)TARG_INT_MAX
 	    : val > (int64_t)TARG_INT_MAX || val < (int64_t)TARG_INT_MIN;
-	if (out_of_bounds)
-		/* integral constant too large */
-		warning(56);
+	if (out_of_bounds) {
+		char buf[256];
+		unsigned long long abs_val = is_unsigned || val >= 0
+		    ? (unsigned long long)val
+		    : -(unsigned long long)val;
+		snprintf(buf, sizeof(buf), "%s%#llx",
+		    is_unsigned || val >= 0 ? "" : "-",	abs_val);
+		/* constant %s too large for 'int' */
+		warning(56, buf);
+	}
 	return (int)val;
 }

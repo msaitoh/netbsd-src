@@ -1,9 +1,13 @@
-# $NetBSD: md.sparc64,v 1.217 2024/07/11 20:41:07 riastradh Exp $
+# $NetBSD: md.sparc64,v 1.222 2026/02/12 04:26:11 kre Exp $
 #
 ./usr/include/g++/bits/sparc			comp-c-include		compat
 ./usr/include/g++/bits/sparc/c++config.h	comp-c-include		gcc,compat
 ./usr/include/g++/bits/sparc64			comp-c-include		compat
 ./usr/include/g++/bits/sparc64/c++config.h	comp-c-include		gcc,compat
+./usr/include/gcc-10/tgmath.h			comp-obsolete		obsolete
+./usr/include/gcc-10/visintrin.h		comp-obsolete		obsolete
+./usr/include/gcc-12/visintrin.h		comp-c-include		gcc=12
+./usr/include/gcc-14/visintrin.h		comp-c-include		gcc=14
 ./usr/include/gcc-4.5/tgmath.h			comp-obsolete		obsolete
 ./usr/include/gcc-4.8/tgmath.h			comp-obsolete		obsolete
 ./usr/include/gcc-4.8/visintrin.h		comp-obsolete		obsolete
@@ -17,11 +21,6 @@
 ./usr/include/gcc-8/visintrin.h			comp-obsolete		obsolete
 ./usr/include/gcc-9/tgmath.h			comp-obsolete		obsolete
 ./usr/include/gcc-9/visintrin.h			comp-obsolete		obsolete
-./usr/include/gcc-10/tgmath.h			comp-c-include		gcc=10
-./usr/include/gcc-10/tgmath.h			comp-obsolete		obsolete,gcc=12
-./usr/include/gcc-10/visintrin.h		comp-c-include		gcc=10
-./usr/include/gcc-10/visintrin.h		comp-obsolete		obsolete,gcc=12
-./usr/include/gcc-12/visintrin.h		comp-c-include		gcc=12
 ./usr/include/ieeefp.h				comp-c-include
 ./usr/include/sparc				comp-c-include
 ./usr/include/sparc/_G_config.h			comp-obsolete		obsolete
@@ -62,6 +61,7 @@
 ./usr/include/sparc/kcore.h			comp-c-include
 ./usr/include/sparc/limits.h			comp-c-include
 ./usr/include/sparc/lock.h			comp-c-include
+./usr/include/sparc/lwp_private.h		comp-c-include
 ./usr/include/sparc/math.h			comp-c-include
 ./usr/include/sparc/mcontext.h			comp-c-include
 ./usr/include/sparc/mutex.h			comp-c-include
@@ -134,6 +134,7 @@
 ./usr/include/sparc64/kcore.h			comp-c-include
 ./usr/include/sparc64/limits.h			comp-c-include
 ./usr/include/sparc64/lock.h			comp-c-include
+./usr/include/sparc64/lwp_private.h		comp-c-include
 ./usr/include/sparc64/math.h			comp-c-include
 ./usr/include/sparc64/mcontext.h		comp-c-include
 ./usr/include/sparc64/mutex.h			comp-c-include
@@ -165,6 +166,8 @@
 ./usr/include/sparc64/vuid_event.h		comp-c-include
 ./usr/include/sparc64/wchar_limits.h		comp-c-include
 ./usr/include/sparc64/z8530var.h		comp-c-include
+./usr/include/vis_proto.h			comp-c-include
+./usr/include/vis_types.h			comp-c-include
 ./usr/lib/sparc_mcmedany.o			comp-c-lib
 ./usr/lib/sparc_mcmedlow.o			comp-c-lib
 ./usr/lib/sparc_mcmedmid.o			comp-c-lib

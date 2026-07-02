@@ -1,4 +1,4 @@
-/*	$NetBSD: locore.S,v 1.93 2024/02/07 04:20:26 msaitoh Exp $	*/
+/*	$NetBSD: locore.S,v 1.104 2026/05/23 14:02:38 skrll Exp $	*/
 
 /*
  * Copyright (c) 2017 Ryo Shimizu
@@ -38,7 +38,7 @@
 #include <aarch64/hypervisor.h>
 #include "assym.h"
 
-RCSID("$NetBSD: locore.S,v 1.93 2024/02/07 04:20:26 msaitoh Exp $")
+RCSID("$NetBSD: locore.S,v 1.104 2026/05/23 14:02:38 skrll Exp $")
 
 #ifdef AARCH64_DEVICE_MEM_NONPOSTED
 #define	MAIR_DEVICE_MEM		MAIR_DEVICE_nGnRnE
@@ -105,7 +105,13 @@ ASENTRY_NP(aarch64_start)
 	bcc	1f
 	/* EL2 registers can be accessed in EL2 or higher */
 	DPRINTSREG("SCTLR_EL2        = ", sctlr_el2)
+	DPRINTSREG("TCR_EL2          = ", tcr_el2)
 	DPRINTSREG("HCR_EL2          = ", hcr_el2)
+	DPRINTSREG("VTTBR_EL2        = ", vttbr_el2)
+	DPRINTSREG("MAIR_EL2         = ", mair_el2)
+#if 0
+	DPRINTSREG("ICH_VTR_EL2      = ", ich_vtr_el2)
+#endif
 1:
 	DPRINTSREG("SPSR_EL1         = ", spsr_el1)
 	DPRINTSREG("CNTFREQ_EL0      = ", cntfrq_el0)
@@ -237,8 +243,6 @@ ASEND(aarch64_start)
 
 
 init_sysregs:
-	stp	x0, lr, [sp, #-16]!
-
 	/* init debug registers */
 	msr	mdscr_el1, xzr
 	msr	oslar_el1, xzr
@@ -251,14 +255,9 @@ init_sysregs:
 	isb
 
 	/* allow to read CNTVCT_EL0 and CNTFRQ_EL0 from EL0 */
-	mrs	x0, cntkctl_el1
-	orr	x0, x0, #CNTKCTL_EL0VCTEN
+	mov	x0, #CNTKCTL_EL0VCTEN
 	msr	cntkctl_el1, x0
 
-	/* any exception not masked */
-	msr	daif, xzr
-
-	ldp	x0, lr, [sp], #16
 	ret
 
 
@@ -332,10 +331,10 @@ locore_lock_exit:
 /* print "[CPU$x27] " (x27 for cpuindex) */
 printcpu:
 	stp	x0, lr, [sp, #-16]!
-	PRINT("[CPU");			\
-	mov	x0, x27;		\
-	bl	_printdec_x0;		\
-	PRINT("] ");			\
+	PRINT("[CPU")
+	mov	x0, x27
+	bl	_printdec_x0
+	PRINT("] ")
 	ldp	x0, lr, [sp], #16
 	ret
 
@@ -585,14 +584,14 @@ END(cpu_mpstart)
 
 
 /*
- * xprint - print strings pointed by $PC(LR)
- *          and return to the end of string.
- *          "\n" will be replaced "\r\n"
- * e.g.)
+ * xprint - print the string pointed to by $PC(LR), and return to the next
+ *          instruction after the end of the string.
+ *          "\n" is replaced with "\r\n"
+ * e.g.
  *    bl        xprint      <- call
- *    .ascii    "Hello\n\0" <- wouldn't return here
+ *    .ascii    "Hello\n\0" <- doesn't return here
  *    .align    2
- *    nop                   <- return to here
+ *    nop                   <- returns to here
  *
  */
 xprint:
@@ -697,9 +696,9 @@ print_x0:
 #ifdef VERBOSE_LOCORE
 /*
  * tinyprintf() supports only maximum 7 '%x', '%d' and '%s' formats.
- * width and any modifiers are ignored. '\n' will be replaced to '\r\n'.
+ * width and any modifiers are ignored. '\n' will be replaced with '\r\n'.
  *
- * '%x' will be always expanded 16 widths hexadicimal.
+ * '%x' implies hexadecimal with a field width of 16.
  * e.g., tinyprintf("Hello %s %x\n", "World", 0x12345)
  * outputs "Hello World 0000000000012345\r\n"
  */
@@ -1012,6 +1011,7 @@ sctlr_set:
 	    SCTLR_SED |     /* SETEND instruction disable */ \
 	    SCTLR_C |       /* Cache enable */ \
 	    SCTLR_M |       /* MMU Enable */ \
+	    SCTLR_EOS |     /* RES1 if no FEAT_ExS */ \
 	    SCTLR_SA0_CONFIG | \
 	    SCTLR_SA_CONFIG | \
 	    SCTLR_A_CONFIG | \
@@ -1022,7 +1022,7 @@ sctlr_clear:
 	    SCTLR_WXN |     /* Write permission implies Execute Never (W^X) */ \
 	    SCTLR_UMA |     /* EL0 Controls access to interrupt masks */ \
 	    SCTLR_ITD |     /* IT instruction disable */ \
-	    SCTLR_nAA |     /* ? */ \
+	    SCTLR_nAA |     /* Non-aligned access. FEAT_LSE2 */ \
 	    SCTLR_CP15BEN | /* CP15 barrier enable */ \
 	    SCTLR_SA0 |     /* Enable EL0 stack alignment check */ \
 	    SCTLR_SA |      /* Enable SP alignment check */ \

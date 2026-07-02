@@ -1,4 +1,4 @@
-/*	$NetBSD: if_bridge.c,v 1.194 2024/09/03 07:59:48 ozaki-r Exp $	*/
+/*	$NetBSD: if_bridge.c,v 1.200 2025/12/10 21:33:00 andvar Exp $	*/
 
 /*
  * Copyright 2001 Wasabi Systems, Inc.
@@ -80,7 +80,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_bridge.c,v 1.194 2024/09/03 07:59:48 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_bridge.c,v 1.200 2025/12/10 21:33:00 andvar Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_inet.h"
@@ -1447,6 +1447,10 @@ bridge_init(struct ifnet *ifp)
 
 	KASSERT((ifp->if_flags & IFF_RUNNING) == 0);
 
+	BRIDGE_LOCK(sc);
+	sc->sc_stopping = false;
+	BRIDGE_UNLOCK(sc);
+
 	callout_reset(&sc->sc_brcallout, bridge_rtable_prune_period * hz,
 	    bridge_timer, sc);
 	bstp_initialization(sc);
@@ -1467,6 +1471,10 @@ bridge_stop(struct ifnet *ifp, int disable)
 
 	KASSERT((ifp->if_flags & IFF_RUNNING) != 0);
 	ifp->if_flags &= ~IFF_RUNNING;
+
+	BRIDGE_LOCK(sc);
+	sc->sc_stopping = true;
+	BRIDGE_UNLOCK(sc);
 
 	callout_halt(&sc->sc_brcallout, NULL);
 	workqueue_wait(sc->sc_rtage_wq, &sc->sc_rtage_wk);
@@ -1813,14 +1821,10 @@ bridge_forward(struct bridge_softc *sc, struct mbuf *m)
 	DECLARE_LOCK_VARIABLE;
 	bool src_if_protected;
 
-	if ((sc->sc_if.if_flags & IFF_RUNNING) == 0)
-		return;
-
 	src_if = m_get_rcvif_psref(m, &psref_src);
 	if (src_if == NULL) {
 		/* Interface is being destroyed? */
-		m_freem(m);
-		goto out;
+		goto discard;
 	}
 
 	if_statadd2(&sc->sc_if, if_ipackets, 1, if_ibytes, m->m_pkthdr.len);
@@ -1831,8 +1835,7 @@ bridge_forward(struct bridge_softc *sc, struct mbuf *m)
 	bif = bridge_lookup_member_if(sc, src_if, &psref);
 	if (bif == NULL) {
 		/* Interface is not a bridge member (anymore?) */
-		m_freem(m);
-		goto out;
+		goto discard;
 	}
 
 	if (bif->bif_flags & IFBIF_STP) {
@@ -1840,9 +1843,8 @@ bridge_forward(struct bridge_softc *sc, struct mbuf *m)
 		case BSTP_IFSTATE_BLOCKING:
 		case BSTP_IFSTATE_LISTENING:
 		case BSTP_IFSTATE_DISABLED:
-			m_freem(m);
 			bridge_release_member(sc, bif, &psref);
-			goto out;
+			goto discard;
 		}
 	}
 
@@ -1867,9 +1869,8 @@ bridge_forward(struct bridge_softc *sc, struct mbuf *m)
 
 	if ((bif->bif_flags & IFBIF_STP) != 0 &&
 	    bif->bif_state == BSTP_IFSTATE_LEARNING) {
-		m_freem(m);
 		bridge_release_member(sc, bif, &psref);
-		goto out;
+		goto discard;
 	}
 
 	src_if_protected = ((bif->bif_flags & IFBIF_PROTECTED) != 0);
@@ -1887,22 +1888,18 @@ bridge_forward(struct bridge_softc *sc, struct mbuf *m)
 	 */
 	if ((m->m_flags & (M_BCAST|M_MCAST)) == 0) {
 		dst_if = bridge_rtlookup(sc, eh->ether_dhost);
-		if (src_if == dst_if) {
-			m_freem(m);
-			goto out;
-		}
+		if (src_if == dst_if)
+			goto discard;
 	} else {
 		/* ...forward it to all interfaces. */
 		if_statinc(&sc->sc_if, if_imcasts);
 		dst_if = NULL;
 	}
 
-	if (pfil_run_hooks(sc->sc_if.if_pfil, &m, src_if, PFIL_IN) != 0) {
-		m_freem(m);
-		goto out;
+	if (pfil_run_hooks(sc->sc_if.if_pfil, &m, src_if, PFIL_IN) != 0 ||
+	    m == NULL) {
+		goto discard;
 	}
-	if (m == NULL)
-		goto out;
 
 	if (dst_if == NULL) {
 		bridge_broadcast(sc, src_if, src_if_protected, m);
@@ -1916,32 +1913,27 @@ bridge_forward(struct bridge_softc *sc, struct mbuf *m)
 	 * At this point, we're dealing with a unicast frame
 	 * going to a different interface.
 	 */
-	if ((dst_if->if_flags & IFF_RUNNING) == 0) {
-		m_freem(m);
-		goto out;
-	}
+	if ((dst_if->if_flags & IFF_RUNNING) == 0)
+		goto discard;
 
 	bif = bridge_lookup_member_if(sc, dst_if, &psref);
 	if (bif == NULL) {
 		/* Not a member of the bridge (anymore?) */
-		m_freem(m);
-		goto out;
+		goto discard;
 	}
 
 	if (bif->bif_flags & IFBIF_STP) {
 		switch (bif->bif_state) {
 		case BSTP_IFSTATE_DISABLED:
 		case BSTP_IFSTATE_BLOCKING:
-			m_freem(m);
 			bridge_release_member(sc, bif, &psref);
-			goto out;
+			goto discard;
 		}
 	}
 
 	if ((bif->bif_flags & IFBIF_PROTECTED) && src_if_protected) {
-		m_freem(m);
 		bridge_release_member(sc, bif, &psref);
-		goto out;
+		goto discard;
 	}
 
 	bridge_release_member(sc, bif, &psref);
@@ -1960,6 +1952,10 @@ out:
 	if (src_if != NULL)
 		m_put_rcvif_psref(src_if, &psref_src);
 	return;
+
+discard:
+	m_freem(m);
+	goto out;
 }
 
 static bool
@@ -2440,9 +2436,12 @@ bridge_rtage_work(struct work *wk, void *arg)
 
 	bridge_rtage(sc);
 
-	if (sc->sc_if.if_flags & IFF_RUNNING)
+	BRIDGE_LOCK(sc);
+	if (!sc->sc_stopping) {
 		callout_reset(&sc->sc_brcallout,
 		    bridge_rtable_prune_period * hz, bridge_timer, sc);
+	}
+	BRIDGE_UNLOCK(sc);
 }
 
 static bool
@@ -2518,7 +2517,7 @@ bridge_rtdaddr(struct bridge_softc *sc, const uint8_t *addr)
 /*
  * bridge_rtdelete:
  *
- *	Delete routes to a speicifc member interface.
+ *	Delete routes to a specified member interface.
  */
 static void
 bridge_rtdelete(struct bridge_softc *sc, struct ifnet *ifp)

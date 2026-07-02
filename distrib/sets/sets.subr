@@ -1,4 +1,4 @@
-#	$NetBSD: sets.subr,v 1.209 2024/07/11 17:27:25 riastradh Exp $
+#	$NetBSD: sets.subr,v 1.215 2026/05/10 14:19:10 tls Exp $
 #
 
 #
@@ -23,6 +23,7 @@
 #	HAVE_OPENSSL
 #	HAVE_SSP
 #	HAVE_UEFI
+#	HAVE_EFI_RT
 #	TOOLCHAIN_MISSING
 #	OBJECT_FMT
 # as well as:
@@ -123,13 +124,13 @@ oIFS=$IFS
 IFS="
 "
 
-for x in $( MAKEVERBOSE= ${MAKE} -B -f ${rundir}/mkvars.mk mkvars ); do
+for x in $( MAKEFLAGS= MAKEVERBOSE= ${MAKE} -B -f ${rundir}/mkvars.mk mkvars ); do
 	eval export $x
 done
 
 IFS=$oIFS
 
-MKVARS="$( MAKEVERBOSE= ${MAKE} -B -f ${rundir}/mkvars.mk mkvars | ${SED} -e 's,=.*,,' | ${XARGS} )"
+MKVARS="$( MAKEFLAGS= MAKEVERBOSE= ${MAKE} -B -f ${rundir}/mkvars.mk mkvars | ${SED} -e 's,=.*,,' | ${XARGS} )"
 
 #####
 
@@ -257,7 +258,7 @@ SUBST="${SUBST};s#@MACHINE@#${MACHINE}#g"
 # In each file, a record consists of a path and a System Package name,
 # separated by whitespace. E.g.,
 #
-# 	# $NetBSD: sets.subr,v 1.209 2024/07/11 17:27:25 riastradh Exp $
+# 	# $NetBSD: sets.subr,v 1.215 2026/05/10 14:19:10 tls Exp $
 # 	.			base-sys-root	[keyword[,...]]
 # 	./altroot		base-sys-root
 # 	./bin			base-sys-root
@@ -294,9 +295,12 @@ SUBST="${SUBST};s#@MACHINE@#${MACHINE}#g"
 #	mesa_ver=<n>		<n> = value of ${HAVE_MESA_VER}
 #	nvmm			${HAVE_NVMM} != no
 #	openssl=<n>		<n> = value of ${HAVE_OPENSSL}
+#	quadmath		${HAVE_QUADMATH} != no
 #	uefi			${HAVE_UEFI} != no
+#	efi_rt			${HAVE_EFI_RT} != no
 #	xorg_server_ver=<n>	<n> = value of ${HAVE_XORG_SERVER_VER}
 #	xorg_glamor		${HAVE_XORG_GLAMOR} != no
+#	xorg_egl		${HAVE_XORG_EGL} != no
 #
 #    2. The USE_<name>:
 #	use_inet6		${USE_INET6} != no
@@ -347,6 +351,9 @@ list_set_files()
 			if (pat == "" || substr(line, 1, patlen) != pat) {
 				return 0
 			}
+			if (! ("debugkernel" in wanted)) {
+				return 0
+			}
 			split("'"${CONFIGS}"'", configs)
 			for (d in configs) {
 				xfname = fname
@@ -381,7 +388,7 @@ list_set_files()
 				sub(/^mk/, "", kw)
 				sub(/^have_/, "", kw)
 				sub(/^target_endianness/, "endian", kw)
-				if (nv != "HAVE_GCC" && nv != "HAVE_GDB" && ENVIRON[nv] != "no" && nv != "COMPATARCHDIRS" && nv != "KMODARCHDIRS") {
+				if (nv != "HAVE_GCC" && nv != "HAVE_GDB" && nv != "HAVE_BINUTILS" && ENVIRON[nv] != "no" && nv != "COMPATARCHDIRS" && nv != "KMODARCHDIRS") {
 					wanted[kw] = 1
 				}
 			}
@@ -413,7 +420,7 @@ list_set_files()
 				kmoddbpat = kmoddbprefix ENVIRON["MACHINE"]
 				l_kmoddbpat = length(kmoddbpat)
 			}
-			if ("debug" in wanted) {
+			if (("debug" in wanted) || ("debugkernel" in wanted)) {
 				debugkernelname = "./usr/libdata/debug/netbsd-@CONFIG@.debug"
 				l_debugkernelname = length(debugkernelname);
 			}
@@ -443,6 +450,12 @@ list_set_files()
 			}
 			if ("uefi" in wanted) {
 				wanted["uefi=" "'"${HAVE_UEFI}"'"] = 1
+			}
+			if ("efi_rt" in wanted) {
+				wanted["efi_rt=" "'"${HAVE_EFI_RT}"'"] = 1
+			}
+			if ("quadmath" in wanted) {
+				wanted["quadmath=" "'"${HAVE_QUADMATH}"'"] = 1
 			}
 			if (("man" in wanted) && ("catpages" in wanted))
 				wanted[".cat"] = 1

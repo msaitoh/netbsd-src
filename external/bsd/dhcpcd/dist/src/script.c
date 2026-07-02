@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * dhcpcd - DHCP client daemon
- * Copyright (c) 2006-2023 Roy Marples <roy@marples.name>
+ * Copyright (c) 2006-2025 Roy Marples <roy@marples.name>
  * All rights reserved
 
  * Redistribution and use in source and binary forms, with or without
@@ -279,7 +279,7 @@ make_env(struct dhcpcd_ctx *ctx, const struct interface *ifp,
 		if (efprintf(fp, "PATH=%s",
 		    path == NULL ? DEFAULT_PATH : path) == -1)
 			goto eexit;
-		if (efprintf(fp, "pid=%d", getpid()) == -1)
+		if (efprintf(fp, "pid=%d", (int)getpid()) == -1)
 			goto eexit;
 	}
 
@@ -420,6 +420,7 @@ make_env(struct dhcpcd_ctx *ctx, const struct interface *ifp,
 	} else if (strcmp(reason, "TEST") == 0 ||
 	    strcmp(reason, "PREINIT") == 0 ||
 	    strcmp(reason, "CARRIER") == 0 ||
+	    strcmp(reason, "STOP") == 0 ||
 	    strcmp(reason, "UNKNOWN") == 0)
 	{
 		if_up = false_str;
@@ -471,7 +472,7 @@ make_env(struct dhcpcd_ctx *ctx, const struct interface *ifp,
 		if (efprintf(fp, "af_waiting=%d", af) == -1)
 			goto eexit;
 	}
-	if (ifo->options & DHCPCD_DEBUG) {
+	if (loggetopts() & LOGERR_DEBUG) {
 		if (efprintf(fp, "syslog_debug=true") == -1)
 			goto eexit;
 	}
@@ -738,6 +739,7 @@ script_dump(const char *env, size_t len)
 			env += 4;
 		printf("%s\n", env);
 	}
+	fflush(stdout);
 	return 0;
 }
 

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Privilege Separation for dhcpcd, control proxy
- * Copyright (c) 2006-2023 Roy Marples <roy@marples.name>
+ * Copyright (c) 2006-2025 Roy Marples <roy@marples.name>
  * All rights reserved
 
  * Redistribution and use in source and binary forms, with or without
@@ -236,7 +236,7 @@ ps_ctl_start(struct dhcpcd_ctx *ctx)
 	psp = ctx->ps_ctl = ps_newprocess(ctx, &id);
 	strlcpy(psp->psp_name, "control proxy", sizeof(psp->psp_name));
 	pid = ps_startprocess(psp, ps_ctl_recvmsg, ps_ctl_dodispatch,
-	    ps_ctl_startcb, NULL, PSF_DROPPRIVS);
+	    ps_ctl_startcb, PSF_DROPPRIVS);
 
 	if (pid == -1)
 		return -1;

@@ -1,6 +1,6 @@
 /* Native-dependent code for NetBSD.
 
-   Copyright (C) 2006-2024 Free Software Foundation, Inc.
+   Copyright (C) 2006-2025 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -25,6 +25,7 @@
 #include "inferior.h"
 #include "gdbarch.h"
 #include "gdbsupport/buildargv.h"
+#include "gdbsupport/eintr.h"
 
 #include <sys/types.h>
 #include <sys/ptrace.h>
@@ -317,7 +318,7 @@ nbsd_nat_target::info_proc (const char *args, enum info_proc_what what)
       if (pid == 0)
 	error (_("No current process: you must name one."));
     }
-  else if (built_argv.count () == 1 && isdigit (built_argv[0][0]))
+  else if (built_argv.count () == 1 && isdigit ((unsigned char)built_argv[0][0]))
     pid = strtol (built_argv[0], NULL, 10);
   else
     error (_("Invalid arguments."));
@@ -556,12 +557,8 @@ nbsd_wait (ptid_t ptid, struct target_waitstatus *ourstatus,
 
   set_sigint_trap ();
 
-  do
-    {
-      /* The common code passes WNOHANG that leads to crashes, overwrite it.  */
-      pid = waitpid (ptid.pid (), &status, 0);
-    }
-  while (pid == -1 && errno == EINTR);
+  /* The common code passes WNOHANG that leads to crashes, overwrite it.  */
+  pid = gdb::waitpid (ptid.pid (), &status, 0);
 
   clear_sigint_trap ();
 
@@ -580,6 +577,7 @@ ptid_t
 nbsd_nat_target::wait (ptid_t ptid, struct target_waitstatus *ourstatus,
 		       target_wait_flags target_options)
 {
+again:
   pid_t pid = nbsd_wait (ptid, ourstatus, target_options);
   ptid_t wptid = ptid_t (pid);
 
@@ -640,8 +638,7 @@ nbsd_nat_target::wait (ptid_t ptid, struct target_waitstatus *ourstatus,
       /* The GDB core expects that the rest of the threads are running.  */
       if (ptrace (PT_CONTINUE, pid, (void *) 1, 0) == -1)
 	perror_with_name (("ptrace"));
-
-      return wptid;
+      goto again;
     }
 
   if (in_thread_list (this, ptid_t (pid)))

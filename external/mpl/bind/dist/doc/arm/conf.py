@@ -26,7 +26,7 @@ from sphinx import addnodes
 try:
     from sphinx.util.docutils import ReferenceRole
 except ImportError:
-    # pylint: disable=too-few-public-methods
+
     class ReferenceRole(roles.GenericRole):
         """
         The ReferenceRole class (used as a base class by GitLabRefRole
@@ -132,7 +132,7 @@ def setup(app):
 #
 # This file only contains a selection of the most common options. For a full
 # list see the documentation:
-# http://www.sphinx-doc.org/en/master/config
+# https://www.sphinx-doc.org/en/master/config
 
 # -- Path setup --------------------------------------------------------------
 
@@ -146,7 +146,6 @@ sys.path.append(str(Path(__file__).resolve().parent.parent / "misc"))
 # -- Project information -----------------------------------------------------
 
 project = "BIND 9"
-# pylint: disable=redefined-builtin
 copyright = "2023, Internet Systems Consortium"
 author = "Internet Systems Consortium"
 
@@ -169,6 +168,8 @@ release = version
 
 # -- General configuration ---------------------------------------------------
 
+user_agent = "Mozilla/5.0"
+
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
@@ -184,6 +185,8 @@ exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "*.inc.rst"]
 
 # The master toctree document.
 master_doc = "index"
+
+smartquotes = False
 
 # -- Options for HTML output -------------------------------------------------
 
@@ -214,6 +217,27 @@ latex_documents = [
 
 latex_logo = "isc-logo.pdf"
 
+# -- Options for linkcheck ----------------------------------------------
+linkcheck_timeout = 10
+linkcheck_ignore = [
+    "http://127.0.0.1",
+    "https://dl.acm.org",
+    "https://gitlab.isc.org",
+    "https://kb.isc.org",
+    "https://simpleicon.com/",
+    "https://www.dnssec-or-not.com/",
+    "https://www.flaticon.com/",
+    "https://www.freepik.com/",
+    "https://www.gnu.org",
+    "https://www.godaddy.com",
+    "https://www.icann.org",
+]
+# Anchors checking does not work for GitHub, see
+# https://github.com/pypa/packaging.python.org/issues/1272.
+linkcheck_anchors_ignore_for_url = [
+    "https://.*github.*",
+]
+
 #
 # The rst_epilog will be completely overwritten from the Makefile,
 # the definition here is provided purely for situations when
@@ -223,7 +247,6 @@ rst_epilog = """
 .. |rndc_conf| replace:: ``/etc/rndc.conf``
 .. |rndc_key| replace:: ``/etc/rndc.key``
 .. |named_conf| replace:: ``/etc/named.conf``
-.. |bind_keys| replace:: ``/etc/bind.keys``
 .. |named_pid| replace:: ``/run/named.pid``
 .. |session_key| replace:: ``/run/session.key``
 """

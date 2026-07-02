@@ -1,4 +1,4 @@
-/*	$NetBSD: show.c,v 1.56 2024/07/12 04:45:12 kre Exp $	*/
+/*	$NetBSD: show.c,v 1.60 2026/04/18 09:37:51 kre Exp $	*/
 
 /*-
  * Copyright (c) 1991, 1993
@@ -39,7 +39,7 @@
 #if 0
 static char sccsid[] = "@(#)show.c	8.3 (Berkeley) 5/4/95";
 #else
-__RCSID("$NetBSD: show.c,v 1.56 2024/07/12 04:45:12 kre Exp $");
+__RCSID("$NetBSD: show.c,v 1.60 2026/04/18 09:37:51 kre Exp $");
 #endif
 #endif /* not lint */
 
@@ -163,7 +163,7 @@ opentrace(void)
 	 */
 	if (tracefile)
 		(void) fclose(tracefile);	/* also closes tfd */
-	tracefile = fdopen(fd, "a");	/* don't care if it is NULL */
+	tracefile = fdopen(fd, "ae");	/* don't care if it is NULL */
 	if (tracefile)			/* except here... */
 		setlinebuf(tracefile);
 
@@ -663,8 +663,6 @@ sharg(union node *arg, TFILE *fp)
 			trace_putc('{', fp);	/*}*/
 			if ((subtype & VSTYPE) == VSLENGTH)
 				trace_putc('#', fp);
-			if (subtype & VSLINENO)
-				trace_puts("LINENO=", fp);
 
 			while (*++p != '=')
 				trace_putc(*p, fp);

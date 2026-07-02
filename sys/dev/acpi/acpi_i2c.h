@@ -1,4 +1,4 @@
-/* $NetBSD: acpi_i2c.h,v 1.4 2021/08/09 04:06:21 thorpej Exp $ */
+/* $NetBSD: acpi_i2c.h,v 1.8 2025/09/23 06:28:19 thorpej Exp $ */
 
 /*-
  * Copyright (c) 2017 The NetBSD Foundation, Inc.
@@ -32,7 +32,9 @@
 
 #ifndef _SYS_DEV_ACPI_ACPI_I2C_H
 #define _SYS_DEV_ACPI_ACPI_I2C_H
-#include <prop/proplib.h>
 
-prop_array_t acpi_enter_i2c_devs(device_t, struct acpi_devnode *);
+#include <dev/i2c/i2cvar.h>
+
+void 	acpi_i2c_register(device_t, i2c_tag_t);
+
 #endif /*  _SYS_DEV_ACPI_ACPI_I2C_H */

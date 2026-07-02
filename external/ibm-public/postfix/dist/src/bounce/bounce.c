@@ -1,4 +1,4 @@
-/*	$NetBSD: bounce.c,v 1.4 2022/10/08 16:12:45 christos Exp $	*/
+/*	$NetBSD: bounce.c,v 1.6 2026/05/09 18:49:14 christos Exp $	*/
 
 /*++
 /* NAME
@@ -136,6 +136,19 @@
 /*	Available in Postfix 3.7 and later:
 /* .IP "\fBheader_from_format (standard)\fR"
 /*	The format of the Postfix-generated \fBFrom:\fR header.
+/* .PP
+/*	Available in Postfix 3.10 and later:
+/* .IP "\fBtls_required_enable (yes)\fR"
+/*	Enable support for the "TLS-Required: no" message header, defined
+/*	in RFC 8689.
+/* .PP
+/*	Available in Postfix 3.11 and later:
+/* .IP "\fBrequiretls_redact_dsn (yes)\fR"
+/*	When sending a delivery status notification for an original
+/*	message received with the REQUIRETLS option, do not send the original
+/*	message body (as if that message was received with "RET=HDRS") and
+/*	do not enforce REQUIRETLS (as if that message was received without
+/*	REQUIRETLS).
 /* FILES
 /*	/var/spool/postfix/bounce/* non-delivery records
 /*	/var/spool/postfix/defer/* non-delivery records
@@ -162,6 +175,9 @@
 /*	Google, Inc.
 /*	111 8th Avenue
 /*	New York, NY 10011, USA
+/*
+/*	Wietse Venema
+/*	porcupine.org
 /*--*/
 
 /* System library. */
@@ -190,6 +206,8 @@
 #include <rcpt_buf.h>
 #include <dsb_scan.h>
 #include <hfrom_format.h>
+#include <sendopts.h>
+#include <dsn_mask.h>
 
 /* Single-threaded server skeleton. */
 
@@ -212,6 +230,7 @@ char   *var_delay_rcpt;
 char   *var_bounce_tmpl;
 bool    var_threaded_bounce;
 char   *var_hfrom_format;		/* header_from_format */
+bool    var_reqtls_redact_dsn;
 
  /*
   * We're single threaded, so we can avoid some memory allocation overhead.
@@ -306,6 +325,27 @@ static int bounce_append_proto(char *service_name, VSTREAM *client)
 				  &rcpt_buf->rcpt, &dsn_buf->dsn));
 }
 
+/* edit_notification_properties - bounce message filter */
+
+static void edit_notification_properties(int *sendopts, int *dsn_ret)
+{
+
+    /*
+     * If REQUIRETLS is requested, do not propagate "TLS-Required: no". See
+     * also down-stream code in bounce_header().
+     */
+    if (*sendopts & SOPT_REQUIRETLS_ESMTP)
+	*sendopts &= ~SOPT_REQUIRETLS_HEADER;
+
+    /*
+     * Redact delivery status notification for REQUIRETLS message.
+     */
+    if (var_reqtls_redact_dsn && (*sendopts & SOPT_REQUIRETLS_ESMTP)) {
+	*sendopts &= ~SOPT_REQUIRETLS_ESMTP;
+	*dsn_ret = DSN_RET_HDRS;
+    }
+}
+
 /* bounce_notify_proto - bounce_notify server protocol */
 
 static int bounce_notify_proto(char *service_name, VSTREAM *client,
@@ -315,7 +355,7 @@ static int bounce_notify_proto(char *service_name, VSTREAM *client,
 {
     const char *myname = "bounce_notify_proto";
     int     flags;
-    int     smtputf8;
+    int     sendopts;
     int     dsn_ret;
 
     /*
@@ -326,7 +366,7 @@ static int bounce_notify_proto(char *service_name, VSTREAM *client,
 			    RECV_ATTR_STR(MAIL_ATTR_QUEUE, queue_name),
 			    RECV_ATTR_STR(MAIL_ATTR_QUEUEID, queue_id),
 			    RECV_ATTR_STR(MAIL_ATTR_ENCODING, encoding),
-			    RECV_ATTR_INT(MAIL_ATTR_SMTPUTF8, &smtputf8),
+			    RECV_ATTR_INT(MAIL_ATTR_SENDOPTS, &sendopts),
 			    RECV_ATTR_STR(MAIL_ATTR_SENDER, sender),
 			    RECV_ATTR_STR(MAIL_ATTR_DSN_ENVID, dsn_envid),
 			    RECV_ATTR_INT(MAIL_ATTR_DSN_RET, &dsn_ret),
@@ -350,9 +390,9 @@ static int bounce_notify_proto(char *service_name, VSTREAM *client,
     VS_NEUTER(sender);
     VS_NEUTER(dsn_envid);
     if (msg_verbose)
-	msg_info("%s: flags=0x%x service=%s queue=%s id=%s encoding=%s smtputf8=%d sender=%s envid=%s ret=0x%x",
+	msg_info("%s: flags=0x%x service=%s queue=%s id=%s encoding=%s sendopts=%d sender=%s envid=%s ret=0x%x",
 		 myname, flags, service_name, STR(queue_name), STR(queue_id),
-		 STR(encoding), smtputf8, STR(sender), STR(dsn_envid),
+		 STR(encoding), sendopts, STR(sender), STR(dsn_envid),
 		 dsn_ret);
 
     /*
@@ -363,10 +403,16 @@ static int bounce_notify_proto(char *service_name, VSTREAM *client,
 	bounce_cleanup_register(service_name, STR(queue_id));
 
     /*
+     * Handle REQUIRETLS etc. matters.
+     */
+    if (var_reqtls_enable && (sendopts & SOPT_REQUIRETLS_ALL))
+	edit_notification_properties(&sendopts, &dsn_ret);
+
+    /*
      * Execute the request.
      */
     return (service(flags, service_name, STR(queue_name),
-		    STR(queue_id), STR(encoding), smtputf8,
+		    STR(queue_id), STR(encoding), sendopts,
 		    STR(sender), STR(dsn_envid), dsn_ret,
 		    bounce_templates));
 }
@@ -377,7 +423,7 @@ static int bounce_verp_proto(char *service_name, VSTREAM *client)
 {
     const char *myname = "bounce_verp_proto";
     int     flags;
-    int     smtputf8;
+    int     sendopts;
     int     dsn_ret;
 
     /*
@@ -388,7 +434,7 @@ static int bounce_verp_proto(char *service_name, VSTREAM *client)
 			    RECV_ATTR_STR(MAIL_ATTR_QUEUE, queue_name),
 			    RECV_ATTR_STR(MAIL_ATTR_QUEUEID, queue_id),
 			    RECV_ATTR_STR(MAIL_ATTR_ENCODING, encoding),
-			    RECV_ATTR_INT(MAIL_ATTR_SMTPUTF8, &smtputf8),
+			    RECV_ATTR_INT(MAIL_ATTR_SENDOPTS, &sendopts),
 			    RECV_ATTR_STR(MAIL_ATTR_SENDER, sender),
 			    RECV_ATTR_STR(MAIL_ATTR_DSN_ENVID, dsn_envid),
 			    RECV_ATTR_INT(MAIL_ATTR_DSN_RET, &dsn_ret),
@@ -418,9 +464,9 @@ static int bounce_verp_proto(char *service_name, VSTREAM *client)
 	return (-1);
     }
     if (msg_verbose)
-	msg_info("%s: flags=0x%x service=%s queue=%s id=%s encoding=%s smtputf8=%d sender=%s envid=%s ret=0x%x delim=%s",
+	msg_info("%s: flags=0x%x service=%s queue=%s id=%s encoding=%s sendopts=%d sender=%s envid=%s ret=0x%x delim=%s",
 		 myname, flags, service_name, STR(queue_name),
-		 STR(queue_id), STR(encoding), smtputf8, STR(sender),
+		 STR(queue_id), STR(encoding), sendopts, STR(sender),
 		 STR(dsn_envid), dsn_ret, STR(verp_delims));
 
     /*
@@ -431,6 +477,12 @@ static int bounce_verp_proto(char *service_name, VSTREAM *client)
 	bounce_cleanup_register(service_name, STR(queue_id));
 
     /*
+     * Handle REQUIRETLS etc. matters.
+     */
+    if (var_reqtls_enable && (sendopts & SOPT_REQUIRETLS_ALL))
+	edit_notification_properties(&sendopts, &dsn_ret);
+
+    /*
      * Execute the request. Fall back to traditional notification if a bounce
      * was returned as undeliverable, because we don't want to VERPify those.
      */
@@ -438,12 +490,12 @@ static int bounce_verp_proto(char *service_name, VSTREAM *client)
 					  mail_addr_double_bounce())) {
 	msg_warn("request to send VERP-style notification of bounced mail");
 	return (bounce_notify_service(flags, service_name, STR(queue_name),
-				      STR(queue_id), STR(encoding), smtputf8,
+				      STR(queue_id), STR(encoding), sendopts,
 				      STR(sender), STR(dsn_envid), dsn_ret,
 				      bounce_templates));
     } else
 	return (bounce_notify_verp(flags, service_name, STR(queue_name),
-				   STR(queue_id), STR(encoding), smtputf8,
+				   STR(queue_id), STR(encoding), sendopts,
 				   STR(sender), STR(dsn_envid), dsn_ret,
 				   STR(verp_delims), bounce_templates));
 }
@@ -454,7 +506,7 @@ static int bounce_one_proto(char *service_name, VSTREAM *client)
 {
     const char *myname = "bounce_one_proto";
     int     flags;
-    int     smtputf8;
+    int     sendopts;
     int     dsn_ret;
 
     /*
@@ -465,7 +517,7 @@ static int bounce_one_proto(char *service_name, VSTREAM *client)
 			    RECV_ATTR_STR(MAIL_ATTR_QUEUE, queue_name),
 			    RECV_ATTR_STR(MAIL_ATTR_QUEUEID, queue_id),
 			    RECV_ATTR_STR(MAIL_ATTR_ENCODING, encoding),
-			    RECV_ATTR_INT(MAIL_ATTR_SMTPUTF8, &smtputf8),
+			    RECV_ATTR_INT(MAIL_ATTR_SENDOPTS, &sendopts),
 			    RECV_ATTR_STR(MAIL_ATTR_SENDER, sender),
 			    RECV_ATTR_STR(MAIL_ATTR_DSN_ENVID, dsn_envid),
 			    RECV_ATTR_INT(MAIL_ATTR_DSN_RET, &dsn_ret),
@@ -514,19 +566,25 @@ static int bounce_one_proto(char *service_name, VSTREAM *client)
      * RECIPIENT_FROM_RCPT_BUF().
      */
     if (msg_verbose)
-	msg_info("%s: flags=0x%x queue=%s id=%s encoding=%s smtputf8=%d sender=%s envid=%s dsn_ret=0x%x orig_to=%s to=%s off=%ld dsn_orig=%s notif=0x%x stat=%s act=%s why=%s",
+	msg_info("%s: flags=0x%x queue=%s id=%s encoding=%s sendopts=%d sender=%s envid=%s dsn_ret=0x%x orig_to=%s to=%s off=%ld dsn_orig=%s notif=0x%x stat=%s act=%s why=%s",
 		 myname, flags, STR(queue_name), STR(queue_id),
-		 STR(encoding), smtputf8, STR(sender), STR(dsn_envid),
+		 STR(encoding), sendopts, STR(sender), STR(dsn_envid),
 		 dsn_ret, STR(rcpt_buf->orig_addr), STR(rcpt_buf->address),
 		 rcpt_buf->offset, STR(rcpt_buf->dsn_orcpt),
 		 rcpt_buf->dsn_notify, STR(dsn_buf->status),
 		 STR(dsn_buf->action), STR(dsn_buf->reason));
 
     /*
+     * Handle REQUIRETLS etc. matters.
+     */
+    if (var_reqtls_enable && (sendopts & SOPT_REQUIRETLS_ALL))
+	edit_notification_properties(&sendopts, &dsn_ret);
+
+    /*
      * Execute the request.
      */
     return (bounce_one_service(flags, STR(queue_name), STR(queue_id),
-			       STR(encoding), smtputf8, STR(sender),
+			       STR(encoding), sendopts, STR(sender),
 			       STR(dsn_envid), dsn_ret, rcpt_buf,
 			       dsn_buf, bounce_templates));
 }
@@ -692,6 +750,7 @@ int     main(int argc, char **argv)
     };
     static const CONFIG_NBOOL_TABLE nbool_table[] = {
 	VAR_THREADED_BOUNCE, DEF_THREADED_BOUNCE, &var_threaded_bounce,
+	VAR_REQTLS_REDACT_DSN, DEF_REQTLS_REDACT_DSN, &var_reqtls_redact_dsn,
 	0,
     };
 

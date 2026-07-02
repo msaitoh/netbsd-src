@@ -1,9 +1,9 @@
-/*	$NetBSD: bozohttpd.c,v 1.148 2024/10/04 08:45:46 rillig Exp $	*/
+/*	$NetBSD: bozohttpd.c,v 1.154 2026/05/08 16:46:40 mrg Exp $	*/
 
 /*	$eterna: bozohttpd.c,v 1.178 2011/11/18 09:21:15 mrg Exp $	*/
 
 /*
- * Copyright (c) 1997-2024 Matthew R. Green
+ * Copyright (c) 1997-2026 Matthew R. Green
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -108,7 +108,7 @@
 #define INDEX_HTML		"index.html"
 #endif
 #ifndef SERVER_SOFTWARE
-#define SERVER_SOFTWARE		"bozohttpd/20240428"
+#define SERVER_SOFTWARE		"bozohttpd/20260508"
 #endif
 #ifndef PUBLIC_HTML
 #define PUBLIC_HTML		"public_html"
@@ -1195,8 +1195,8 @@ esccmp(const char *s_plain, const char *s_esc, size_t len)
 /*
  * Check if the request refers to a uri that is mapped via a .bzremap.
  * We have  /requested/path:/re/mapped/to/this.html lines in there,
- * and the : separator may be use in the left hand side escaped with
- * \ to encode a path containig a : character.
+ * and the : separator may be used in the left hand side escaped with
+ * \ to encode a path containing a : character.
  */
 static void
 check_remap(bozo_httpreq_t *request)
@@ -1326,6 +1326,7 @@ check_virtual(bozo_httpreq_t *request)
 	bozohttpd_t *httpd = request->hr_httpd;
 	char *file = request->hr_file, *s;
 	size_t len;
+	int allocated = 0, rc;
 
 	/*
 	 * convert http://virtual.host/ to request->hr_host
@@ -1341,9 +1342,9 @@ check_virtual(bozo_httpreq_t *request)
 		if ((s = strchr(request->hr_host, '/')) != NULL)
 			*s = '\0';
 		s = strchr(file, '/');
+		request->hr_file = bozostrdup(httpd, request, s ? s : "/");
 		free(request->hr_file_free);
-		request->hr_file_free = request->hr_file =
-		    bozostrdup(httpd, request, s ? s : "/");
+		request->hr_file_free = request->hr_file;
 		debug((httpd, DEBUG_OBESE, "got host '%s' file is now '%s'",
 		    request->hr_host, request->hr_file));
 	} else if (!request->hr_host)
@@ -1413,6 +1414,7 @@ check_virtual(bozo_httpreq_t *request)
 					bozoasprintf(httpd, &s, "%s/%s",
 					    httpd->virtbase,
 					    request->hr_virthostname);
+					allocated = 1;
 					break;
 				}
 			}
@@ -1435,7 +1437,12 @@ use_slashdir:
 	/*
 	 * ok, nailed the correct slashdir, chdir to it
 	 */
-	if (chdir(s) < 0)
+	rc = chdir(s);
+
+	if (allocated != 0)
+		free(s);
+
+	if (rc < 0)
 		return bozo_http_error(httpd, 404, request,
 					"can't chdir to slashdir");
 
@@ -2514,6 +2521,9 @@ bozo_init_httpd(bozohttpd_t *httpd)
 
 	/* mmap region size */
 	httpd->mmapsz = BOZO_MMAPSZ;
+
+	/* default bind port */
+	httpd->defbindport = BOZO_HTTP_PORT;
 
 	/* error buffer for bozo_http_error() */
 	if ((httpd->errorbuf = malloc(BOZO_MINBUFSIZE)) == NULL) {

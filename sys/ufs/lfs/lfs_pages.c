@@ -1,4 +1,4 @@
-/*	$NetBSD: lfs_pages.c,v 1.27 2023/04/11 14:50:47 riastradh Exp $	*/
+/*	$NetBSD: lfs_pages.c,v 1.29 2026/05/03 16:02:36 thorpej Exp $	*/
 
 /*-
  * Copyright (c) 1999, 2000, 2001, 2002, 2003, 2019 The NetBSD Foundation, Inc.
@@ -60,7 +60,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: lfs_pages.c,v 1.27 2023/04/11 14:50:47 riastradh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: lfs_pages.c,v 1.29 2026/05/03 16:02:36 thorpej Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_compat_netbsd.h"
@@ -251,7 +251,7 @@ check_dirty(struct lfs *fs, struct vnode *vp,
 	int dirty;	/* number of dirty pages in a block */
 	int tdirty;
 	int pages_per_block = lfs_sb_getbsize(fs) >> PAGE_SHIFT;
-	int pagedaemon = (curlwp == uvm.pagedaemon_lwp);
+	int pagedaemon = uvm_lwp_is_pagedaemon(curlwp);
 
 	KASSERT(rw_write_held(vp->v_uobj.vmobjlock));
 	ASSERT_MAYBE_SEGLOCK(fs);
@@ -441,7 +441,7 @@ lfs_putpages(void *v)
 	fs = ip->i_lfs;
 	sync = (ap->a_flags & PGO_SYNCIO) != 0;
 	reclaim = (ap->a_flags & PGO_RECLAIM) != 0;
-	pagedaemon = (curlwp == uvm.pagedaemon_lwp);
+	pagedaemon = uvm_lwp_is_pagedaemon(curlwp);
 	trans_mp = NULL;
 
 	KASSERT(rw_write_held(vp->v_uobj.vmobjlock));
@@ -724,7 +724,7 @@ retry:
 	seglocked = (ap->a_flags & PGO_LOCKED) != 0;
 	if (!seglocked) {
 		rw_exit(vp->v_uobj.vmobjlock);
-		error = lfs_seglock(fs, SEGM_PROT | (sync ? SEGM_SYNC : 0));
+		error = lfs_seglock(fs, (sync ? SEGM_SYNC : 0));
 		if (error != 0) {
 			KASSERT(!rw_write_held(vp->v_uobj.vmobjlock));
  			goto out;
@@ -876,7 +876,6 @@ retry:
 	 * even if we don't wait (e.g. if we hold a nested lock).  This
 	 * will not be true if we stop using malloc/copy.
 	 */
-	KASSERT(fs->lfs_sp->seg_flags & SEGM_PROT);
 	lfs_segunlock(fs);
 
 	/*

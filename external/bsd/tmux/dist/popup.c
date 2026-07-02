@@ -345,16 +345,20 @@ popup_make_pane(struct popup_data *pd, enum layout_type type)
 	u_int			 hlimit;
 	const char		*shell;
 
-	window_unzoom(w);
+	window_unzoom(w, 1);
 
 	lc = layout_split_pane(wp, type, -1, 0);
+	if (lc == NULL)
+		return;
 	hlimit = options_get_number(s->options, "history-limit");
 	new_wp = window_add_pane(wp->window, NULL, hlimit, 0);
 	layout_assign_pane(lc, new_wp, 0);
 
-	new_wp->fd = job_transfer(pd->job, &new_wp->pid, new_wp->tty,
-	    sizeof new_wp->tty);
-	pd->job = NULL;
+	if (pd->job != NULL) {
+		new_wp->fd = job_transfer(pd->job, &new_wp->pid, new_wp->tty,
+		    sizeof new_wp->tty);
+		pd->job = NULL;
+	}
 
 	screen_set_title(&pd->s, new_wp->base.title);
 	screen_free(&new_wp->base);
@@ -528,7 +532,7 @@ popup_key_cb(struct client *c, void *data, struct key_event *event)
 		    (border == LEFT || border == TOP))
 		    goto menu;
 		if (((m->b & MOUSE_MASK_MODIFIERS) == MOUSE_MASK_META) ||
-		    border != NONE) {
+		    (border != NONE && !MOUSE_DRAG(m->lb))) {
 			if (!MOUSE_DRAG(m->b))
 				goto out;
 			if (MOUSE_BUTTONS(m->lb) == MOUSE_BUTTON_1)
@@ -542,7 +546,10 @@ popup_key_cb(struct client *c, void *data, struct key_event *event)
 	}
 	if ((((pd->flags & (POPUP_CLOSEEXIT|POPUP_CLOSEEXITZERO)) == 0) ||
 	    pd->job == NULL) &&
-	    (event->key == '\033' || event->key == '\003'))
+	    (event->key == '\033' || event->key == ('c'|KEYC_CTRL)))
+		return (1);
+	if (pd->job == NULL && (pd->flags & POPUP_CLOSEANYKEY) &&
+            !KEYC_IS_MOUSE(event->key) && !KEYC_IS_PASTE(event->key))
 		return (1);
 	if (pd->job != NULL) {
 		if (KEYC_IS_MOUSE(event->key)) {
@@ -633,6 +640,56 @@ popup_job_complete_cb(struct job *job)
 }
 
 int
+popup_present(struct client *c)
+{
+	return (c->overlay_draw == popup_draw_cb);
+}
+
+int
+popup_modify(struct client *c, const char *title, const char *style,
+	const char *border_style, enum box_lines lines, int flags)
+{
+	struct popup_data		*pd = c->overlay_data;
+	struct style		sytmp;
+
+	if (title != NULL) {
+		if (pd->title != NULL)
+			free(pd->title);
+		pd->title = xstrdup(title);
+	}
+	if (border_style != NULL) {
+		style_set(&sytmp, &pd->border_cell);
+		if (style_parse(&sytmp, &pd->border_cell, border_style) == 0) {
+			pd->border_cell.fg = sytmp.gc.fg;
+			pd->border_cell.bg = sytmp.gc.bg;
+		}
+	}
+	if (style != NULL) {
+		style_set(&sytmp, &pd->defaults);
+		if (style_parse(&sytmp, &pd->defaults, style) == 0) {
+			pd->defaults.fg = sytmp.gc.fg;
+			pd->defaults.bg = sytmp.gc.bg;
+		}
+	}
+	if (lines != BOX_LINES_DEFAULT) {
+		if (lines == BOX_LINES_NONE && pd->border_lines != lines) {
+			screen_resize(&pd->s, pd->sx, pd->sy, 1);
+			job_resize(pd->job, pd->sx, pd->sy);
+		} else if (pd->border_lines == BOX_LINES_NONE && pd->border_lines != lines) {
+			screen_resize(&pd->s, pd->sx - 2, pd->sy - 2, 1);
+			job_resize(pd->job, pd->sx - 2, pd->sy - 2);
+		}
+		pd->border_lines = lines;
+		tty_resize(&c->tty);
+	}
+	if (flags != -1)
+		pd->flags = flags;
+
+	server_redraw_client(c);
+	return (0);
+}
+
+int
 popup_display(int flags, enum box_lines lines, struct cmdq_item *item, u_int px,
     u_int py, u_int sx, u_int sy, struct environ *env, const char *shellcmd,
     int argc, char **argv, const char *cwd, const char *title, struct client *c,
@@ -691,6 +748,7 @@ popup_display(int flags, enum box_lines lines, struct cmdq_item *item, u_int px,
 	pd->border_cell.attr = 0;
 
 	screen_init(&pd->s, jx, jy, 0);
+	screen_set_default_cursor(&pd->s, global_w_options);
 	colour_palette_init(&pd->palette);
 	colour_palette_from_option(&pd->palette, global_w_options);
 
@@ -717,7 +775,7 @@ popup_display(int flags, enum box_lines lines, struct cmdq_item *item, u_int px,
 
 	pd->job = job_run(shellcmd, argc, argv, env, s, cwd,
 	    popup_job_update_cb, popup_job_complete_cb, NULL, pd,
-	    JOB_NOWAIT|JOB_PTY|JOB_KEEPWRITE, jx, jy);
+	    JOB_NOWAIT|JOB_PTY|JOB_KEEPWRITE|JOB_DEFAULTSHELL, jx, jy);
 	pd->ictx = input_init(NULL, job_get_event(pd->job), &pd->palette);
 
 	server_client_set_overlay(c, 0, popup_check_cb, popup_mode_cb,

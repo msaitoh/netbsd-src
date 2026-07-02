@@ -1,19 +1,23 @@
-/*	$NetBSD: smtp.c,v 1.13 2023/12/23 20:30:45 christos Exp $	*/
+/*	$NetBSD: smtp.c,v 1.15 2026/05/09 18:49:20 christos Exp $	*/
 
 /*++
 /* NAME
-/*	smtp 8
+/*	smtp, lmtp 8
 /* SUMMARY
 /*	Postfix SMTP+LMTP client
 /* SYNOPSIS
 /*	\fBsmtp\fR [generic Postfix daemon options] [flags=DORX]
+/*
+/*	\fBlmtp\fR [generic Postfix daemon options] [flags=DORX]
 /* DESCRIPTION
 /*	The Postfix SMTP+LMTP client implements the SMTP and LMTP mail
 /*	delivery protocols. It processes message delivery requests from
 /*	the queue manager. Each request specifies a queue file, a sender
 /*	address, a domain or host to deliver to, and recipient information.
 /*	This program expects to be run from the \fBmaster\fR(8) process
-/*	manager.
+/*	manager. The process name, \fBsmtp\fR or \fBlmtp\fR, controls
+/*	the protocol, and the names of the configuration parameters
+/*	that will be used.
 /*
 /*	The SMTP+LMTP client updates the queue file and marks recipients
 /*	as finished, or it informs the queue manager that delivery should
@@ -21,13 +25,9 @@
 /*	to the \fBbounce\fR(8), \fBdefer\fR(8) or \fBtrace\fR(8) daemon as
 /*	appropriate.
 /*
-/*	The SMTP+LMTP client looks up a list of mail exchanger addresses for
-/*	the destination host, sorts the list by preference, and connects
-/*	to each listed address until it finds a server that responds.
-/*
-/*	When a server is not reachable, or when mail delivery fails due
-/*	to a recoverable error condition, the SMTP+LMTP client will try to
-/*	deliver the mail to an alternate host.
+/*	The server lookup strategy is different for SMTP and LMTP,
+/*	as described in the sections "SMTP SERVER LOOKUP" and "LMTP
+/*	SERVER LOOKUP".
 /*
 /*	After a successful mail transaction, a connection may be saved
 /*	to the \fBscache\fR(8) connection cache server, so that it
@@ -37,44 +37,58 @@
 /*	destinations that have a high volume of mail in the active
 /*	queue. Connection caching can be enabled permanently for
 /*	specific destinations.
-/* SMTP DESTINATION SYNTAX
+/* SMTP SERVER LOOKUP
 /* .ad
 /* .fi
-/*	The Postfix SMTP+LMTP client supports multiple destinations
+/*	The Postfix SMTP client supports multiple destinations
 /*	separated by comma or whitespace (Postfix 3.5 and later).
+/*	Each destination is tried in the specified order.
+/*
 /*	SMTP destinations have the following form:
 /* .IP \fIdomainname\fR
-/* .IP \fIdomainname\fR:\fIport\fR
+/* .IP \fIdomainname\fR:\fIservice\fR
 /*	Look up the mail exchangers for the specified domain, and
-/*	connect to the specified port (default: \fBsmtp\fR).
+/*	connect to the specified service (default: \fBsmtp\fR).
+/*	Optionally, mail exchangers may be looked up with SRV queries
+/*	instead of MX; this requires that \fIservice\fR is given
+/*	in symbolic form.
 /* .IP [\fIhostname\fR]
-/* .IP [\fIhostname\fR]:\fIport\fR
-/*	Look up the address(es) of the specified host, and connect to
-/*	the specified port (default: \fBsmtp\fR).
+/* .IP [\fIhostname\fR]:\fIservice\fR
+/*	Look up the address(es) for the specified host, and connect to
+/*	the specified service (default: \fBsmtp\fR).
 /* .IP [\fIaddress\fR]
-/* .IP [\fIaddress\fR]:\fIport\fR
+/* .IP [\fIaddress\fR]:\fIservice\fR
 /*	Connect to the host at the specified address, and connect
-/*	to the specified port (default: \fBsmtp\fR). An IPv6 address
+/*	to the specified service (default: \fBsmtp\fR). An IPv6 address
 /*	must be formatted as [\fBipv6\fR:\fIaddress\fR].
-/* LMTP DESTINATION SYNTAX
+/* LMTP SERVER LOOKUP
 /* .ad
 /* .fi
-/*	The Postfix SMTP+LMTP client supports multiple destinations
+/*	The Postfix LMTP client supports multiple destinations
 /*	separated by comma or whitespace (Postfix 3.5 and later).
+/*	Each destination is tried in the specified order.
+/*
 /*	LMTP destinations have the following form:
 /* .IP \fBunix\fR:\fIpathname\fR
 /*	Connect to the local UNIX-domain server that is bound to the specified
 /*	\fIpathname\fR. If the process runs chrooted, an absolute pathname
 /*	is interpreted relative to the Postfix queue directory.
+/* .IP \fBinet\fR:\fIdomainname\fR
+/* .IP \fBinet\fR:\fIdomainname\fR:\fIservice\fR
+/*	Look up the LMTP servers for the specified domain and service
+/*	(default: \fBlmtp\fR).
+/*	This form is supported when SRV lookups are enabled, and
+/*	requires that \fIservice\fR is in symbolic form.
 /* .IP \fBinet\fR:\fIhostname\fR
-/* .IP \fBinet\fR:\fIhostname\fR:\fIport\fR
+/* .IP \fBinet\fR:\fIhostname\fR:\fIservice\fR
+/*	Look up the address(es) for the specified host, and connect to
+/*	the specified service (default: \fBlmtp\fR). When SRV lookups
+/*	are enabled, use the form \fB[\fIhostname\fB]\fR to force
+/*	address lookups.
 /* .IP \fBinet\fR:[\fIaddress\fR]
-/* .IP \fBinet\fR:[\fIaddress\fR]:\fIport\fR
-/*	Connect to the specified TCP port on the specified local or
-/*	remote host. If no port is specified, connect to the port defined as
-/*	\fBlmtp\fR in \fBservices\fR(4).
-/*	If no such service is found, the \fBlmtp_tcp_port\fR configuration
-/*	parameter (default value of 24) will be used.
+/* .IP \fBinet\fR:[\fIaddress\fR]:\fIservice\fR
+/*	Connect to the specified local or remote host and service
+/*	(default: \fBlmtp\fR).
 /*	An IPv6 address must be formatted as [\fBipv6\fR:\fIaddress\fR].
 /* SINGLE-RECIPIENT DELIVERY
 /* .ad
@@ -132,6 +146,8 @@
 /*	This feature is available as of Postfix 3.5.
 /* .RE
 /* SECURITY
+/* .ad
+/* .fi
 /*	The SMTP+LMTP client is moderately security-sensitive. It
 /*	talks to SMTP or LMTP servers and to DNS servers on the
 /*	network. The SMTP+LMTP client can be run chrooted at fixed
@@ -158,6 +174,7 @@
 /*	RFC 6531 (Internationalized SMTP)
 /*	RFC 6533 (Internationalized Delivery Status Notifications)
 /*	RFC 7672 (SMTP security via opportunistic DANE TLS)
+/*	RFC 8689 (SMTP REQUIRETLS extension, TLS-Required header)
 /* DIAGNOSTICS
 /*	Problems and transactions are logged to \fBsyslogd\fR(8)
 /*	or \fBpostlogd\fR(8).
@@ -177,11 +194,10 @@
 /* CONFIGURATION PARAMETERS
 /* .ad
 /* .fi
-/*	Before Postfix version 2.3, the LMTP client is a separate
-/*	program that implements only a subset of the functionality
-/*	available with SMTP: there is no support for TLS, and
-/*	connections are cached in-process, making it ineffective
-/*	when the client is used for multiple domains.
+/*	Postfix versions 2.3 and later implement the SMTP and LMTP
+/*	client with the same program, and choose the protocol and
+/*	configuration parameters based on the process name, \fBsmtp\fR
+/*	or \fBlmtp\fR.
 /*
 /*	Most smtp_\fIxxx\fR configuration parameters have an
 /*	lmtp_\fIxxx\fR "mirror" parameter for the equivalent LMTP
@@ -434,12 +450,17 @@
 /* .IP "\fBsmtp_send_dummy_mail_auth (no)\fR"
 /*	Whether or not to append the "AUTH=<>" option to the MAIL
 /*	FROM command in SASL-authenticated SMTP sessions.
-/* STARTTLS SUPPORT CONTROLS
+/* .PP
+/*	Available in Postfix version 3.9 and later:
+/* .IP "\fBsmtp_sasl_password_result_delimiter (:)\fR"
+/*	The delimiter between username and password in sasl_passwd_maps lookup
+/*	results.
+/* TLS SUPPORT CONTROLS
 /* .ad
 /* .fi
 /*	Detailed information about STARTTLS configuration may be found
 /*	in the TLS_README document.
-/* .IP "\fBsmtp_tls_security_level (empty)\fR"
+/* .IP "\fBsmtp_tls_security_level (Postfix >= 3.11: may; Postfix < 3.11: empty)\fR"
 /*	The default SMTP TLS security level for the Postfix SMTP client.
 /* .IP "\fBsmtp_sasl_tls_security_options ($smtp_sasl_security_options)\fR"
 /*	The SASL authentication security options that the Postfix SMTP
@@ -534,7 +555,7 @@
 /*	certificate fingerprints.
 /* .PP
 /*	Available in Postfix version 2.6 and later:
-/* .IP "\fBsmtp_tls_protocols (see postconf -d output)\fR"
+/* .IP "\fBsmtp_tls_protocols (see 'postconf -d' output)\fR"
 /*	TLS protocols that the Postfix SMTP client will use with
 /*	opportunistic TLS encryption.
 /* .IP "\fBsmtp_tls_ciphers (medium)\fR"
@@ -575,18 +596,19 @@
 /*	Available in Postfix version 3.0 and later:
 /* .IP "\fBsmtp_tls_wrappermode (no)\fR"
 /*	Request that the Postfix SMTP client connects using the
-/*	SUBMISSIONS/SMTPS protocol instead of using the STARTTLS command.
+/*	SUBMISSIONS (formerly called SMTPS) protocol instead of using the
+/*	STARTTLS command.
 /* .PP
 /*	Available in Postfix version 3.1 and later:
-/* .IP "\fBsmtp_tls_dane_insecure_mx_policy (see 'postconf -d' output)\fR"
+/* .IP "\fBsmtp_tls_dane_insecure_mx_policy (dane)\fR"
 /*	The TLS policy for MX hosts with "secure" TLSA records when the
 /*	nexthop destination security level is \fBdane\fR, but the MX
 /*	record was found via an "insecure" MX lookup.
 /* .PP
 /*	Available in Postfix version 3.2 and later:
 /* .IP "\fBtls_eecdh_auto_curves (see 'postconf -d' output)\fR"
-/*	The prioritized list of elliptic curves supported by the Postfix
-/*	SMTP client and server.
+/*	The prioritized list of elliptic curves, that should be enabled in the
+/*	Postfix SMTP client and server.
 /* .PP
 /*	Available in Postfix version 3.4 and later:
 /* .IP "\fBsmtp_tls_connection_reuse (no)\fR"
@@ -615,7 +637,42 @@
 /* .IP "\fBtls_config_name (empty)\fR"
 /*	The application name passed by Postfix to OpenSSL library
 /*	initialization functions.
-/* OBSOLETE STARTTLS CONTROLS
+/* .PP
+/*	Available in Postfix version 3.9 and later:
+/* .IP "\fBsmtp_tls_enable_rpk (no)\fR"
+/*	Request that remote SMTP servers send an RFC7250 raw public key
+/*	instead of an X.509 certificate.
+/* .PP
+/*	Available in Postfix version 3.10 and later:
+/* .IP "\fBsmtp_tlsrpt_enable (no)\fR"
+/*	Enable support for RFC 8460 TLSRPT notifications.
+/* .IP "\fBsmtp_tlsrpt_socket_name (empty)\fR"
+/*	The pathname of a UNIX-domain datagram socket that is managed
+/*	by a local TLSRPT reporting service.
+/* .IP "\fBsmtp_tlsrpt_skip_reused_handshakes (Postfix >= 3.11: no, Postfix 3.10: yes)\fR"
+/*	When set to "yes", report the TLSRPT status only for "new" TLS
+/*	sessions.
+/* .IP "\fBtls_required_enable (yes)\fR"
+/*	Enable support for the "TLS-Required: no" message header, defined
+/*	in RFC 8689.
+/* .PP
+/*	Available in Postfix version 3.10.5 and later:
+/* .IP "\fBsmtp_tls_enforce_sts_mx_patterns (yes)\fR"
+/*	Transform the TLS policy from an STS policy plugin: connect to
+/*	an MX host only if its name matches any STS policy MX host pattern,
+/*	and match the server certificate against the MX hostname.
+/* .PP
+/*	Available in Postfix version 3.11 and later:
+/* .IP "\fBrequiretls_enable (yes)\fR"
+/*	Enable support for the ESMTP verb "REQUIRETLS" in the "MAIL
+/*	FROM" command.
+/* .IP "\fBsmtp_requiretls_policy (see 'postconf -d smtp_requiretls_policy' output)\fR"
+/*	How the Postfix SMTP and LMTP client will enforce REQUIRETLS
+/*	for messages received with the REQUIRETLS option.
+/* .IP "\fBsmtp_log_tls_feature_status (yes)\fR"
+/*	Enable logging of TLS feature information in delivery status
+/*	logging.
+/* OBSOLETE TLS CONTROLS
 /* .ad
 /* .fi
 /*	The following configuration parameters exist for compatibility
@@ -797,13 +854,13 @@
 /*	request before it is terminated by a built-in watchdog timer.
 /* .IP "\fBdelay_logging_resolution_limit (2)\fR"
 /*	The maximal number of digits after the decimal point when logging
-/*	sub-second delay values.
+/*	delay values.
 /* .IP "\fBdisable_dns_lookups (no)\fR"
 /*	Disable DNS lookups in the Postfix SMTP and LMTP clients.
 /* .IP "\fBinet_interfaces (all)\fR"
-/*	The local network interface addresses that this mail system receives
-/*	mail on.
-/* .IP "\fBinet_protocols (see 'postconf -d output')\fR"
+/*	The local network interface addresses that this mail system
+/*	receives mail on.
+/* .IP "\fBinet_protocols (see 'postconf -d' output)\fR"
 /*	The Internet protocols Postfix will attempt to use when making
 /*	or accepting connections.
 /* .IP "\fBipc_timeout (3600s)\fR"
@@ -1011,17 +1068,18 @@ int     var_smtp_data2_tmout;
 int     var_smtp_rset_tmout;
 int     var_smtp_quit_tmout;
 char   *var_notify_classes;
-int     var_smtp_skip_5xx_greeting;
-int     var_ign_mx_lookup_err;
-int     var_skip_quit_resp;
+bool    var_smtp_skip_5xx_greeting;
+bool    var_ign_mx_lookup_err;
+bool    var_skip_quit_resp;
 char   *var_fallback_relay;
 char   *var_bestmx_transp;
 char   *var_error_rcpt;
-int     var_smtp_always_ehlo;
-int     var_smtp_never_ehlo;
+bool    var_smtp_always_ehlo;
+bool    var_smtp_never_ehlo;
 char   *var_smtp_sasl_opts;
 char   *var_smtp_sasl_path;
 char   *var_smtp_sasl_passwd;
+char   *var_smtp_sasl_passwd_res_delim;
 bool    var_smtp_sasl_enable;
 char   *var_smtp_sasl_mechs;
 char   *var_smtp_sasl_type;
@@ -1092,6 +1150,8 @@ char   *var_smtp_tls_sni;
 bool    var_smtp_tls_blk_early_mail_reply;
 bool    var_smtp_tls_force_tlsa;
 char   *var_smtp_tls_insecure_mx_policy;
+bool    var_smtp_tls_enable_rpk;
+bool    var_smtp_tls_enf_sts_mx_pat;
 
 #endif
 
@@ -1119,8 +1179,13 @@ bool    var_smtp_balance_inet_proto;
 bool    var_smtp_req_deadline;
 int     var_smtp_min_data_rate;
 char   *var_use_srv_lookup;
-bool	var_ign_srv_lookup_err;
-bool	var_allow_srv_fallback;
+bool    var_ign_srv_lookup_err;
+bool    var_allow_srv_fallback;
+bool    var_smtp_tlsrpt_enable;
+char   *var_smtp_tlsrpt_sockname;
+bool    var_smtp_tlsrpt_skip_reused_hs;
+char   *var_smtp_reqtls_policy;
+bool    var_log_tls_feature_status;
 
  /* Special handling of 535 AUTH errors. */
 char   *var_smtp_sasl_auth_cache_name;
@@ -1128,7 +1193,7 @@ int     var_smtp_sasl_auth_cache_time;
 bool    var_smtp_sasl_auth_soft_bounce;
 
 char   *var_hfrom_format;
-bool var_smtp_bind_addr_enforce;
+bool    var_smtp_bind_addr_enforce;
 
  /*
   * Global variables.
@@ -1148,6 +1213,7 @@ HBC_CHECKS *smtp_body_checks;		/* limited body checks */
 SMTP_CLI_ATTR smtp_cli_attr;		/* parsed command-line */
 int     smtp_hfrom_format;		/* postmaster notifications */
 STRING_LIST *smtp_use_srv_lookup;
+SMTP_REQTLS_POLICY *smtp_reqtls_policy;
 
 #ifdef USE_TLS
 
@@ -1374,7 +1440,23 @@ static void post_init(char *unused_name, char **argv)
 	var_disable_dns = (smtp_dns_support == SMTP_DNS_DISABLED);
     }
 
+#if !defined(USE_TLS) || !defined(USE_TLSRPT)
+    if (var_smtp_tlsrpt_enable)
+	msg_warn("TLSRPT is selected, but TLSRPT is not compiled in");
+#endif
 #ifdef USE_TLS
+#ifdef USE_TLSRPT
+    if (var_smtp_tlsrpt_enable) {
+	if (smtp_mode) {
+	    if (smtp_tlsrpt_post_jail(VAR_SMTP_TLSRPT_SOCKNAME,
+				      var_smtp_tlsrpt_sockname) < 0)
+		var_smtp_tlsrpt_enable = 0;
+	} else {
+	    msg_warn("TLSRPT support is not implemented for LMTP");
+	    var_smtp_tlsrpt_enable = 0;
+	}
+    }
+#endif						/* USE_TLSRPT */
     if (smtp_mode) {
 	smtp_tls_insecure_mx_policy =
 	    tls_level_lookup(var_smtp_tls_insecure_mx_policy);
@@ -1461,6 +1543,19 @@ static void pre_init(char *unused_name, char **unused_argv)
     };
 
     /*
+     * The process name, "smtp" or "lmtp", determines the configuration
+     * parameters to use, protocol, DSN server reply type, SASL service
+     * information lookup, and more. We peeked at the name in the main()
+     * function before logging was initialized. Here, we detect and report an
+     * invalid process name.
+     */
+    if (strcmp(var_procname, MAIL_PROC_NAME_SMTP) != 0
+	&& strcmp(var_procname, MAIL_PROC_NAME_LMTP) != 0)
+	msg_fatal("unexpected process name \"%s\" - "
+		  "specify \"%s\" or \"%s\"", var_procname,
+		  MAIL_PROC_NAME_SMTP, MAIL_PROC_NAME_LMTP);
+
+    /*
      * Turn on per-peer debugging.
      */
     debug_peer_init();
@@ -1476,6 +1571,12 @@ static void pre_init(char *unused_name, char **unused_argv)
 		 VAR_LMTP_SMTP(SASL_ENABLE));
 #endif
 
+#ifdef USE_TLS
+    /* Postfix <= 3.10 backwards compatibility. */
+    if (smtp_mode && warn_compat_break_smtp_tls_level)
+	msg_info("using backwards-compatible default setting %s=(empty)",
+		 VAR_SMTP_TLS_LEVEL);
+#endif
     if (*var_smtp_tls_level != 0)
 #ifdef USE_TLS
 	switch (tls_level_lookup(var_smtp_tls_level)) {
@@ -1622,6 +1723,16 @@ static void pre_init(char *unused_name, char **unused_argv)
     if (*var_smtp_dns_re_filter)
 	dns_rr_filter_compile(VAR_LMTP_SMTP(DNS_RE_FILTER),
 			      var_smtp_dns_re_filter);
+
+    /*
+     * REQUIRETLS enforcement policy. The parser appends a default action: DO
+     * NOT skip the code below if the policy string is empty. When
+     * var_reqtls_enable != 0, smtp_reqtls_policy must also be != 0.
+     */
+    if (var_reqtls_enable)
+	smtp_reqtls_policy =
+	    smtp_reqtls_policy_parse(VAR_LMTP_SMTP(REQTLS_POLICY),
+				     var_smtp_reqtls_policy);
 }
 
 /* pre_accept - see if tables have changed */
@@ -1653,21 +1764,15 @@ int     main(int argc, char **argv)
     MAIL_VERSION_STAMP_ALLOCATE;
 
     /*
-     * XXX At this point, var_procname etc. are not initialized.
-     * 
-     * The process name, "smtp" or "lmtp", determines the protocol, the DSN
-     * server reply type, SASL service information lookup, and more. Prepare
-     * for the possibility there may be another personality.
+     * XXX The process name, "smtp" or "lmtp", determines what configuration
+     * parameter settings to use, and more. However, at this point, logging
+     * and var_procname are not initialized. Here, we peek at the process
+     * name to determine what configuration parameter settings to use. Later,
+     * we detect and report an invalid process name.
      */
     sane_procname = sane_basename((VSTRING *) 0, argv[0]);
-    if (strcmp(sane_procname, "smtp") == 0)
+    if (strcmp(sane_procname, MAIL_PROC_NAME_SMTP) == 0)
 	smtp_mode = 1;
-    else if (strcmp(sane_procname, "lmtp") == 0)
-	smtp_mode = 0;
-    else
-	/* TODO: logging is not initialized. */
-	msg_fatal("unexpected process name \"%s\" - "
-		  "specify \"smtp\" or \"lmtp\"", var_procname);
 
     /*
      * Initialize with the LMTP or SMTP parameter name space.

@@ -1,4 +1,4 @@
-# $NetBSD: Makefile,v 1.36 2024/06/23 06:27:38 wiz Exp $
+# $NetBSD: Makefile,v 1.46 2026/05/29 15:11:48 christos Exp $
 
 .include <bsd.own.mk>
 
@@ -169,7 +169,7 @@ CPPFLAGS+=	-I${SRCDIR} -I${.CURDIR}
 # Would be nicer to stick this in a config.h file, but the upstream code
 # does not use one at this moment.
 
-# HAVE_REALLOCARRAY, HAVE_TREE_H, HAVE_VIS added manually
+# ENABLE_SIXEL, HAVE_REALLOCARRAY, HAVE_TREE_H, HAVE_UTEMPTER, HAVE_VIS added manually
 #
 # HAVE_BSD_GETOPT:
 # Use the NetBSD libc getopt functions instead of the compat functions
@@ -182,6 +182,7 @@ CPPFLAGS+=	-I${SRCDIR} -I${.CURDIR}
 # We have a local patch that adapts the call to the NetBSD version,
 # so we don't need to use the compat code provided by tmux.
 CPPFLAGS+=	\
+-DENABLE_SIXEL=1 \
 -DHAVE_ASPRINTF=1 \
 -DHAVE_B64_NTOP=1 \
 -DHAVE_BITSTRING_H=1 \
@@ -192,7 +193,6 @@ CPPFLAGS+=	\
 -DHAVE_CURSES_H=1 \
 -DHAVE_DAEMON=1 \
 -DHAVE_DIRENT_H=1 \
--DENABLE_SIXEL=1 \
 -DHAVE_EVENT2_EVENT_H=1 \
 -DHAVE_FCNTL_CLOSEM=1 \
 -DHAVE_FCNTL_H=1 \
@@ -205,7 +205,6 @@ CPPFLAGS+=	\
 -DHAVE_GETPROGNAME=1 \
 -DHAVE_INTTYPES_H=1 \
 -DHAVE_LIBM=1 \
--DHAVE_LIBPROC_H=1 \
 -DHAVE_MEMMEM=1 \
 -DHAVE_MEMORY_H=1 \
 -DHAVE_PATHS_H=1 \
@@ -233,24 +232,26 @@ CPPFLAGS+=	\
 -DHAVE_TIPARM=1 \
 -DHAVE_TREE_H=1 \
 -DHAVE_UNISTD_H=1 \
+-DHAVE_UTEMPTER=1 \
 -DHAVE_UTIL_H=1 \
 -DHAVE_VIS=1 \
 -DHAVE___PROGNAME=1 \
 -DPACKAGE=\"tmux\" \
 -DPACKAGE_BUGREPORT=\"\" \
 -DPACKAGE_NAME=\"tmux\" \
--DPACKAGE_STRING=\"tmux\ 3.4\" \
+-DPACKAGE_STRING=\"tmux\ 3.6b\" \
 -DPACKAGE_TARNAME=\"tmux\" \
 -DPACKAGE_URL=\"\" \
--DPACKAGE_VERSION=\"3.4\" \
+-DPACKAGE_VERSION=\"3.6b\" \
 -DSTDC_HEADERS=1 \
 -DTMUX_CONF='"/etc/tmux.conf:~/.tmux.conf:$XDG_CONFIG_HOME/tmux/tmux.conf:~/.config/tmux/tmux.conf"' \
 -DTMUX_LOCK_CMD='"lock -np"' \
 -DTMUX_TERM='"tmux-256color"' \
--DTMUX_VERSION='"3.4"' \
--DVERSION=\"3.4\" \
+-DTMUX_VERSION='"3.6b"' \
+-DVERSION=\"3.6b\" \
 -D_ALL_SOURCE=1 \
 -D_GNU_SOURCE=1 \
+-D_NETBSD_SOURCE \
 -D_OPENBSD_SOURCE \
 -D_POSIX_PTHREAD_SEMANTICS=1 \
 -D_TANDEM_SOURCE=1 \
@@ -259,11 +260,13 @@ CPPFLAGS+=	\
 LDADD+=		-levent -lterminfo -lutil -lm
 DPADD+=		${LIBEVENT} ${LIBTERMINFO} ${LIBUTIL}
 
-COPTS.format.c += -Wno-format-nonliteral
-COPTS.input.c += -Wno-sign-compare -Wno-pointer-sign
-COPTS.tty.c += -Wno-pointer-sign
+COPTS.format.c+=	-Wno-format-nonliteral
+COPTS.input.c+=		-Wno-sign-compare -Wno-pointer-sign
+COPTS.mode-tree.c+=	-Wno-error=stack-protector
+COPTS.tty.c+=		-Wno-pointer-sign
 COPTS.utempter.c+=	${CC_WNO_STRINGOP_TRUNCATION}
 COPTS.window-copy.c+=	${CC_WNO_MAYBE_UNINITIALIZED} -Wno-pointer-sign
+COPTS.cmd-run-shell.c += ${CC_WNO_MAYBE_UNINITIALIZED}
 
 # The man page needs substitutions, but the dist file usurps the
 # output file suffix.

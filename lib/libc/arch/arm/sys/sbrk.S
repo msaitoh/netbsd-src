@@ -1,4 +1,4 @@
-/*	$NetBSD: sbrk.S,v 1.12 2013/09/12 15:36:15 joerg Exp $	*/
+/*	$NetBSD: sbrk.S,v 1.14 2025/05/06 20:21:34 uwe Exp $	*/
 
 /*-
  * Copyright (c) 1990 The Regents of the University of California.

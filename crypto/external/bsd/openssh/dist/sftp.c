@@ -1,5 +1,5 @@
-/*	$NetBSD: sftp.c,v 1.41 2024/07/08 22:33:44 christos Exp $	*/
-/* $OpenBSD: sftp.c,v 1.239 2024/06/26 23:14:14 deraadt Exp $ */
+/*	$NetBSD: sftp.c,v 1.44 2026/04/08 18:58:41 christos Exp $	*/
+/* $OpenBSD: sftp.c,v 1.250 2026/02/11 17:01:34 dtucker Exp $ */
 
 /*
  * Copyright (c) 2001-2004 Damien Miller <djm@openbsd.org>
@@ -18,15 +18,15 @@
  */
 
 #include "includes.h"
-__RCSID("$NetBSD: sftp.c,v 1.41 2024/07/08 22:33:44 christos Exp $");
+__RCSID("$NetBSD: sftp.c,v 1.44 2026/04/08 18:58:41 christos Exp $");
 
 #include <sys/param.h>	/* MIN MAX */
 #include <sys/types.h>
 #include <sys/ioctl.h>
-#include <sys/wait.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/statvfs.h>
+#include <sys/wait.h>
 
 #include <ctype.h>
 #include <errno.h>
@@ -34,6 +34,7 @@ __RCSID("$NetBSD: sftp.c,v 1.41 2024/07/08 22:33:44 christos Exp $");
 #include <histedit.h>
 #include <paths.h>
 #include <libgen.h>
+#include <limits.h>
 #include <locale.h>
 #include <signal.h>
 #include <stdarg.h>
@@ -41,7 +42,6 @@ __RCSID("$NetBSD: sftp.c,v 1.41 2024/07/08 22:33:44 christos Exp $");
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
-#include <limits.h>
 #include <util.h>
 
 #include "xmalloc.h"
@@ -637,7 +637,8 @@ static int
 process_get(struct sftp_conn *conn, const char *src, const char *dst,
     const char *pwd, int pflag, int rflag, int resume, int fflag)
 {
-	char *filename, *abs_src = NULL, *abs_dst = NULL, *tmp = NULL;
+	const char *filename;
+	char *abs_src = NULL, *abs_dst = NULL, *tmp = NULL;
 	glob_t g;
 	int i, r, err = 0;
 
@@ -674,6 +675,10 @@ process_get(struct sftp_conn *conn, const char *src, const char *dst,
 			err = -1;
 			goto out;
 		}
+
+		/* Special handling for dest of '..' */
+		if (strcmp(filename, "..") == 0)
+			filename = "."; /* Download to dest, not dest/.. */
 
 		if (g.gl_matchc == 1 && dst) {
 			if (local_is_dir(dst)) {
@@ -724,7 +729,8 @@ process_put(struct sftp_conn *conn, const char *src, const char *dst,
 {
 	char *tmp_dst = NULL;
 	char *abs_dst = NULL;
-	char *tmp = NULL, *filename = NULL;
+	char *tmp = NULL;
+	const char *filename = NULL;
 	glob_t g;
 	int err = 0;
 	int i, dst_is_dir = 1;
@@ -769,6 +775,9 @@ process_put(struct sftp_conn *conn, const char *src, const char *dst,
 			err = -1;
 			goto out;
 		}
+		/* Special handling for source of '..' */
+		if (strcmp(filename, "..") == 0)
+			filename = "."; /* Upload to dest, not dest/.. */
 
 		free(abs_dst);
 		abs_dst = NULL;
@@ -1882,35 +1891,50 @@ complete_display(char **list, u_int len)
 
 /*
  * Given a "list" of words that begin with a common prefix of "word",
- * attempt to find an autocompletion to extends "word" by the next
+ * attempt to find an autocompletion that extends "word" by the next
  * characters common to all entries in "list".
  */
 static char *
 complete_ambiguous(const char *word, char **list, size_t count)
 {
+	size_t i, j, matchlen;
+	char *tmp;
+	int len;
+
 	if (word == NULL)
 		return NULL;
 
-	if (count > 0) {
-		u_int y, matchlen = strlen(list[0]);
+	if (count == 0)
+		return xstrdup(word); /* no options to complete */
 
-		/* Find length of common stem */
-		for (y = 1; list[y]; y++) {
-			u_int x;
+	/* Find length of common stem across list */
+	matchlen = strlen(list[0]);
+	for (i = 1; i < count && list[i] != NULL; i++) {
+		for (j = 0; j < matchlen; j++)
+			if (list[0][j] != list[i][j])
+				break;
+		matchlen = j;
+	}
 
-			for (x = 0; x < matchlen; x++)
-				if (list[0][x] != list[y][x])
-					break;
+	/*
+	 * Now check that the common stem doesn't finish in the middle of
+	 * a multibyte character.
+	 */
+	mblen(NULL, 0);
+	for (i = 0; i < matchlen;) {
+		len = mblen(list[0] + i, matchlen - i);
+		if (len <= 0 || i + (size_t)len > matchlen)
+			break;
+		i += (size_t)len;
+	}
+	/* If so, truncate */
+	if (i < matchlen)
+		matchlen = i;
 
-			matchlen = x;
-		}
-
-		if (matchlen > strlen(word)) {
-			char *tmp = xstrdup(list[0]);
-
-			tmp[matchlen] = '\0';
-			return tmp;
-		}
+	if (matchlen > strlen(word)) {
+		tmp = xstrdup(list[0]);
+		tmp[matchlen] = '\0';
+		return tmp;
 	}
 
 	return xstrdup(word);
@@ -2090,6 +2114,7 @@ complete_match(EditLine *el, struct sftp_conn *conn, char *remote_path,
 		tmp2 = tmp + filelen - cesc;
 		len = strlen(tmp2);
 		/* quote argument on way out */
+		mblen(NULL, 0);
 		for (i = 0; i < len; i += clen) {
 			if ((clen = mblen(tmp2 + i, len - i)) < 0 ||
 			    (size_t)clen > sizeof(ins) - 2)
@@ -2226,6 +2251,7 @@ interactive_loop(struct sftp_conn *conn, const char *file1, const char *file2)
 	char *remote_path;
 	char *dir = NULL, *startdir = NULL;
 	char cmd[2048];
+	const char *editor;
 	int err, interactive;
 	EditLine *el = NULL;
 	History *hl = NULL;
@@ -2261,6 +2287,10 @@ interactive_loop(struct sftp_conn *conn, const char *file1, const char *file2)
 		el_set(el, EL_BIND, "\\e\\e[D", "ed-prev-word", NULL);
 		/* make ^w match ksh behaviour */
 		el_set(el, EL_BIND, "^w", "ed-delete-prev-word", NULL);
+
+		/* el_source() may have changed EL_EDITOR to vi */
+		if (el_get(el, EL_EDITOR, &editor) == 0 && editor[0] == 'v')
+			el_set(el, EL_BIND, "^[", "vi-command-mode", NULL);
 	}
 
 	if ((remote_path = sftp_realpath(conn, ".")) == NULL)
@@ -2361,6 +2391,8 @@ interactive_loop(struct sftp_conn *conn, const char *file1, const char *file2)
 	free(startdir);
 	free(conn);
 
+	if (hl != NULL)
+		history_end(hl);
 	if (el != NULL)
 		el_end(el);
 
@@ -2459,6 +2491,7 @@ main(int argc, char **argv)
 	addargs(&args, "-oForwardX11 no");
 	addargs(&args, "-oPermitLocalCommand no");
 	addargs(&args, "-oClearAllForwardings yes");
+	addargs(&args, "-oControlMaster no");
 
 	ll = SYSLOG_LEVEL_INFO;
 	infile = stdin;
@@ -2657,7 +2690,7 @@ main(int argc, char **argv)
 	} else {
 		if ((r = argv_split(sftp_direct, &tmp, &cpp, 1)) != 0)
 			fatal_r(r, "Parse -D arguments");
-		if (cpp[0] == 0)
+		if (cpp[0] == NULL)
 			fatal("No sftp server specified via -D");
 		connect_to_server(cpp[0], cpp, &in, &out);
 		argv_free(cpp, tmp);

@@ -1,4 +1,4 @@
-/* $NetBSD: cpu_switch.S,v 1.6 2024/05/02 18:18:17 skrll Exp $ */
+/* $NetBSD: cpu_switch.S,v 1.8 2026/03/12 05:16:32 andvar Exp $ */
 
 /*-
  * Copyright (c) 2014 The NetBSD Foundation, Inc.
@@ -307,7 +307,7 @@ ENTRY_NP(cpu_exception_handler)
 	REG_S	a2, TF_SR(sp)
 	REG_S	a3, TF_CAUSE(sp)	// save cause
 
-	// Now we've saved the trapfame, the cause is still in a3.
+	// Now we've saved the trapframe, the cause is still in a3.
 
 	bltz	a3, intr_handler	// MSB is set if interrupt
 
@@ -517,6 +517,6 @@ ENTRY_NP(longjmp)
 	REG_L	s10, FB_S10(a0)
 	REG_L	s11, FB_S11(a0)
 	REG_L	sp, FB_SP(a0)
-	mv	a0, a1
+	li	a0, 1
 	ret
 END(longjmp)

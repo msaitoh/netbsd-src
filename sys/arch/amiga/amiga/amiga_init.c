@@ -1,4 +1,4 @@
-/*	$NetBSD: amiga_init.c,v 1.133 2024/01/09 07:28:25 thorpej Exp $	*/
+/*	$NetBSD: amiga_init.c,v 1.141 2026/05/30 10:10:11 thorpej Exp $	*/
 
 /*
  * Copyright (c) 1994 Michael L. Hitch
@@ -39,7 +39,7 @@
 #include "ser.h"
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: amiga_init.c,v 1.133 2024/01/09 07:28:25 thorpej Exp $");
+__KERNEL_RCSID(0, "$NetBSD: amiga_init.c,v 1.141 2026/05/30 10:10:11 thorpej Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -51,7 +51,6 @@ __KERNEL_RCSID(0, "$NetBSD: amiga_init.c,v 1.133 2024/01/09 07:28:25 thorpej Exp
 #include <sys/mbuf.h>
 #include <sys/protosw.h>
 #include <sys/domain.h>
-#include <sys/dkbad.h>
 #include <sys/reboot.h>
 #include <sys/exec.h>
 
@@ -60,6 +59,7 @@ __KERNEL_RCSID(0, "$NetBSD: amiga_init.c,v 1.133 2024/01/09 07:28:25 thorpej Exp
 
 #include <machine/pte.h>
 #include <machine/cpu.h>
+#include <machine/vectors.h>
 #include <amiga/amiga/cc.h>
 #include <amiga/amiga/cia.h>
 #include <amiga/amiga/custom.h>
@@ -136,7 +136,7 @@ extern void kernel_reload(char *, u_long, u_long, u_long, u_long,
 	u_long, u_long, u_long, u_long, u_long, u_long);
 #endif
 extern void etext(void);
-void start_c_finish(void);
+void *start_c_finish(void);
 
 void *
 chipmem_steal(long amount)
@@ -702,7 +702,7 @@ start_c(int id, u_int fphystart, u_int fphysize, u_int cphysize,
 	 */
 	RELOC(maxmem, u_int)  = pend >> PGSHIFT;
 	RELOC(lowram, u_int)  = fphystart;
-	RELOC(physmem, u_int) = fphysize >> PGSHIFT;
+	RELOC(physmem, psize_t) = fphysize >> PGSHIFT;
 
 	RELOC(virtual_avail, u_int) = vstart;
 
@@ -715,12 +715,14 @@ start_c(int id, u_int fphystart, u_int fphysize, u_int cphysize,
 	RELOC(m68k_uptbase, vaddr_t) =
 	    roundup(vstart + 0x10000000, 0x10000000);
 
+#if defined(M68020) || defined(M68030)
 	/*
 	 * set this before copying the kernel, so the variable is updated in
 	 * the `real' place too. protorp[0] is already preset to the
 	 * CRP setting.
 	 */
 	RELOC(protorp[1], u_int) = RELOC(Sysseg_pa, u_int);
+#endif
 
 	RELOC(start_c_fphystart, u_int) = fphystart;
 	RELOC(start_c_pstart, u_int) = pstart;
@@ -778,20 +780,20 @@ start_c(int id, u_int fphystart, u_int fphysize, u_int cphysize,
 		} else
 ((volatile struct Custom *)0xdff000)->color[0] = 0xA70;		/* ORANGE */
 #endif
-	} else
-#endif
-	{
-		/*
-		 * setup and load SRP (see pmap.h)
-		 */
-		__asm volatile ("pmove %0@,%%srp":: "a" (&RELOC(protorp, u_int)));
+		return;
 	}
+#endif /* M68040 || M68060 */
+#if defined(M68020) || defined(M68030)
+	/*
+	 * setup and load SRP (see pmap.h)
+	 */
+	__asm volatile ("pmove %0@,%%srp":: "a" (&RELOC(protorp, u_int)));
+#endif /* M68020 || M68030 */
 }
 
-void
+void *
 start_c_finish(void)
 {
-	extern u_int32_t delaydivisor;
 #ifdef	P5PPC68KBOARD
         struct cfdev *cdp, *ecdp;
 #endif
@@ -814,8 +816,42 @@ start_c_finish(void)
 ((volatile struct Custom *)CUSTOMADDR)->color[0] = 0x0a0;	/* GREEN */
 #endif
 
+	/*
+	 * Vector initialization for special motherboards
+	 */
+#ifdef DRACO
+	extern char DraCoIntr[], DraCoLev1intr[], DraCoLev2intr[];
+	u_char dracorev;
+
+	dracorev = is_draco();
+	if (dracorev) {
+		if (dracorev >= 4) {
+			vectab[24+1] = DraCoLev1intr;
+			vectab[24+2] = DraCoIntr;
+		} else {
+			vectab[24+1] = DraCoIntr;
+			vectab[24+2] = DraCoLev2intr;
+		}
+		vectab[24+3] = DraCoIntr;
+		vectab[24+4] = DraCoIntr;
+		vectab[24+5] = DraCoIntr;
+		vectab[24+6] = DraCoIntr;
+	}
+#endif
+
 	pmap_bootstrap(start_c_pstart, start_c_fphystart);
-	pmap_bootstrap_finalize();
+	void *ksp = pmap_bootstrap2();
+
+	/*
+	 * Initialize the kernel message buffer.
+	 */
+	extern paddr_t msgbufpa;
+	for (int i = 0; i < btoc(round_page(MSGBUFSIZE)); i++) {
+		pmap_kenter_pa((vaddr_t)msgbufaddr + i * PAGE_SIZE,
+			       msgbufpa + i * PAGE_SIZE,
+			       VM_PROT_READ|VM_PROT_WRITE, 0);
+	}
+	initmsgbuf(msgbufaddr, round_page(MSGBUFSIZE));
 
 	/*
 	 * to make life easier in locore.s, set these addresses explicitly
@@ -927,16 +963,18 @@ start_c_finish(void)
 	 */
 
 	if (machineid & AMIGA_68060)
-		delaydivisor = (1024 * 1) / 80;	/* 80 MHz 68060 w. BTC */
+		delay_divisor = delay_divisor_est60(80); /* 80 MHz 68060 BTC */
 
 	else if (machineid & AMIGA_68040)
-		delaydivisor = (1024 * 3) / 40;	/* 40 MHz 68040 */
+		delay_divisor = delay_divisor_est40(40); /* 40 MHz 68040 */
 
 	else if (machineid & AMIGA_68030)
-		delaydivisor = (1024 * 8) / 50;	/* 50 MHz 68030 */
+		delay_divisor = delay_divisor_est(50); /* 50 MHz 68030 */
 
 	else
-		delaydivisor = (1024 * 8) / 33; /* 33 MHz 68020 */
+		delay_divisor = delay_divisor_est(33); /* 33 MHz 68020 */
+
+	return ksp;
 }
 
 void

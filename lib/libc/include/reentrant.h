@@ -1,4 +1,4 @@
-/*	$NetBSD: reentrant.h,v 1.22 2024/08/27 13:43:02 riastradh Exp $	*/
+/*	$NetBSD: reentrant.h,v 1.24 2025/10/06 13:12:29 riastradh Exp $	*/
 
 /*-
  * Copyright (c) 1997, 1998, 2003 The NetBSD Foundation, Inc.
@@ -65,7 +65,7 @@
  * Implementation Details:
  * 
  * The thread primitives used by the library (mutex_t, mutex_lock, etc.)
- * are macros which expand to the cooresponding primitives provided by
+ * are macros which expand to the corresponding primitives provided by
  * the thread engine or to nothing.  The latter is used so that code is
  * not unreasonably cluttered with #ifdefs when all thread safe support
  * is removed.
@@ -204,8 +204,6 @@ int	__libc_thr_once(once_t *, void (*)(void));
 int	__libc_thr_sigsetmask(int, const sigset_t *, sigset_t *);
 thr_t	__libc_thr_self(void);
 int	__libc_thr_yield(void);
-void	__libc_thr_create(thr_t *, const thrattr_t *,
-	    void *(*)(void *), void *);
 void	__libc_thr_exit(void *) __attribute__((__noreturn__));
 int	*__libc_thr_errno(void);
 int	__libc_thr_setcancelstate(int, int *);
@@ -267,6 +265,8 @@ thr_t	__libc_thr_self_stub(void);
 int	__libc_thr_yield_stub(void);
 int	__libc_thr_create_stub(thr_t *, const thrattr_t *,
 	    void *(*)(void *), void *);
+int	__libc_thr_detach_stub(thr_t);
+int	__libc_thr_join_stub(thr_t, void **);
 void	__libc_thr_exit_stub(void *) __dead;
 int	*__libc_thr_errno_stub(void);
 int	__libc_thr_setcancelstate_stub(int, int *);

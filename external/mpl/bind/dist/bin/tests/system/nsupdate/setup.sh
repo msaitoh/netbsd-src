@@ -13,44 +13,13 @@
 
 . ../conf.sh
 
-#
-# jnl and database files MUST be removed before we start
-#
-$SHELL clean.sh
-
-copy_setports ns1/named.conf.in ns1/named.conf
-copy_setports ns2/named.conf.in ns2/named.conf
-copy_setports ns3/named.conf.in ns3/named.conf
-copy_setports ns5/named.conf.in ns5/named.conf
-copy_setports ns6/named.conf.in ns6/named.conf
-copy_setports ns7/named1.conf.in ns7/named.conf
-copy_setports ns8/named.conf.in ns8/named.conf
-
-# If "tkey-gssapi-credential" is set in the configuration and GSSAPI support is
-# not available, named will refuse to start.  As the test system framework does
-# not support starting named instances conditionally, ensure that
-# "tkey-gssapi-credential" is only present in named.conf if GSSAPI support is
-# available.
-copy_setports ns9/named.conf.in ns9/named.conf.in.tkey
-copy_setports ns10/named.conf.in ns10/named.conf.in.tkey
-if $FEATURETEST --gssapi; then
-  sed 's|@TKEY_CONFIGURATION@|tkey-gssapi-credential "DNS/ns9.example.com@EXAMPLE.COM";|' ns9/named.conf.in.tkey >ns9/named.conf
-  sed 's|@TKEY_CONFIGURATION@|tkey-gssapi-credential "DNS/ns10.example.com@EXAMPLE.COM";|' ns10/named.conf.in.tkey >ns10/named.conf
-else
-  sed 's|@TKEY_CONFIGURATION@||' ns9/named.conf.in.tkey >ns9/named.conf
-  sed 's|@TKEY_CONFIGURATION@||' ns10/named.conf.in.tkey >ns10/named.conf
-fi
-rm -f ns9/named.conf.in.tkey
-rm -f ns10/named.conf.in.tkey
-
-copy_setports verylarge.in verylarge
-
 cp -f ns1/example1.db ns1/example.db
 sed 's/example.nil/other.nil/g' ns1/example1.db >ns1/other.db
 sed 's/example.nil/unixtime.nil/g' ns1/example1.db >ns1/unixtime.db
 sed 's/example.nil/yyyymmddvv.nil/g' ns1/example1.db >ns1/yyyymmddvv.db
 sed 's/example.nil/keytests.nil/g' ns1/example1.db >ns1/keytests.db
 cp -f ns3/example.db.in ns3/example.db
+cp -f ns3/relaxed.db.in ns3/relaxed.db
 cp -f ns3/too-big.test.db.in ns3/too-big.test.db
 
 # update_test.pl has its own zone file because it
@@ -66,6 +35,7 @@ update.nil              IN SOA  ns1.example.nil. hostmaster.example.nil. (
                                 3600       ; minimum (1 hour)
                                 )
 update.nil.             NS      ns1.update.nil.
+update.nil.             KX      0 .
 ns1.update.nil.         A       10.53.0.2
 ns2.update.nil.		AAAA	::1
 EOF
@@ -75,7 +45,7 @@ $TSIGKEYGEN ddns-key.example.nil >ns1/ddns.key
 if $FEATURETEST --md5; then
   $TSIGKEYGEN -a hmac-md5 md5-key >ns1/md5.key
 else
-  echo -n >ns1/md5.key
+  echo "/* MD5 NOT SUPPORTED */" >ns1/md5.key
 fi
 $TSIGKEYGEN -a hmac-sha1 sha1-key >ns1/sha1.key
 $TSIGKEYGEN -a hmac-sha224 sha224-key >ns1/sha224.key

@@ -57,6 +57,7 @@
 #include "sldns/sbuffer.h"
 #include "sldns/parseutil.h"
 #include "sldns/wire2str.h"
+#include "services/mesh.h"
 
 #include <ctype.h>
 #if !defined(HAVE_SSL) && !defined(HAVE_NSS) && !defined(HAVE_NETTLE)
@@ -623,7 +624,8 @@ enum sec_status
 dnskeyset_verify_rrset(struct module_env* env, struct val_env* ve,
 	struct ub_packed_rrset_key* rrset, struct ub_packed_rrset_key* dnskey,
 	uint8_t* sigalg, char** reason, sldns_ede_code *reason_bogus,
-	sldns_pkt_section section, struct module_qstate* qstate, int* verified)
+	sldns_pkt_section section, struct module_qstate* qstate, int* verified,
+	char* reasonbuf, size_t reasonlen)
 {
 	enum sec_status sec;
 	size_t i, num;
@@ -680,7 +682,8 @@ dnskeyset_verify_rrset(struct module_env* env, struct val_env* ve,
 		verbose(VERB_ALGO, "rrset failed to verify: "
 			"no valid signatures for %d algorithms",
 			(int)algo_needs_num_missing(&needs));
-		algo_needs_reason(env, alg, reason, "no signatures");
+		algo_needs_reason(alg, reason, "no signatures", reasonbuf,
+			reasonlen);
 	} else {
 		verbose(VERB_ALGO, "rrset failed to verify: "
 			"no valid signatures");
@@ -688,17 +691,16 @@ dnskeyset_verify_rrset(struct module_env* env, struct val_env* ve,
 	return sec_status_bogus;
 }
 
-void algo_needs_reason(struct module_env* env, int alg, char** reason, char* s)
+void algo_needs_reason(int alg, char** reason, char* s, char* reasonbuf,
+	size_t reasonlen)
 {
-	char buf[256];
 	sldns_lookup_table *t = sldns_lookup_by_id(sldns_algorithms, alg);
 	if(t&&t->name)
-		snprintf(buf, sizeof(buf), "%s with algorithm %s", s, t->name);
-	else	snprintf(buf, sizeof(buf), "%s with algorithm ALG%u", s,
+		snprintf(reasonbuf, reasonlen, "%s with algorithm %s", s,
+			t->name);
+	else	snprintf(reasonbuf, reasonlen, "%s with algorithm ALG%u", s,
 			(unsigned)alg);
-	*reason = regional_strdup(env->scratch, buf);
-	if(!*reason)
-		*reason = s;
+	*reason = reasonbuf;
 }
 
 enum sec_status
@@ -748,7 +750,6 @@ dnskey_verify_rrset(struct module_env* env, struct val_env* ve,
 			return sec_status_bogus;
 		}
 	}
-	verbose(VERB_ALGO, "rrset failed to verify: all signatures are bogus");
 	if(!numchecked) {
 		*reason = "signature for expected key and algorithm missing";
 		if(reason_bogus)
@@ -761,6 +762,7 @@ dnskey_verify_rrset(struct module_env* env, struct val_env* ve,
 		*reason = "algorithm refused by cryptolib";
 		return sec_status_indeterminate;
 	}
+	verbose(VERB_ALGO, "rrset failed to verify: all signatures are bogus");
 	return sec_status_bogus;
 }
 
@@ -1568,6 +1570,18 @@ dnskey_verify_rrset_sig(struct regional* region, sldns_buffer* buf,
 			*reason_bogus = LDNS_EDE_NO_ZONE_KEY_BIT_SET;
 		return sec_status_bogus; 
 	}
+	if((dnskey_get_flags(dnskey, dnskey_idx) & LDNS_KEY_REVOKE_KEY) &&
+		/* The REVOKE key is allowed to check sigs on itself. */
+		!(ntohs(rrset->rk.type) == LDNS_RR_TYPE_DNSKEY &&
+		  query_dname_compare(rrset->rk.dname, dnskey->rk.dname)==0)
+		) {
+		verbose(VERB_QUERY, "verify: dnskey has REVOKE bit set, "
+			"not usable for data validation per RFC 5011 s2.1");
+		*reason = "dnskey revoked";
+		if(reason_bogus)
+			*reason_bogus = LDNS_EDE_DNSKEY_MISSING;
+		return sec_status_bogus;
+	}
 
 	if(dnskey_get_protocol(dnskey, dnskey_idx) != LDNS_DNSSEC_KEYPROTO) { 
 		/* RFC 4034 says DNSKEY PROTOCOL MUST be 3 */
@@ -1676,6 +1690,10 @@ dnskey_verify_rrset_sig(struct regional* region, sldns_buffer* buf,
 	/* verify */
 	sec = verify_canonrrset(buf, (int)sig[2+2],
 		sigblock, sigblock_len, key, keylen, reason);
+
+	/* count validation operation */
+	if(qstate && qstate->env && qstate->env->mesh)
+		qstate->env->mesh->val_ops++;
 	
 	if(sec == sec_status_secure) {
 		/* check if TTL is too high - reduce if so */

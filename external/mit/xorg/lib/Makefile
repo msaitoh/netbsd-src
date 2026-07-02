@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.60 2024/07/04 05:23:33 mrg Exp $
+#	$NetBSD: Makefile,v 1.62 2025/09/19 22:08:30 mrg Exp $
 
 # build libraries for xorg
 
@@ -37,7 +37,9 @@ SUBDIR+=libvdpau \
 	.WAIT
 .endif
 SUBDIR+=libXi libXxf86vm \
-	libGL${OLD_SUFFIX} libXScrnSaver libXfont libXfont2 \
+	.WAIT
+# libGL depends upon libXxf86vm
+SUBDIR+=libGL${OLD_SUFFIX} libXScrnSaver libXfont libXfont2 \
 	libXinerama libXmu libXmuu libXpm libXrender \
 	libXres libXtst libXvMC libXvMCW libXv libXxf86dga \
 	libxkbui \
@@ -56,7 +58,7 @@ SUBDIR+=libGLU libGLw libXaw6 libXaw libXcursor \
 	libXdmGreet \
 	xcb-util
 SUBDIR+=libgbm${OLD_SUFFIX}
-.if ${HAVE_XORG_GLAMOR} != "no"
+.if ${HAVE_XORG_EGL} != "no"
 # libEGL depends upon libgbm
 SUBDIR+=.WAIT libEGL${OLD_SUFFIX}
 .endif

@@ -1,5 +1,5 @@
 %{
-/* $NetBSD: cgram.y,v 1.512 2024/10/04 11:38:03 rillig Exp $ */
+/* $NetBSD: cgram.y,v 1.538 2026/03/18 06:17:55 rillig Exp $ */
 
 /*
  * Copyright (c) 1996 Christopher G. Demetriou.  All Rights Reserved.
@@ -35,7 +35,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID)
-__RCSID("$NetBSD: cgram.y,v 1.512 2024/10/04 11:38:03 rillig Exp $");
+__RCSID("$NetBSD: cgram.y,v 1.538 2026/03/18 06:17:55 rillig Exp $");
 #endif
 
 #include <limits.h>
@@ -148,6 +148,15 @@ new_attribute(const sbuf_t *prefix, const sbuf_t *name,
 	return attr;
 }
 
+static tnode_t *
+unconst_tnode(const tnode_t *p)
+{
+	void *r;
+
+	memcpy(&r, &p, sizeof(r));
+	return r;
+}
+
 #if YYDEBUG && YYBYACC
 #define YYSTYPE_TOSTRING cgram_to_string
 #endif
@@ -175,7 +184,7 @@ new_attribute(const sbuf_t *prefix, const sbuf_t *name,
 	buffer	*y_string;
 	qual_ptr *y_qual_ptr;
 	bool	y_seen_statement;
-	struct generic_association *y_generic;
+	struct generic_selection y_generic_selection;
 	array_size y_array_size;
 	bool	y_in_system_header;
 	designation y_designation;
@@ -194,9 +203,13 @@ new_attribute(const sbuf_t *prefix, const sbuf_t *name,
 } <y_val>
 %printer { fprintf(yyo, "'%s'", $$ != NULL ? $$->sb_name : "<null>"); } <y_name>
 %printer {
-	bool indented = debug_push_indented(true);
-	debug_sym("", $$, "");
-	debug_pop_indented(indented);
+	if ($$ == NULL)
+		fprintf(yyo, "<null_symbol>");
+	else {
+		bool indented = debug_push_indented(true);
+		debug_sym("", $$, "");
+		debug_pop_indented(indented);
+	}
 } <y_sym>
 %printer { fprintf(yyo, "%s", $$ ? "++" : "--"); } <y_inc>
 %printer { fprintf(yyo, "%s", op_name($$)); } <y_op>
@@ -213,6 +226,13 @@ new_attribute(const sbuf_t *prefix, const sbuf_t *name,
 		n++;
 	fprintf(yyo, "%zu parameter%s", n, n != 1 ? "s" : "");
 } <y_parameter_list>
+%printer {
+	fprintf(yyo, "function_call(");
+	for (size_t i = 0; i < $$->args_len; i++)
+		fprintf(yyo, "%s%s", i > 0 ? ", " : "",
+		    expr_type_name($$->args[i]));
+	fprintf(yyo, ")");
+} <y_arguments>
 %printer { fprintf(yyo, "%s", type_name($$)); } <y_type>
 %printer {
 	if ($$ == NULL)
@@ -227,7 +247,7 @@ new_attribute(const sbuf_t *prefix, const sbuf_t *name,
 	fprintf(yyo, "%s *", type_qualifiers_string($$->qualifiers));
 } <y_qual_ptr>
 %printer { fprintf(yyo, "%s", $$ ? "yes" : "no"); } <y_seen_statement>
-%printer { fprintf(yyo, "%s", type_name($$->ga_arg)); } <y_generic>
+%printer { fprintf(yyo, "%s", type_name($$.expr_type)); } <y_generic_selection>
 %printer { fprintf(yyo, "%d", $$.dim); } <y_array_size>
 %printer { fprintf(yyo, "%s", $$ ? "yes" : "no"); } <y_in_system_header>
 %printer {
@@ -309,10 +329,10 @@ new_attribute(const sbuf_t *prefix, const sbuf_t *name,
 %token			T_IF
 %token			T_PACKED
 %token			T_RETURN
+%token			T_STATIC_ASSERT
 %token			T_SWITCH
 %token			T_SYMBOLRENAME
 %token			T_WHILE
-%token			T_STATIC_ASSERT
 
 %token			T_ATTRIBUTE
 
@@ -343,8 +363,7 @@ new_attribute(const sbuf_t *prefix, const sbuf_t *name,
 %type	<y_tnode>	primary_expression
 %type	<y_designation>	member_designator
 %type	<y_tnode>	generic_selection
-%type	<y_generic>	generic_assoc_list
-%type	<y_generic>	generic_association
+%type	<y_generic_selection>	generic_inner
 %type	<y_tnode>	postfix_expression
 %type	<y_tnode>	gcc_statement_expr_list
 %type	<y_tnode>	gcc_statement_expr_item
@@ -352,6 +371,7 @@ new_attribute(const sbuf_t *prefix, const sbuf_t *name,
 %type	<y_arguments>	argument_expression_list
 %type	<y_scl>		storage_class_specifiers
 %type	<y_tnode>	unary_expression
+%type	<y_tnode>	sizeof_argument
 %type	<y_tnode>	cast_expression
 %type	<y_tnode>	expression_opt
 %type	<y_tnode>	conditional_expression
@@ -369,7 +389,6 @@ new_attribute(const sbuf_t *prefix, const sbuf_t *name,
 /* No type for declmod. */
 %type	<y_type_attributes> type_attribute_list_opt
 %type	<y_type_attributes> type_attribute_list
-%type	<y_type_attributes> type_attribute_opt
 %type	<y_type_attributes> type_attribute
 /* No type for begin_type. */
 /* No type for end_type. */
@@ -517,7 +536,7 @@ string:
 	T_STRING
 |	string T_STRING {
 		if (!allow_c90)
-			/* concatenated strings are illegal in traditional C */
+			/* concatenated strings require C90 or later */
 			warning(219);
 		$$ = cat_strings($1, $2);
 	}
@@ -594,34 +613,46 @@ member_designator:
 
 /* K&R ---, C90 ---, C99 ---, C11 6.5.1.1, C23 6.5.2.1 */
 generic_selection:
-	T_GENERIC T_LPAREN assignment_expression T_COMMA
-	    generic_assoc_list T_RPAREN {
+	T_GENERIC {
 		/* generic selection requires C11 or later */
 		c11ism(345);
-		$$ = build_generic_selection($3, $5);
+	} T_LPAREN generic_inner T_RPAREN {
+		$$ = $4.matched != NULL ? $4.matched : $4.fallback;
 	}
 ;
 
-/* K&R ---, C90 ---, C99 ---, C11 6.5.1.1, C23 6.5.2.1 */
-generic_assoc_list:
-	generic_association
-|	generic_assoc_list T_COMMA generic_association {
-		$3->ga_prev = $1;
-		$$ = $3;
-	}
-;
+/* The rule 'generic_assoc_list' is inlined into 'generic_inner'. */
+/* The rule 'generic_association' is inlined into 'generic_inner'. */
 
-/* K&R ---, C90 ---, C99 ---, C11 6.5.1.1, C23 6.5.2.1 */
-generic_association:
-	type_name T_COLON assignment_expression {
-		$$ = block_zero_alloc(sizeof(*$$), "generic");
-		$$->ga_arg = $1;
-		$$->ga_result = $3;
+generic_inner:
+	{
+		push_evaluation_mode(EM_TYPE);
+	} assignment_expression {
+		pop_evaluation_mode();
+	} {
+		$$ = (struct generic_selection){
+			/* C23 6.5.2.1p2 */
+			.expr_type = $2 != NULL
+			    ? cconv(unconst_tnode($2))->tn_type
+			    : NULL
+		};
 	}
-|	T_DEFAULT T_COLON assignment_expression {
-		$$ = block_zero_alloc(sizeof(*$$), "generic");
-		$$->ga_arg = NULL;
-		$$->ga_result = $3;
+|	generic_inner T_COMMA type_name T_COLON {
+		$1.assoc_matched = $1.expr_type != NULL && $3 != NULL
+		    && types_compatible($1.expr_type, $3, true, false, NULL);
+		push_evaluation_mode($1.assoc_matched ? EM_EVAL : EM_PARSE);
+	} assignment_expression {
+		pop_evaluation_mode();
+		$$ = $1;
+		if ($$.assoc_matched)
+			$$.matched = $6;
+	}
+|	generic_inner T_COMMA T_DEFAULT T_COLON {
+		push_evaluation_mode($1.matched != NULL ? EM_PARSE : EM_EVAL);
+	} assignment_expression {
+		pop_evaluation_mode();
+		$$ = $1;
+		$$.fallback = $6;
 	}
 ;
 
@@ -712,7 +743,8 @@ gcc_statement_expr_item:
 			/* XXX: do that only on the last name */
 			if ($1->tn_op == NAME)
 				$1->u.sym->s_used = true;
-			expr($1, false, false, false, false);
+			expr($1, true, false, false, false,
+			    "statement expression");
 			suppress_fallthrough = false;
 			$$ = $1;
 		}
@@ -769,7 +801,7 @@ unary_expression:
 	}
 |	T_ADDITIVE sys cast_expression {
 		if (!allow_c90 && $1 == PLUS)
-			/* unary '+' is illegal in traditional C */
+			/* unary '+' requires C90 or later */
 			warning(100);
 		$$ = build_unary($1 == PLUS ? UPLUS : UMINUS, $2, $3);
 	}
@@ -788,14 +820,11 @@ unary_expression:
 |	T_EXTENSION cast_expression {	/* GCC c_parser_unary_expression */
 		$$ = $2;
 	}
-|	T_SIZEOF unary_expression {
-		$$ = $2 == NULL ? NULL : build_sizeof($2->tn_type);
-		if ($$ != NULL)
-			check_expr_misc($2,
-			    false, false, false, false, false, true);
-	}
-|	T_SIZEOF T_LPAREN type_name T_RPAREN {
-		$$ = build_sizeof($3);
+|	T_SIZEOF {
+		push_evaluation_mode(EM_TYPE);
+	} sizeof_argument {
+		pop_evaluation_mode();
+		$$ = $3;
 	}
 |	T_ALIGNOF unary_expression {
 		/* non type argument to alignof is a GCC extension */
@@ -807,6 +836,18 @@ unary_expression:
 |	T_ALIGNOF T_LPAREN type_name T_RPAREN {
 		/* TODO: c11ism */
 		$$ = build_alignof($3);
+	}
+;
+
+sizeof_argument:			/* specific to lint */
+	unary_expression {
+		$$ = $1 == NULL ? NULL : build_sizeof($1->tn_type);
+		if ($$ != NULL)
+			check_expr_misc($1,
+			    false, false, false, false, false, true);
+	}
+|	T_LPAREN type_name T_RPAREN {
+		$$ = build_sizeof($2);
 	}
 ;
 
@@ -954,8 +995,7 @@ begin_type_declaration_specifiers:	/* see C99 6.7, C23 6.7.1 */
 		dcs_add_type($2);
 	}
 |	type_attribute begin_type_declaration_specifiers {
-		if ($1.used)
-			dcs_set_used();
+		dcs_add_type_attributes($1);
 	}
 |	begin_type_declaration_specifiers declmod
 |	begin_type_declaration_specifiers notype_type_specifier {
@@ -1025,7 +1065,9 @@ declmod:
 |	T_FUNCTION_SPECIFIER {
 		dcs_add_function_specifier($1);
 	}
-|	type_attribute_list
+|	type_attribute_list {
+		dcs_add_type_attributes($1);
+	}
 ;
 
 type_attribute_list_opt:
@@ -1038,30 +1080,23 @@ type_attribute_list_opt:
 type_attribute_list:
 	type_attribute
 |	type_attribute_list type_attribute {
-		$$ = (type_attributes){ .used = $1.used || $2.used };
+		$$ = merge_type_attributes($1, $2);
 	}
-;
-
-type_attribute_opt:
-	/* empty */ {
-		$$ = (type_attributes){ .used = false };
-	}
-|	type_attribute
 ;
 
 type_attribute:			/* See C11 6.7 declaration-specifiers */
 	gcc_attribute_specifier
 |	T_ALIGNAS T_LPAREN type_type_specifier T_RPAREN {		/* C11 6.7.5 */
-		dcs_add_alignas(build_sizeof($3));
-		$$ = (type_attributes){ .used = false };
+		dcs_add_alignas(alignment($3));
+		$$ = no_type_attributes();
 	}
 |	T_ALIGNAS T_LPAREN constant_expression T_RPAREN {	/* C11 6.7.5 */
-		dcs_add_alignas($3);
-		$$ = (type_attributes){ .used = false };
+		dcs_add_alignas(to_int_constant($3, true));
+		$$ = no_type_attributes();
 	}
 |	T_PACKED {
 		dcs_add_packed();
-		$$ = (type_attributes){ .used = false };
+		$$ = no_type_attributes();
 	}
 ;
 
@@ -1072,6 +1107,7 @@ begin_type:
 |	attribute_specifier_sequence {
 		dcs_begin_type();
 		dcs->d_used = attributes_contain(&$1, "maybe_unused");
+		dcs->d_noreturn = attributes_contain(&$1, "noreturn");
 	}
 ;
 
@@ -1252,7 +1288,7 @@ member_declaration:
 		set_sym_kind(SK_VCFT);
 		$$ = $4;
 	}
-|	begin_type_qualifier_list end_type type_attribute_opt T_SEMI {
+|	begin_type_qualifier_list end_type type_attribute_list_opt T_SEMI {
 		/* syntax error '%s' */
 		error(249, "member without type");
 		$$ = NULL;
@@ -1486,9 +1522,11 @@ notype_direct_declarator:
 
 type_direct_declarator:
 	type_attribute_list_opt identifier {
+		/* TODO: dcs_add_type_attributes($1); */
 		$$ = declarator_name(getsym($2));
 	}
 |	type_attribute_list_opt T_LPAREN type_declarator T_RPAREN {
+		/* TODO: dcs_add_type_attributes($1); */
 		$$ = $3;
 	}
 |	type_direct_declarator T_LBRACK array_size_opt T_RBRACK {
@@ -1500,11 +1538,22 @@ type_direct_declarator:
 		block_level--;
 		if ($2.used)
 			$$->s_used = true;
+		/* TODO: handle $2.noreturn */
 	}
 |	type_direct_declarator type_attribute {
 		$$ = $1;
 		if ($2.used)
 			$$->s_used = true;
+		/* TODO: handle $2.noreturn */
+		if ($2.bit_width > 0) {
+			tspec_t t = $$->s_type->t_tspec;
+			lint_assert(t == INT || t == UINT);
+			type_t *tp = block_dup_type($$->s_type);
+			tp->t_tspec =
+			    $2.bit_width == 128 ? (t == INT ? INT128 : UINT128) :
+			    t == INT ? LLONG : ULLONG;
+			$$->s_type = tp;
+		}
 	}
 ;
 
@@ -1606,6 +1655,7 @@ direct_param_declarator:
 		$$ = declarator_name(getsym($1));
 		if ($2.used)
 			dcs_set_used();
+		/* TODO: dcs_add_type_attributes($2); */
 	}
 |	identifier {
 		$$ = declarator_name(getsym($1));
@@ -1618,6 +1668,7 @@ direct_param_declarator:
 		$$ = add_array($1, $3.has_dim, $3.dim);
 		if ($5.used)
 			dcs_set_used();
+		/* TODO: dcs_add_type_attributes($5); */
 	}
 |	direct_param_declarator param_list asm_or_symbolrename_opt {
 		$$ = add_function(symbolrename($1, $3), $2);
@@ -1625,6 +1676,7 @@ direct_param_declarator:
 		block_level--;
 		if ($2.used)
 			dcs_set_used();
+		/* TODO: handle $2.noreturn */
 	}
 ;
 
@@ -1650,7 +1702,7 @@ param_list:
 		block_level++;
 		begin_declaration_level(DLK_PROTO_PARAMS);
 	} identifier_list T_RPAREN {
-		$$ = (parameter_list){ .first = $3 };
+		$$ = (parameter_list){ .first = $3, .identifier = true };
 	}
 |	abstract_decl_param_list
 ;
@@ -1733,6 +1785,7 @@ abstract_decl_param_list:	/* specific to lint */
 		$$ = $2;
 		$$.prototype = true;
 		$$.used = $4.used;
+		$$.noreturn = $4.noreturn;
 	}
 |	abstract_decl_lparen error T_RPAREN type_attribute_list_opt {
 		$$ = (parameter_list){ .used = $4.used };
@@ -2128,22 +2181,39 @@ block_item:
 /* C99 6.8.3, C23 6.8.4 */
 expression_statement:
 	expression T_SEMI {
-		expr($1, false, false, false, false);
+		/*
+		 * Even though a "call statement" is not a formally defined
+		 * term in the C standards, it occurs so often that it's
+		 * helpful to have a distinguishable term for it.
+		 */
+		expr($1, false, false, false, false,
+		    $1 != NULL && $1->tn_op == CALL ? "call" : "expression");
 		suppress_fallthrough = false;
+		if ($1 != NULL && $1->tn_op == CALL
+		    && $1->u.call->func->tn_type->t_subt->t_noreturn)
+			stmt_call_noreturn();
 	}
 |	T_SEMI {
-		check_statement_reachable();
+		check_statement_reachable("empty");
 		suppress_fallthrough = false;
 	}
 |	attribute_specifier_sequence expression T_SEMI {
 		debug_attribute_list(&$1);
-		expr($2, false, false, false, false);
+		/*
+		 * Even though a "call statement" is not a formally defined
+		 * term in the C standards, it occurs so often that it's
+		 * helpful to have a distinguishable term for it.
+		 */
+		expr($2, false, false, false, false,
+		    $2 != NULL && $2->tn_op == CALL ? "call" : "expression");
 		suppress_fallthrough = false;
 	}
 |	attribute_specifier_sequence T_SEMI {
+		bool is_fallthrough = attributes_contain(&$1, "fallthrough");
 		debug_attribute_list(&$1);
-		check_statement_reachable();
-		suppress_fallthrough = attributes_contain(&$1, "fallthrough");
+		check_statement_reachable(
+		    is_fallthrough ? "fallthrough" : "empty");
+		suppress_fallthrough = is_fallthrough;
 	}
 ;
 
@@ -2467,7 +2537,7 @@ arg_declaration:
 /* https://gcc.gnu.org/onlinedocs/gcc/Attribute-Syntax.html */
 gcc_attribute_specifier_list_opt:
 	/* empty */ {
-		$$ = (type_attributes){ .used = false };
+		$$ = no_type_attributes();
 	}
 |	gcc_attribute_specifier_list
 ;
@@ -2475,7 +2545,7 @@ gcc_attribute_specifier_list_opt:
 gcc_attribute_specifier_list:
 	gcc_attribute_specifier
 |	gcc_attribute_specifier_list gcc_attribute_specifier {
-		$$ = (type_attributes){ .used = $1.used || $2.used };
+		$$ = merge_type_attributes($1, $2);
 	}
 ;
 
@@ -2492,16 +2562,16 @@ gcc_attribute_specifier:
 gcc_attribute_list:
 	gcc_attribute
 |	gcc_attribute_list T_COMMA gcc_attribute {
-		$$ = (type_attributes){ .used = $1.used || $3.used };
+		$$ = merge_type_attributes($1, $3);
 	}
 ;
 
 gcc_attribute:
 	/* empty */ {
-		$$ = (type_attributes){ .used = false };
+		$$ = no_type_attributes();
 	}
 |	T_NAME {
-		$$ = (type_attributes){ .used = false };
+		$$ = no_type_attributes();
 		const char *name = $1->sb_name;
 		if (is_either(name, "packed", "__packed__"))
 			dcs_add_packed();
@@ -2511,6 +2581,8 @@ gcc_attribute:
 			$$.used = true;
 		else if (is_either(name, "fallthrough", "__fallthrough__"))
 			suppress_fallthrough = true;
+		else if (is_either(name, "noreturn", "__noreturn__"))
+			$$.noreturn = true;
 	}
 |	T_NAME T_LPAREN T_RPAREN {
 		$$ = (type_attributes){ .used = false };
@@ -2519,13 +2591,22 @@ gcc_attribute:
 		const char *name = $1->sb_name;
 		if (is_either(name, "aligned", "__aligned__")
 		    && $3->args_len == 1)
-			dcs_add_alignas($3->args[0]);
-		$$ = (type_attributes){ .used = false };
+			dcs_add_alignas(to_int_constant($3->args[0], true));
+		$$ = no_type_attributes();
+		if (is_either(name, "mode", "__mode__")
+		    && $3->args_len == 1
+		    && $3->args[0]->tn_op == NAME) {
+			const char *arg_name = $3->args[0]->u.sym->s_name;
+			if (strcmp(arg_name, "TI") == 0)
+				$$.bit_width = 128;
+			if (strcmp(arg_name, "DI") == 0)
+				$$.bit_width = 64;
+		}
 	}
 |	type_qualifier {
 		if (!$1.tq_const)
 			yyerror("Bad attribute");
-		$$ = (type_attributes){ .used = false };
+		$$ = no_type_attributes();
 	}
 ;
 

@@ -1,10 +1,10 @@
-#	$NetBSD: Makefile,v 1.18 2024/08/11 08:13:14 mrg Exp $
+#	$NetBSD: Makefile,v 1.20 2026/01/19 02:45:14 mrg Exp $
 
 NOOBJ=# defined
 
 .include <bsd.init.mk>
 
-GCC_MACHINE_ARCH=${MACHINE_ARCH:S/earmv5/earm/}
+GCC_MACHINE_ARCH?=${MACHINE_ARCH:S/earmv5/earm/}
 
 .if ${MKGCC} != "no" && exists(${.CURDIR}/gcc/arch/${GCC_MACHINE_ARCH}/defs.mk)
 
@@ -25,8 +25,8 @@ SUBDIR+=	host-libcpp .WAIT \
 		frontend .WAIT \
 		common common-target .WAIT \
 		libcody libcpp libdecnumber .WAIT \
-		gcov gcov-dump cc1 cc1obj cc1objplus cc1plus cpp g++ gcc \
-		lto1 lto-wrapper lto-dump
+		gcov gcov-dump cc1 cc1obj cc1objplus cc1plus f951 lto1 \
+		cpp g++ gcc gfortran lto-dump lto-wrapper
 .endif
 
 SUBDIR+=	include

@@ -1,4 +1,4 @@
-/*	$NetBSD: expr_sizeof.c,v 1.18 2024/05/03 19:16:13 rillig Exp $	*/
+/*	$NetBSD: expr_sizeof.c,v 1.22 2026/03/15 07:56:00 rillig Exp $	*/
 # 3 "expr_sizeof.c"
 
 /*
@@ -175,7 +175,7 @@ sizeof_errors(void)
 	 * A 'void array' gets replaced with an 'int array' before
 	 * type_size_in_bits gets to see it, thus the 256 * 4 = 1024.
 	 */
-	/* expect+2: error: illegal use of 'void' [18] */
+	/* expect+2: error: invalid use of 'void' [18] */
 	/* expect+1: error: negative array dimension (-1024) [20] */
 	typedef int sizeof_void_array[-(int)sizeof(void[256])];
 
@@ -237,9 +237,6 @@ sequence_of_structs(void)
 		uint16_t f87_exp_sign;
 	} __packed _Alignas(2);
 
-	// FIXME: This otherwise unused struct declaration influences the
-	// offsets checked below. Without this struct, sizeof(struct save87)
-	// is calculated correctly as 108 below.
 	struct fpaccfx {
 		struct fpacc87 r _Alignas(16);
 	};
@@ -255,10 +252,33 @@ sequence_of_structs(void)
 
 	/* expect+1: error: negative array dimension (-20) [20] */
 	typedef int o1[-(int)((unsigned long)(&(((struct save87 *)0)->s87_dp)))];
-	// FIXME: must be 28.
-	/* expect+1: error: negative array dimension (-32) [20] */
+	/* expect+1: error: negative array dimension (-28) [20] */
 	typedef int o2[-(int)((unsigned long)(&(((struct save87 *)0)->s87_ac)))];
-	// FIXME: must be 108.
-	/* expect+1: error: negative array dimension (-112) [20] */
+	/* expect+1: error: negative array dimension (-108) [20] */
 	typedef int reveal[-(int)sizeof(struct save87)];
+}
+
+
+void
+only_determine_type(void)
+{
+	int sizeof_signed_division_by_zero = sizeof (1 / 0);
+	/* expect+1: error: division by 0 [139] */
+	int signed_division_by_zero = 1 / 0;
+
+	int sizeof_unsigned_division_by_zero = sizeof (1U / 0);
+	/* expect+1: error: division by 0 [139] */
+	unsigned unsigned_division_by_zero = 1U / 0;
+
+	double sizeof_floating_division_by_zero = sizeof (1.0 / 0.0);
+	/* expect+1: error: division by 0 [139] */
+	double floating_division_by_zero = 1.0 / 0.0;
+
+	int sizeof_signed_modulo_by_zero = sizeof (1 % 0);
+	/* expect+1: error: modulus by 0 [140] */
+	int signed_modulo_by_zero = 1 % 0;
+
+	int sizeof_unsigned_modulo_by_zero = sizeof (1U % 0);
+	/* expect+1: error: modulus by 0 [140] */
+	unsigned unsigned_modulo_by_zero = 1U % 0;
 }

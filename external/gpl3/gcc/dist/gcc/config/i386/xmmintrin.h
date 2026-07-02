@@ -1,4 +1,4 @@
-/* Copyright (C) 2002-2022 Free Software Foundation, Inc.
+/* Copyright (C) 2002-2024 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -36,6 +36,8 @@
 /* Constants for use with _mm_prefetch.  */
 enum _mm_hint
 {
+  _MM_HINT_IT0 = 19,
+  _MM_HINT_IT1 = 18,
   /* _MM_HINT_ET is _MM_HINT_T with set 3rd bit.  */
   _MM_HINT_ET0 = 7,
   _MM_HINT_ET1 = 6,
@@ -51,11 +53,12 @@ enum _mm_hint
 extern __inline void __attribute__((__gnu_inline__, __always_inline__, __artificial__))
 _mm_prefetch (const void *__P, enum _mm_hint __I)
 {
-  __builtin_prefetch (__P, (__I & 0x4) >> 2, __I & 0x3);
+  __builtin_ia32_prefetch (__P, (__I & 0x4) >> 2,
+			   __I & 0x3, (__I & 0x10) >> 4);
 }
 #else
 #define _mm_prefetch(P, I) \
-  __builtin_prefetch ((P), ((I & 0x4) >> 2), (I & 0x3))
+  __builtin_ia32_prefetch ((P), ((I) & 0x4) >> 2, ((I) & 0x3), ((I) & 0x10) >> 4)
 #endif
 
 #ifndef __SSE__
@@ -927,21 +930,21 @@ _mm_load_ps1 (float const *__P)
 extern __inline __m128 __attribute__((__gnu_inline__, __always_inline__, __artificial__))
 _mm_load_ps (float const *__P)
 {
-  return *(__m128 *)__P;
+  return *(__m128 const *)__P;
 }
 
 /* Load four SPFP values from P.  The address need not be 16-byte aligned.  */
 extern __inline __m128 __attribute__((__gnu_inline__, __always_inline__, __artificial__))
 _mm_loadu_ps (float const *__P)
 {
-  return *(__m128_u *)__P;
+  return *(__m128_u const *)__P;
 }
 
 /* Load four SPFP values in reverse order.  The address must be aligned.  */
 extern __inline __m128 __attribute__((__gnu_inline__, __always_inline__, __artificial__))
 _mm_loadr_ps (float const *__P)
 {
-  __v4sf __tmp = *(__v4sf *)__P;
+  __v4sf __tmp = *(__v4sf const *)__P;
   return (__m128) __builtin_ia32_shufps (__tmp, __tmp, _MM_SHUFFLE (0,1,2,3));
 }
 

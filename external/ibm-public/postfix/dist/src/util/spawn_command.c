@@ -1,4 +1,4 @@
-/*	$NetBSD: spawn_command.c,v 1.2 2017/02/14 01:16:49 christos Exp $	*/
+/*	$NetBSD: spawn_command.c,v 1.4 2026/05/09 18:49:23 christos Exp $	*/
 
 /*++
 /* NAME
@@ -8,8 +8,13 @@
 /* SYNOPSIS
 /*	#include <spawn_command.h>
 /*
-/*	WAIT_STATUS_T spawn_command(key, value, ...)
+/*	WAIT_STATUS_T spawn_command(key, ...)
 /*	int	key;
+/* AUXILIARY FUNCTIONS
+/*	get_spawn_args(
+/*	struct spawn_args *args,
+/*	int	key,
+/*	va_list	ap)
 /* DESCRIPTION
 /*	spawn_command() runs a command in a child process and returns
 /*	the command exit status.
@@ -96,6 +101,7 @@
 #include <msg.h>
 #include <timed_wait.h>
 #include <set_ugid.h>
+#include <set_eugid.h>
 #include <argv.h>
 #include <spawn_command.h>
 #include <exec_command.h>
@@ -103,23 +109,9 @@
 
 /* Application-specific. */
 
-struct spawn_args {
-    char  **argv;			/* argument vector */
-    char   *command;			/* or a plain string */
-    int     stdin_fd;			/* read stdin here */
-    int     stdout_fd;			/* write stdout here */
-    int     stderr_fd;			/* write stderr here */
-    uid_t   uid;			/* privileges */
-    gid_t   gid;			/* privileges */
-    char  **env;			/* extra environment */
-    char  **export;			/* exportable environment */
-    char   *shell;			/* command shell */
-    int     time_limit;			/* command time limit */
-};
-
 /* get_spawn_args - capture the variadic argument list */
 
-static void get_spawn_args(struct spawn_args * args, int init_key, va_list ap)
+void    get_spawn_args(struct spawn_args *args, int init_key, va_list ap)
 {
     const char *myname = "get_spawn_args";
     int     key;
@@ -247,7 +239,8 @@ WAIT_STATUS_T spawn_command(int key,...)
     case 0:
 	if (args.uid != (uid_t) - 1 || args.gid != (gid_t) - 1)
 	    set_ugid(args.uid, args.gid);
-	setsid();
+	if (setsid() < 0)
+	    msg_warn("child: setsid: %m");
 
 	/*
 	 * Pipe plumbing.
@@ -303,9 +296,15 @@ WAIT_STATUS_T spawn_command(int key,...)
 	 */
 	if ((err = timed_waitpid(pid, &wait_status, 0, args.time_limit)) < 0
 	    && errno == ETIMEDOUT) {
+	    uid_t   saved_euid = geteuid();
+	    gid_t   saved_egid = getegid();
+
 	    msg_warn("%s: process id %lu: command time limit exceeded",
 		     args.command, (unsigned long) pid);
-	    kill(-pid, SIGKILL);
+	    set_eugid(args.uid, args.gid);
+	    if (kill(-pid, SIGKILL) < 0)
+		msg_warn("parent: kill: %m");
+	    set_eugid(saved_euid, saved_egid);
 	    err = waitpid(pid, &wait_status, 0);
 	}
 	if (err < 0)

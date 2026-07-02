@@ -1,4 +1,4 @@
-#	$NetBSD: bsd.buildinstall.mk,v 1.1 2012/11/15 23:51:53 joerg Exp $
+#	$NetBSD: bsd.buildinstall.mk,v 1.3 2025/08/25 02:44:31 riastradh Exp $
 
 #
 # build_install logic for src/Makefile
@@ -8,11 +8,11 @@
 # Run "make dependall && make install" for all subdirectories in a group
 # concurrently, but wait after each group.
 #
-SUBDIR_GROUPS=	1
-CUR_GROUP:=	1
+SUBDIR_GROUPS=	0
+CUR_GROUP:=	0
 .for dir in ${SUBDIR}
 .  if ${dir} == ".WAIT"
-CUR_GROUP:=	${CUR_GROUP}1
+CUR_GROUP:=	${SUBDIR_GROUPS:[#]}
 SUBDIR_GROUPS:=	${SUBDIR_GROUPS} ${CUR_GROUP}
 .  else
 SUBDIR_GROUP.${CUR_GROUP}+=	${dir}
@@ -20,7 +20,7 @@ SUBDIR_GROUP.${CUR_GROUP}+=	${dir}
 
 .endfor
 
-build_install:
+build_install: .MAKE
 .for group in ${SUBDIR_GROUPS}
 .  if !empty(SUBDIR_GROUP.${group})
 	${MAKEDIRTARGET} . ${SUBDIR_GROUP.${group}:C/^/dependall-/}

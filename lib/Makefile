@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.302 2024/09/23 13:00:46 christos Exp $
+#	$NetBSD: Makefile,v 1.316 2026/01/19 09:41:05 mrg Exp $
 #	from: @(#)Makefile	5.25.1.1 (Berkeley) 5/7/91
 
 .include <bsd.own.mk>
@@ -21,13 +21,13 @@ SUBDIR+=	.WAIT
 SUBDIR+=	i18n_module
 
 SUBDIR+=	libarch \
-		libbluetooth libbsdmalloc libbz2 \
+		libbsdmalloc libbz2 \
 		libcompat libcrypt \
-		libintl libipsec libkvm libm \
+		libintl libkvm libm \
 		libossaudio libpci libposix libprop libpthread \
 		libpuffs libresolv librmt librpcsvc librt \
 		libtelnet libterminfo \
-		libusbhid libutil liby libz
+		libutil liby libz
 
 .if !defined(BSD_MK_COMPAT_FILE)
 SUBDIR+=	libkern
@@ -46,6 +46,12 @@ SUBDIR+=	libc_vfp
 .if ${MACHINE_MIPS64}
 SUBDIR+=	libc_fp
 .endif
+.if (${MKBLUETOOTH} != "no")
+SUBDIR+=	libbluetooth
+.endif
+.if (${MKIPSEC} != "no")
+SUBDIR+=	libipsec
+.endif
 .if (${MKRUMP} != "no")
 SUBDIR+=	librumpclient
 .endif
@@ -55,6 +61,10 @@ SUBDIR+=	libskey
 
 .if ${HAVE_NVMM:Uno} == "yes" && !defined(MLIBDIR)
 SUBDIR+=	libnvmm
+.endif
+
+.if (${MKUSB} != "no")
+SUBDIR+=	libusbhid
 .endif
 
 .if (${MKARGON2} != "no")
@@ -147,7 +157,7 @@ SUBDIR+=	librumpuser	# depends on libpthread
 SUBDIR+=	libnpf		# depends on libnv
 .endif
 
-OSSL=../crypto/external/bsd/${EXTERNAL_OPENSSL_SUBDIR}/lib/
+OSSL=../crypto/external/${EXTERNAL_OPENSSL_SUBDIR}/lib/
 .include "${.CURDIR}/${OSSL}Makefile.subdir" # depends on libcrypt
 
 .if (${MKISCSI} != "no")
@@ -182,7 +192,7 @@ SUBDIR+=	../external/apache2/llvm/include
 
 SUBDIR+=	../external/mit/libcbor/lib
 
-SUBDIR+=	../external/mit/libuv/lib
+SUBDIR+=	../external/bsd/zstd/lib
 #==================== 2nd library dependency barrier ====================
 SUBDIR+=	.WAIT
 
@@ -202,9 +212,9 @@ SUBDIR+= ../external/gpl3/${EXTERNAL_GCC_SUBDIR}/lib/lib${sanitizer}
 SUBDIR+=	../external/apache2/llvm/librt
 .endif
 
-SUBDIR+=	../external/bsd/libarchive/lib	# depends on libxz
+SUBDIR+=	../external/bsd/libarchive/lib	# depends on libxz, zstd
 
-SUBDIR+=	../external/bsd/file/lib	# depends on libz, libbz2, libxz
+SUBDIR+=	../external/bsd/file/lib	# depends on libz, libbz2, libxz, zstd
 
 .if (${MKNPF} != "no")
 SUBDIR+=	npf		# depends on libnpf
@@ -234,7 +244,10 @@ HEIMDALLIB=	../crypto/external/bsd/heimdal/lib/
 							# libedit, libterminfo,
 .endif
 
+.if (${MKFIDO2} != "no")
 SUBDIR+=	../external/bsd/libfido2/lib	# depends on libcbor
+.endif
+
 NETPGPLIB=	../crypto/external/bsd/netpgp/lib/
 .include "${NETPGPLIB}Makefile.subdir"		# depends on libcrypto, ...
 LIBEVENTLIB=	../external/bsd/libevent/lib/
@@ -255,6 +268,9 @@ SUBDIR+=        ../external/cddl/osnet/lib/libzfs
 
 SUBDIR+= 	../libexec/httpd/libbozohttpd 	# depends on libssl & libcrypto
 
+SUBDIR+=	../external/mit/libuv/lib
+SUBDIR+=	../external/lgpl2/userspace-rcu/lib
+
 #==================== 3rd library dependency barrier ====================
 SUBDIR+=	.WAIT
 
@@ -262,7 +278,7 @@ SUBDIR+=	../crypto/external/bsd/openssh/lib # depends on libcrypto, libz,
 						   # libfido2
 SUBDIR+=	../crypto/external/bsd/netpgp/bindings/lua  # depends on netpgp/lib
 SUBDIR+=	../external/mpl/bind/lib	# depends on heimdal, libcrypto
-						# libuv
+						# libuv, userspace-rcu
 .if ${MKUNBOUND} != "no"
 SUBDIR+=	../external/bsd/unbound/lib	# depends on libcrypto
 .endif
@@ -322,6 +338,19 @@ SUBDIR+=	../sys/rump/net/lib
 
 # Lua bindings come last, they might depend on anything
 SUBDIR+=	lua
+
+.if (${MKGCC} != "no" && ${HAVE_GCC:U0} >= 14)
+.if ${HAVE_QUADMATH} != "no"
+SUBDIR+=	../external/gpl3/${EXTERNAL_GCC_SUBDIR}/lib/libquadmath
+.endif
+.endif
+
+#==================== 6th library dependency barrier ====================
+SUBDIR+=	.WAIT
+
+.if (${MKGCC} != "no" && ${HAVE_GCC:U0} >= 14)
+SUBDIR+=	../external/gpl3/${EXTERNAL_GCC_SUBDIR}/lib/libgfortran
+.endif
 
 .include <bsd.buildinstall.mk>
 .include <bsd.subdir.mk>

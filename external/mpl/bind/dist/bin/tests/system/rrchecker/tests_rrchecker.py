@@ -11,8 +11,15 @@
 
 import os
 
-import isctest
 import pytest
+
+import isctest
+
+pytestmark = pytest.mark.extra_artifacts(
+    [
+        "tempzone",
+    ]
+)
 
 
 @pytest.mark.parametrize(
@@ -30,6 +37,7 @@ import pytest
                 "APL",
                 "ATMA",
                 "AVC",
+                "BRID",
                 "CAA",
                 "CDNSKEY",
                 "CDS",
@@ -42,11 +50,13 @@ import pytest
                 "DNSKEY",
                 "DOA",
                 "DS",
+                "DSYNC",
                 "EID",
                 "EUI48",
                 "EUI64",
                 "GID",
                 "GPOS",
+                "HHIT",
                 "HINFO",
                 "HIP",
                 "HTTPS",
@@ -101,6 +111,7 @@ import pytest
                 "UINFO",
                 "UNSPEC",
                 "URI",
+                "WALLET",
                 "WKS",
                 "X25",
                 "ZONEMD",
@@ -110,25 +121,24 @@ import pytest
     ],
 )
 def test_rrchecker_list_standard_names(option, expected_result):
-    stdout = isctest.run.cmd([os.environ["RRCHECKER"], option]).stdout.decode("utf-8")
-    values = [line for line in stdout.split("\n") if line.strip()]
+    cmd = isctest.run.cmd([os.environ["RRCHECKER"], option])
+    values = [line for line in cmd.out.split("\n") if line.strip()]
 
     assert sorted(values) == sorted(expected_result)
 
 
 def run_rrchecker(option, rr_class, rr_type, rr_rest):
-    rrchecker_output = (
-        isctest.run.cmd(
-            [os.environ["RRCHECKER"], option],
-            input_text=f"{rr_class} {rr_type} {rr_rest}".encode("utf-8"),
-        )
-        .stdout.decode("utf-8")
-        .strip()
+    cmd = isctest.run.cmd(
+        [os.environ["RRCHECKER"], option],
+        input_text=f"{rr_class} {rr_type} {rr_rest}".encode("utf-8"),
     )
-    return rrchecker_output.split()
+    return cmd.out.strip().split()
 
 
-@pytest.mark.parametrize("option", ["-p", "-u"])
+@pytest.mark.parametrize(
+    "option",
+    ["-p", "-u", "multi-line at class", " multi-line at type", "multi-line at data"],
+)
 def test_rrchecker_conversions(option):
     tempzone_file = "tempzone"
     with open(tempzone_file, "w", encoding="utf-8") as file:
@@ -148,7 +158,7 @@ def test_rrchecker_conversions(option):
             ".",
             tempzone_file,
         ],
-    ).stdout.decode("utf-8")
+    ).out
     checkzone_output = [
         line for line in checkzone_output.splitlines() if not line.startswith(";")
     ]
@@ -167,6 +177,15 @@ def test_rrchecker_conversions(option):
                 "-u", rr_class_orig, rr_type_orig, rr_rest_orig
             )
             rr_rest = " ".join(rr_rest)
+        elif option == "multi-line at class":
+            rr_class = "(" + rr_class
+            rr_rest = rr_rest + ")"
+        elif option == "multi-line at type":
+            rr_type = "(" + rr_type
+            rr_rest = rr_rest + ")"
+        elif option == "multi-line at data":
+            rr_rest = "(" + rr_rest
+            rr_rest = rr_rest + ")"
 
         rr_class, rr_type, *rr_rest = run_rrchecker("-p", rr_class, rr_type, rr_rest)
 

@@ -23,9 +23,8 @@ https://www.sphinx-doc.org/en/master/development/tutorials/recipe.html
 
 from collections import namedtuple
 
-from docutils.parsers.rst import Directive, directives
 from docutils import nodes
-
+from docutils.parsers.rst import Directive, directives
 from sphinx import addnodes
 from sphinx.directives import ObjectDescription
 from sphinx.domains import Domain
@@ -34,7 +33,6 @@ from sphinx.util import logging
 from sphinx.util.nodes import make_refnode
 
 import checkgrammar
-
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +50,6 @@ def split_csv(argument, required):
     return outlist
 
 
-# pylint: disable=too-many-statements
 def domain_factory(domainname, domainlabel, todolist, grammar):
     """
     Return parametrized Sphinx domain object.
@@ -226,16 +223,16 @@ def domain_factory(domainname, domainlabel, todolist, grammar):
                 self.state.nested_parse(raw, self.content_offset, parsed)
                 return parsed
 
-            def transform_content(self, contentnode: addnodes.desc_content) -> None:
+            def transform_content(self, content_node: addnodes.desc_content) -> None:
                 """autogenerate content from structured data"""
                 self.workaround_transform_content = True
                 if self.isc_short:
-                    contentnode.insert(0, self.isc_short_node)
+                    content_node.insert(0, self.isc_short_node)
                 if self.isc_tags:
                     tags = nodes.paragraph()
                     tags += nodes.strong(text="Tags: ")
                     tags += nodes.Text(", ".join(self.isc_tags))
-                    contentnode.insert(0, tags)
+                    content_node.insert(0, tags)
 
                 iscconf = self.env.get_domain(domainname)
 
@@ -244,7 +241,7 @@ def domain_factory(domainname, domainlabel, todolist, grammar):
                     return  # not defined in grammar, nothing to render
 
                 blocks = self.format_blocks(iscconf.statement_blocks[name])
-                contentnode.insert(0, blocks)
+                content_node.insert(0, blocks)
 
                 grammars = iscconf.statement_grammar_groups[name]
                 multi_grammar = len(grammars) > 1
@@ -257,11 +254,11 @@ def domain_factory(domainname, domainlabel, todolist, grammar):
                     if "suppress_grammar" in self.options:
                         continue
                     grammarnode = self.format_grammar(multi_grammar, grammar_grp)
-                    contentnode.insert(0, grammarnode)
+                    content_node.insert(0, grammarnode)
 
                 warn = self.format_warnings(union_flags)
                 if len(warn):
-                    contentnode.insert(0, warn)
+                    content_node.insert(0, warn)
 
             def __init__(self, *args, **kwargs):
                 """Compability with Sphinx < 3.0.0"""
@@ -318,7 +315,6 @@ def domain_factory(domainname, domainlabel, todolist, grammar):
                     ]
                 )
 
-        # pylint: disable=too-many-arguments
         def resolve_xref(self, env, fromdocname, builder, typ, target, node, contnode):
             """
             Sphinx API:
@@ -358,7 +354,7 @@ def domain_factory(domainname, domainlabel, todolist, grammar):
             )
 
         def get_statement_name(self, signature):
-            return "{}.{}.{}".format(domainname, "statement", signature)
+            return f"{domainname}.statement.{signature}"
 
         def add_statement(self, signature, tags, short, short_node, lineno):
             """
@@ -366,7 +362,7 @@ def domain_factory(domainname, domainlabel, todolist, grammar):
             No visible effect.
             """
             name = self.get_statement_name(signature)
-            anchor = "{}-statement-{}".format(domainname, signature)
+            anchor = f"{domainname}-statement-{signature}"
 
             new = {
                 "tags": tags,

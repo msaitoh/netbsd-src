@@ -1,4 +1,4 @@
-/*	$NetBSD: ccd.c,v 1.191 2024/04/12 05:04:02 pgoyette Exp $	*/
+/*	$NetBSD: ccd.c,v 1.194 2025/12/24 16:58:15 kre Exp $	*/
 
 /*-
  * Copyright (c) 1996, 1997, 1998, 1999, 2007, 2009 The NetBSD Foundation, Inc.
@@ -88,7 +88,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: ccd.c,v 1.191 2024/04/12 05:04:02 pgoyette Exp $");
+__KERNEL_RCSID(0, "$NetBSD: ccd.c,v 1.194 2025/12/24 16:58:15 kre Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -1172,6 +1172,7 @@ ccdioctl(dev_t dev, u_long cmd, void *data, int flag, struct lwp *l)
 	if (error != EPASSTHROUGH)
 		return error;
 
+	error = 0;
 	switch (cmd) {
 	case DIOCGSTRATEGY:
 	    {
@@ -1616,7 +1617,7 @@ ccdgetdisklabel(dev_t dev)
 		 *
 		 * This is necessary since total size of ccd may vary
 		 * when an interleave is changed even though exactly
-		 * same componets are used, and old disklabel may used
+		 * same components are used, and old disklabel may used
 		 * if that is found.
 		 */
 		if (lp->d_secperunit < UINT32_MAX ?
@@ -1750,7 +1751,7 @@ ccd_units_sysctl(SYSCTLFN_ARGS)
 		LIST_FOREACH(sc, &ccds, sc_link) {
 			if (i >= nccd)
 				break;
-			units[i] = sc->sc_unit;
+			units[i++] = sc->sc_unit;
 		}
 		mutex_exit(&ccd_lock);
 	} else {

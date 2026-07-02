@@ -33,10 +33,13 @@
 __FBSDID("$FreeBSD: src/sbin/gpt/migrate.c,v 1.16 2005/09/01 02:42:52 marcel Exp $");
 #endif
 #ifdef __RCSID
-__RCSID("$NetBSD: migrate.c,v 1.35 2019/03/03 02:28:14 jnemeth Exp $");
+__RCSID("$NetBSD: migrate.c,v 1.37 2025/12/17 15:56:06 nia Exp $");
 #endif
 
 #include <sys/types.h>
+#if defined(HAVE_SYS_ENDIAN_H) || ! defined(HAVE_NBTOOL_CONFIG_H)
+#include <sys/endian.h>
+#endif
 #include <sys/param.h>
 #define FSTYPENAMES
 #define MBRPTYPENAMES
@@ -84,7 +87,7 @@ static const char *migratehelp[] = {
 	"[-Afs] [-p partitions]",
 };
 
-struct gpt_cmd c_migrate = {
+const struct gpt_cmd c_migrate = {
 	"migrate",
 	cmd_migrate,
 	migratehelp, __arraycount(migratehelp),
@@ -119,7 +122,7 @@ mbrptypename(u_int t)
 }
 
 static gpt_type_t
-freebsd_fstype_to_gpt_type(gpt_t gpt, u_int i, u_int fstype)
+freebsd_fstype_to_gpt_type(gpt_t gpt, u_int i __unused, u_int fstype)
 {
 	switch (fstype) {
 	case FS_UNUSED:

@@ -1,4 +1,4 @@
-/*	$NetBSD: mail_proto.h,v 1.5 2023/12/23 20:30:43 christos Exp $	*/
+/*	$NetBSD: mail_proto.h,v 1.7 2026/05/09 18:49:16 christos Exp $	*/
 
 #ifndef _MAIL_PROTO_H_INCLUDED_
 #define _MAIL_PROTO_H_INCLUDED_
@@ -34,8 +34,8 @@
 #define MAIL_PROTO_QMQP		"QMQP"
 
  /*
-  * Names of services: these are the names of the UNIX-domain socket or
-  * FIFO that a service listens on.
+  * Names of services: these are the names of the UNIX-domain socket or FIFO
+  * that a service listens on.
   */
 #define MAIL_SERVICE_BOUNCE	"bounce"
 #define MAIL_SERVICE_CLEANUP	"cleanup"
@@ -63,6 +63,13 @@
 #define MAIL_SERVICE_DNSBLOG	"dnsblog"
 #define MAIL_SERVICE_TLSPROXY	"tlsproxy"
 #define MAIL_SERVICE_POSTLOG	"postlog"
+
+ /*
+  * Process names: convention is to use the basename of an executable file,
+  * but there is nothing to enforce that.
+  */
+#define MAIL_PROC_NAME_SMTP	"smtp"
+#define MAIL_PROC_NAME_LMTP	"lmtp"
 
  /*
   * Mail source classes. Used to specify policy decisions for content
@@ -205,6 +212,8 @@ extern char *mail_pathname(const char *, const char *);
 #define MAIL_ATTR_COMPAT_LEVEL	"compatibility_level"
 #define MAIL_ATTR_MAIL_VERSION	"mail_version"
 
+#define MAIL_ATTR_INST_FLAGS	"instance_flags"
+
  /*
   * Suffixes for sender_name, sender_domain etc.
   */
@@ -255,6 +264,10 @@ extern char *mail_pathname(const char *, const char *);
 #define MAIL_ATTR_ORG_NONE	"unknown"	/* origin unknown */
 #define MAIL_ATTR_ORG_LOCAL	"local"	/* local submission */
 
+#define MAIL_ATTR_MESSAGE_ID	"message_id"	/* Used for threaded bounce */
+
+#define MAIL_ATTR_LOG_CLASS	"log_class"	/* bounce/defer/trace */
+
  /*
   * XCLIENT/XFORWARD in SMTP.
   */
@@ -301,12 +314,19 @@ extern char *mail_pathname(const char *, const char *);
 #define MAIL_ATTR_DSN_RET	"ret_flags"	/* dsn full/headers */
 #define MAIL_ATTR_DSN_NOTIFY	"notify_flags"	/* dsn notify flags */
 #define MAIL_ATTR_DSN_ORCPT	"dsn_orig_rcpt"	/* dsn original recipient */
-#define MAIL_ATTR_SMTPUTF8	"smtputf8"	/* RFC6531 support */
+#define MAIL_ATTR_SENDOPTS	"sendopts"	/* RFC6531 etc. support */
 
  /*
   * SMTP reply footer support.
   */
 #define MAIL_ATTR_SERVER_NAME	"server_name"
+
+ /*
+  * Non-Berkeley-DB migration.
+  */
+#define MAIL_ATTR_PROTO_NBDB_REINDEX	"nbdb_reindex"	/* Re-index protocol */
+#define MAIL_ATTR_NBDB_TYPE		"nbdb_type"	/* maptype */
+#define MAIL_ATTR_NBDB_PATH		"nbdb_path"	/* mapname */
 
 /* LICENSE
 /* .ad
@@ -322,6 +342,9 @@ extern char *mail_pathname(const char *, const char *);
 /*	Google, Inc.
 /*	111 8th Avenue
 /*	New York, NY 10011, USA
+/*
+/*	Wietse Venema
+/*	porcupine.org
 /*--*/
 
 #endif

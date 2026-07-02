@@ -1,4 +1,4 @@
-/*	$NetBSD: consinit.c,v 1.39 2024/02/09 22:08:33 andvar Exp $	*/
+/*	$NetBSD: consinit.c,v 1.44 2025/11/29 01:33:40 manu Exp $	*/
 
 /*
  * Copyright (c) 1998
@@ -27,7 +27,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: consinit.c,v 1.39 2024/02/09 22:08:33 andvar Exp $");
+__KERNEL_RCSID(0, "$NetBSD: consinit.c,v 1.44 2025/11/29 01:33:40 manu Exp $");
 
 #include "opt_kgdb.h"
 #include "opt_puc.h"
@@ -85,6 +85,11 @@ __KERNEL_RCSID(0, "$NetBSD: consinit.c,v 1.39 2024/02/09 22:08:33 andvar Exp $")
 #endif
 #if (NCOM_PUC > 0)
 #include <dev/pci/puccn.h>
+#endif
+
+#include "ucom.h"
+#if (NUCOM > 0)
+#include <dev/usb/ucomvar.h>
 #endif
 
 #include "ukbd.h"
@@ -171,12 +176,20 @@ consinit(void)
 #if (NCOM > 0)
 	int rv;
 #endif
+	char console_devname[16] = "";
 
 #ifdef XENPVHVM
 	if (vm_guest == VM_GUEST_XENPVH) {
 		if (xen_pvh_consinit() != 0)
 			return;
 		/* fallback to native console selection, useful for dom0 PVH */
+	}
+	if (pvh_boot) { /* GENPVH */
+		union xen_cmdline_parseinfo xcp;
+		/* get console= parameter from generic PVH VMM */
+		xen_parse_cmdline(XEN_PARSE_CONSOLE, &xcp);
+		strncpy(console_devname, xcp.xcp_console,
+			sizeof(console_devname));
 	}
 #endif
 	if (initted)
@@ -188,7 +201,10 @@ consinit(void)
 	if (!consinfo)
 #endif
 		consinfo = &default_consinfo;
-
+	/* console= parameter was not passed via a generic PVH VMM */
+	if (!console_devname[0])
+		strncpy(console_devname, consinfo->devname,
+			sizeof(console_devname));
 #if (NGENFB > 0)
 #if defined(XENPVHVM) && defined(DOM0OPS)
 	if (vm_guest == VM_GUEST_XENPVH && xendomain_is_dom0())
@@ -197,8 +213,7 @@ consinit(void)
 #endif /* XENPVHVM */
 		fbinfo = lookup_bootinfo(BTINFO_FRAMEBUFFER);
 #endif
-
-	if (!strcmp(consinfo->devname, "pc")) {
+	if (!strcmp(console_devname, "pc")) {
 		int error;
 #if (NGENFB > 0)
 		if (fbinfo && fbinfo->physaddr > 0) {
@@ -254,7 +269,7 @@ dokbd:
 		return;
 	}
 #if (NCOM > 0)
-	if (!strcmp(consinfo->devname, "com")) {
+	if (!strcmp(console_devname, "com")) {
 		int addr = consinfo->addr;
 		int speed = consinfo->speed;
 
@@ -274,18 +289,30 @@ dokbd:
 				 COM_FREQ, COM_TYPE_NORMAL, comcnmode);
 		if (rv != 0)
 			panic("can't init serial console @%x", consinfo->addr);
+
+		return;
+	}
+#endif
+#if (NUCOM > 0)
+	if (!strcmp(console_devname, "ucom")) {
+		int unit = consinfo->addr;
+		int speed = consinfo->speed;
+
+		if (ucom_cnattach(unit, speed) != 0)
+			panic("can't init console %s", console_devname);
+
 		return;
 	}
 #endif
 #if (NNULLCONS > 0)
-	if (!strcmp(consinfo->devname, "nullcons")) {
+	if (!strcmp(console_devname, "nullcons")) {
 		void nullcninit(struct consdev *cn);
 
 		nullcninit(0);
 		return;
 	}
 #endif
-	panic("invalid console device %s", consinfo->devname);
+	panic("invalid console device %s", console_devname);
 }
 
 #ifdef KGDB

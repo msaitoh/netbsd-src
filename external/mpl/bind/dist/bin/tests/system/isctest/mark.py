@@ -11,34 +11,31 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
-import os
 from pathlib import Path
+
+import os
+import platform
+import shutil
+import socket
 import subprocess
 
 import pytest
 
-
 long_test = pytest.mark.skipif(
-    not os.environ.get("CI_ENABLE_ALL_TESTS"), reason="CI_ENABLE_ALL_TESTS not set"
+    not os.environ.get("CI_ENABLE_LONG_TESTS"), reason="CI_ENABLE_LONG_TESTS not set"
 )
 
-
-def feature_test(feature):
-    feature_test_bin = os.environ["FEATURETEST"]
-    try:
-        subprocess.run([feature_test_bin, feature], check=True)
-    except subprocess.CalledProcessError as exc:
-        if exc.returncode != 1:
-            raise
-        return False
-    return True
+live_internet_test = pytest.mark.skipif(
+    not os.environ.get("CI_ENABLE_LIVE_INTERNET_TESTS"),
+    reason="CI_ENABLE_LIVE_INTERNET_TESTS not set",
+)
 
 
 DNSRPS_BIN = Path(os.environ["TOP_BUILDDIR"]) / "bin/tests/system/rpz/dnsrps"
 
 
 def is_dnsrps_available():
-    if not feature_test("--enable-dnsrps"):
+    if os.getenv("FEATURE_DNSRPS") != "1":
         return False
     try:
         subprocess.run([DNSRPS_BIN, "-a"], check=True)
@@ -47,16 +44,39 @@ def is_dnsrps_available():
     return True
 
 
-def with_tsan(*args):  # pylint: disable=unused-argument
-    return feature_test("--tsan")
+def is_host_freebsd(*_):
+    return platform.system() == "FreeBSD"
 
 
-have_libxml2 = pytest.mark.skipif(
-    not feature_test("--have-libxml2"), reason="libxml2 support disabled in the build"
+def is_host_freebsd_13(*_):
+    return platform.system() == "FreeBSD" and platform.release().startswith("13")
+
+
+def with_algorithm(name: str):
+    key = f"{name}_SUPPORTED"
+    assert key in os.environ, f"{key} env variable undefined"
+    return pytest.mark.skipif(os.getenv(key) != "1", reason=f"{name} is not supported")
+
+
+with_dnstap = pytest.mark.skipif(
+    os.getenv("FEATURE_DNSTAP") != "1", reason="DNSTAP support disabled in the build"
 )
 
-have_json_c = pytest.mark.skipif(
-    not feature_test("--have-json-c"), reason="json-c support disabled in the build"
+
+without_fips = pytest.mark.skipif(
+    os.getenv("FEATURE_FIPS_MODE") == "1", reason="FIPS support enabled in the build"
+)
+
+with_libxml2 = pytest.mark.skipif(
+    os.getenv("FEATURE_LIBXML2") != "1", reason="libxml2 support disabled in the build"
+)
+
+with_lmdb = pytest.mark.skipif(
+    os.getenv("FEATURE_LMDB") != "1", reason="LMDB support disabled in the build"
+)
+
+with_json_c = pytest.mark.skipif(
+    os.getenv("FEATURE_JSON_C") != "1", reason="json-c support disabled in the build"
 )
 
 dnsrps_enabled = pytest.mark.skipif(
@@ -64,19 +84,24 @@ dnsrps_enabled = pytest.mark.skipif(
 )
 
 
-try:
-    import flaky as flaky_pkg  # type: ignore
-except ModuleNotFoundError:
-    # In case the flaky package is not installed, run the tests as usual
-    # without any attempts to re-run them.
-    # pylint: disable=unused-argument
-    def flaky(*args, **kwargs):
-        """Mock decorator that doesn't do anything special, just returns the function."""
+softhsm2_environment = pytest.mark.skipif(
+    not (
+        os.getenv("SOFTHSM2_CONF")
+        and os.getenv("SOFTHSM2_MODULE")
+        and shutil.which("pkcs11-tool")
+        and shutil.which("softhsm2-util")
+    ),
+    reason="SOFTHSM2_CONF and SOFTHSM2_MODULE environmental variables must be set and pkcs11-tool and softhsm2-util tools present",
+)
 
-        def wrapper(wrapped_obj):
-            return wrapped_obj
 
-        return wrapper
+def have_ipv6():
+    sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+    try:
+        sock.bind(("fd92:7065:b8e:ffff::1", 0))
+    except OSError:
+        return False
+    return True
 
-else:
-    flaky = flaky_pkg.flaky
+
+with_ipv6 = pytest.mark.skipif(not have_ipv6(), reason="IPv6 not available")

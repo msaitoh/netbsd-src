@@ -1,5 +1,5 @@
 <!doctype html public "-//W3C//DTD HTML 4.01 Transitional//EN"
-        "http://www.w3.org/TR/html4/loose.dtd">
+        "https://www.w3.org/TR/html4/loose.dtd">
 <html> <head>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
 <link rel='stylesheet' type='text/css' href='postfix-doc.css'>
@@ -7,14 +7,14 @@
 </head> <body> <pre>
 POSTMAP(1)                                                          POSTMAP(1)
 
-<b>NAME</b>
+<b><a name="name">NAME</a></b>
        postmap - Postfix lookup table management
 
-<b>SYNOPSIS</b>
-       <b>postmap</b> [<b>-bfFhimnNoprsuUvw</b>] [<b>-c</b> <i>config</i><b>_</b><i>dir</i>] [<b>-d</b> <i>key</i>] [<b>-q</b> <i>key</i>]
+<b><a name="synopsis">SYNOPSIS</a></b>
+       <b>postmap</b> [<b>-bfFhijmnNoprsuUvw</b>] [<b>-c</b> <i>config</i><b>_</b><i>dir</i>] [<b>-d</b> <i>key</i>] [<b>-q</b> <i>key</i>]
                [<i>file</i><b>_</b><i>type</i>:]<i>file</i><b>_</b><i>name</i> ...
 
-<b>DESCRIPTION</b>
+<b><a name="description">DESCRIPTION</a></b>
        The  <a href="postmap.1.html"><b>postmap</b>(1)</a>  command  creates or queries one or more Postfix lookup
        tables, or updates an existing one.
 
@@ -25,7 +25,7 @@ POSTMAP(1)                                                          POSTMAP(1)
        and an exclusive, advisory, lock is placed  on  the  entire  table,  in
        order to avoid surprises in spectator processes.
 
-<b>INPUT FILE FORMAT</b>
+<b><a name="input_file_format">INPUT FILE FORMAT</a></b>
        The format of a lookup table input file is as follows:
 
        <b>o</b>      A table entry has the form
@@ -62,7 +62,7 @@ POSTMAP(1)                                                          POSTMAP(1)
        <a href="regexp_table.5.html">regexp</a>: and <a href="pcre_table.5.html">pcre</a>:. This resulted in loss of  information  with  $<i>number</i>
        substitutions.
 
-<b>COMMAND-LINE ARGUMENTS</b>
+<b><a name="command-line_arguments">COMMAND-LINE ARGUMENTS</a></b>
        <b>-b</b>     Enable  message  body  query mode. When reading lookup keys from
               standard input with "<b>-q -</b>", process the input as  if  it  is  an
               email  message  in  <a href="https://tools.ietf.org/html/rfc5322">RFC  5322</a> format.  Each line of body content
@@ -120,7 +120,7 @@ POSTMAP(1)                                                          POSTMAP(1)
               also generates header-style  lookup  keys  for  attachment  MIME
               headers and for attached message/* headers.
 
-              NOTE:  with  "<a href="postconf.5.html#smtputf8_enable">smtputf8_enable</a>  = yes", the <b>-b</b> option option dis-
+              NOTE:  with  "<a href="postconf.5.html#smtputf8_enable">smtputf8_enable</a>  = yes", the <b>-h</b> option option dis-
               ables UTF-8 syntax checks on  query  keys  and  lookup  results.
               Specify the <b>-U</b> option to force UTF-8 syntax checks anyway.
 
@@ -130,62 +130,67 @@ POSTMAP(1)                                                          POSTMAP(1)
               truncate an existing database. By default, <a href="postmap.1.html"><b>postmap</b>(1)</a> creates  a
               new database from the entries in <b>file_name</b>.
 
+       <b>-j</b>     JSON  output.  Format  the  output from <b>-q</b> and <b>-s</b> as one <b>{"</b><i>key</i><b>":</b>
+              <b>"</b><i>value</i><b>"}</b> object per line.
+
+              This feature is available in Postfix version 3.11 and later.
+
        <b>-m</b>     Enable MIME parsing with "<b>-b</b>" and "<b>-h</b>".
 
               This feature is available in Postfix version 2.6 and later.
 
-       <b>-N</b>     Include  the  terminating  null character that terminates lookup
-              keys and values. By default, <a href="postmap.1.html"><b>postmap</b>(1)</a>  does  whatever  is  the
+       <b>-N</b>     Include the terminating null character  that  terminates  lookup
+              keys  and  values.  By  default, <a href="postmap.1.html"><b>postmap</b>(1)</a> does whatever is the
               default for the host operating system.
 
-       <b>-n</b>     Don't  include  the  terminating  null character that terminates
-              lookup keys and values. By default, <a href="postmap.1.html"><b>postmap</b>(1)</a> does whatever  is
+       <b>-n</b>     Don't include the terminating  null  character  that  terminates
+              lookup  keys and values. By default, <a href="postmap.1.html"><b>postmap</b>(1)</a> does whatever is
               the default for the host operating system.
 
-       <b>-o</b>     Do  not release root privileges when processing a non-root input
-              file. By default, <a href="postmap.1.html"><b>postmap</b>(1)</a> drops root privileges and  runs  as
+       <b>-o</b>     Do not release root privileges when processing a non-root  input
+              file.  By  default, <a href="postmap.1.html"><b>postmap</b>(1)</a> drops root privileges and runs as
               the source file owner instead.
 
-       <b>-p</b>     Do  not  inherit the file access permissions from the input file
-              when creating a new file.   Instead,  create  a  new  file  with
+       <b>-p</b>     Do not inherit the file access permissions from the  input  file
+              when  creating  a  new  file.   Instead,  create a new file with
               default access permissions (mode 0644).
 
-       <b>-q</b> <i>key</i> Search  the  specified  maps  for  <i>key</i> and write the first value
-              found to the standard output stream. The  exit  status  is  zero
+       <b>-q</b> <i>key</i> Search the specified maps for <i>key</i>  and  write  the  first  value
+              found  to  the  standard  output stream. The exit status is zero
               when the requested information was found.
 
-              Note:  this  performs  a single query with the key as specified,
-              and does not make iterative queries with substrings of  the  key
-              as  described  for  <a href="access.5.html">access(5)</a>,  <a href="canonical.5.html">canonical(5)</a>, <a href="transport.5.html">transport(5)</a>, <a href="virtual.5.html">vir-</a>
+              Note: this performs a single query with the  key  as  specified,
+              and  does  not make iterative queries with substrings of the key
+              as described for  <a href="access.5.html">access(5)</a>,  <a href="canonical.5.html">canonical(5)</a>,  <a href="transport.5.html">transport(5)</a>,  <a href="virtual.5.html">vir-</a>
               <a href="virtual.5.html">tual(5)</a> and other Postfix table-driven features.
 
-              If a key value of <b>-</b> is specified, the program reads  key  values
-              from  the standard input stream and writes one line of <i>key value</i>
+              If  a  key value of <b>-</b> is specified, the program reads key values
+              from the standard input stream and writes one line of <i>key  value</i>
               output for each key that was found. The exit status is zero when
               at least one of the requested keys was found.
 
-       <b>-r</b>     When  updating a table, do not complain about attempts to update
+       <b>-r</b>     When updating a table, do not complain about attempts to  update
               existing entries, and make those updates anyway.
 
-       <b>-s</b>     Retrieve all database elements, and write one line of <i>key  value</i>
-              output  for  each  element. The elements are printed in database
-              order, which is not necessarily the same as the  original  input
+       <b>-s</b>     Retrieve  all database elements, and write one line of <i>key value</i>
+              output for each element. The elements are  printed  in  database
+              order,  which  is not necessarily the same as the original input
               order.
 
-              This  feature is available in Postfix version 2.2 and later, and
+              This feature is available in Postfix version 2.2 and later,  and
               is not available for all database types.
 
-       <b>-u</b>     Disable UTF-8 support. UTF-8 support is enabled by default  when
-              "<a href="postconf.5.html#smtputf8_enable">smtputf8_enable</a>  =  yes".  It requires that keys and values are
+       <b>-u</b>     Disable  UTF-8 support. UTF-8 support is enabled by default when
+              "<a href="postconf.5.html#smtputf8_enable">smtputf8_enable</a> = yes". It requires that keys  and  values  are
               valid UTF-8 strings.
 
        <b>-U</b>     With "<a href="postconf.5.html#smtputf8_enable">smtputf8_enable</a> = yes", force UTF-8 syntax checks with the
               <b>-b</b> and <b>-h</b> options.
 
-       <b>-v</b>     Enable  verbose  logging  for  debugging  purposes.  Multiple <b>-v</b>
+       <b>-v</b>     Enable verbose  logging  for  debugging  purposes.  Multiple  <b>-v</b>
               options make the software increasingly verbose.
 
-       <b>-w</b>     When updating a table, do not complain about attempts to  update
+       <b>-w</b>     When  updating a table, do not complain about attempts to update
               existing entries, and ignore those attempts.
 
        Arguments:
@@ -193,6 +198,11 @@ POSTMAP(1)                                                          POSTMAP(1)
        <i>file</i><b>_</b><i>type</i>
               The database type. To find out what types are supported, use the
               "<b>postconf -m</b>" command.
+
+              When  no  <i>file</i><b>_</b><i>type</i> is specified, the software uses the database
+              type  specified  via  the  <b><a href="postconf.5.html#default_database_type">default_database_type</a></b>   configuration
+              parameter.   The default value for this parameter depends on the
+              host environment.
 
               The <a href="postmap.1.html"><b>postmap</b>(1)</a> command can query any supported file type, but it
               can create only the following file types:
@@ -227,15 +237,11 @@ POSTMAP(1)                                                          POSTMAP(1)
                      <i>file</i><b>_</b><i>name</i><b>.dir</b>.  This is available on systems with support
                      for <b>sdbm</b> databases.
 
-              When  no  <i>file</i><b>_</b><i>type</i> is specified, the software uses the database
-              type  specified  via  the  <b><a href="postconf.5.html#default_database_type">default_database_type</a></b>   configuration
-              parameter.
-
        <i>file</i><b>_</b><i>name</i>
               The name of the lookup table source file when rebuilding a data-
               base.
 
-<b>DIAGNOSTICS</b>
+<b><a name="diagnostics">DIAGNOSTICS</a></b>
        Problems are logged to the standard error stream and to  <b>syslogd</b>(8)  or
        <a href="postlogd.8.html"><b>postlogd</b>(8)</a>.  No output means that no problems were detected. Duplicate
        entries are skipped and are flagged with a warning.
@@ -244,14 +250,14 @@ POSTMAP(1)                                                          POSTMAP(1)
        ing  successful  "<b>postmap -q</b>" lookup) and terminates with non-zero exit
        status in case of failure.
 
-<b>ENVIRONMENT</b>
+<b><a name="environment">ENVIRONMENT</a></b>
        <b>MAIL_CONFIG</b>
               Directory with Postfix configuration files.
 
        <b>MAIL_VERBOSE</b>
               Enable verbose logging for debugging purposes.
 
-<b>CONFIGURATION PARAMETERS</b>
+<b><a name="configuration_parameters">CONFIGURATION PARAMETERS</a></b>
        The following <a href="postconf.5.html"><b>main.cf</b></a> parameters are especially relevant to  this  pro-
        gram.   The  text  below  provides  only a parameter summary. See <a href="postconf.5.html"><b>post-</b></a>
        <a href="postconf.5.html"><b>conf</b>(5)</a> for more details including examples.
@@ -293,17 +299,17 @@ POSTMAP(1)                                                          POSTMAP(1)
        <b><a href="postconf.5.html#lmdb_map_size">lmdb_map_size</a> (16777216)</b>
               The initial OpenLDAP LMDB database size limit in bytes.
 
-<b>SEE ALSO</b>
+<b><a name="see_also">SEE ALSO</a></b>
        <a href="postalias.1.html">postalias(1)</a>, create/update/query alias database
        <a href="postconf.1.html">postconf(1)</a>, supported database types
        <a href="postconf.5.html">postconf(5)</a>, configuration parameters
        <a href="postlogd.8.html">postlogd(8)</a>, Postfix logging
        syslogd(8), system logging
 
-<b>README FILES</b>
+<b><a name="readme_files">README FILES</a></b>
        <a href="DATABASE_README.html">DATABASE_README</a>, Postfix lookup table overview
 
-<b>LICENSE</b>
+<b><a name="license">LICENSE</a></b>
        The Secure Mailer license must be distributed with this software.
 
 <b>AUTHOR(S)</b>

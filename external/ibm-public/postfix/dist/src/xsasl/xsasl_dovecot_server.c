@@ -1,4 +1,4 @@
-/*	$NetBSD: xsasl_dovecot_server.c,v 1.4 2022/10/08 16:12:51 christos Exp $	*/
+/*	$NetBSD: xsasl_dovecot_server.c,v 1.6 2026/05/09 18:49:23 christos Exp $	*/
 
 /*++
 /* NAME
@@ -126,7 +126,7 @@ static const NAME_MASK xsasl_dovecot_conf_sec_props[] = {
 
  /*
   * Security properties as specified in the Dovecot protocol. See
-  * http://wiki.dovecot.org/Authentication_Protocol.
+  * https://doc.dovecot.org/2.3/developer_manual/design/auth_protocol/
   */
 static const NAME_MASK xsasl_dovecot_serv_sec_props[] = {
     "plaintext", SEC_PROPS_NOPLAINTEXT,
@@ -299,6 +299,7 @@ static int xsasl_dovecot_server_connect(XSASL_DOVECOT_SERVER_IMPL *xp)
 		    (unsigned int) getpid());
     if (vstream_fflush(sasl_stream) == VSTREAM_EOF) {
 	msg_warn("SASL: Couldn't send handshake: %m");
+	(void) vstream_fclose(sasl_stream);
 	return (-1);
     }
     success = 0;
@@ -545,6 +546,8 @@ static void xsasl_dovecot_parse_reply_args(XSASL_DOVECOT_SERVER *server,
 	myfree(server->username);
 	server->username = 0;
     }
+    VSTRING_RESET(reply);
+    VSTRING_TERMINATE(reply);
 
     /*
      * Note: TAB is part of the Dovecot protocol and must not appear in
@@ -616,6 +619,7 @@ static int xsasl_dovecot_handle_reply(XSASL_DOVECOT_SERVER *server,
     }
 
     vstring_strcpy(reply, "Connection lost to authentication server");
+    xsasl_dovecot_server_disconnect(server->impl);
     return XSASL_AUTH_TEMP;
 }
 
@@ -659,7 +663,9 @@ int     xsasl_dovecot_server_first(XSASL_SERVER *xp, const char *sasl_method,
 
     for (cpp = server->mechanism_argv->argv; /* see below */ ; cpp++) {
 	if (*cpp == 0) {
-	    vstring_strcpy(reply, "Invalid authentication mechanism");
+	    vstring_sprintf(reply, "Invalid authentication mechanism: '%s'",
+			    sasl_method);
+	    printable(vstring_str(reply), '?');
 	    return XSASL_AUTH_FAIL;
 	}
 	if (strcasecmp(sasl_method, *cpp) == 0)
@@ -704,6 +710,7 @@ int     xsasl_dovecot_server_first(XSASL_SERVER *xp, const char *sasl_method,
 
 	if (i == 1) {
 	    vstring_strcpy(reply, "Can't connect to authentication server");
+	    xsasl_dovecot_server_disconnect(server->impl);
 	    return XSASL_AUTH_TEMP;
 	}
 
@@ -732,6 +739,7 @@ static int xsasl_dovecot_server_next(XSASL_SERVER *xp, const char *request,
 		    "CONT\t%u\t%s\n", server->last_request_id, request);
     if (vstream_fflush(server->impl->sasl_stream) == VSTREAM_EOF) {
 	vstring_strcpy(reply, "Connection lost to authentication server");
+	xsasl_dovecot_server_disconnect(server->impl);
 	return XSASL_AUTH_TEMP;
     }
     return xsasl_dovecot_handle_reply(server, reply);

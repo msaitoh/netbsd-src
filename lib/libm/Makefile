@@ -1,4 +1,4 @@
-#  $NetBSD: Makefile,v 1.239 2024/07/03 06:26:03 mrg Exp $
+#  $NetBSD: Makefile,v 1.242 2025/04/06 23:03:06 rillig Exp $
 #
 #  @(#)Makefile 5.1beta 93/09/24
 #
@@ -54,8 +54,7 @@ LIBC_MACHINE_CPU?=	${MACHINE_CPU}
 
 LINTFLAGS+=	-g		# compiler_rt uses typeof() and __extension__
 LINTFLAGS+=	-X 117		# GCC sign-extends '>>' on signed int
-LINTFLAGS.s_logl.c+=	-X 161	# constant in conditional context
-LINTFLAGS.s_logl.c+=	-X 193	# unreachable statement (due to 161)
+LINTFLAGS.s_logl.c+=	-X 193	# unreachable statement (due to constant condition)
 LINTFLAGS.s_logl.c+=	-X 177	# non-constant initializer
 
 EXPSYM_SRCS=	m.common.expsym
@@ -132,6 +131,7 @@ COMMON_SRCS += fenv.c
 .elif (${LIBC_MACHINE_ARCH} == "hppa")
 .PATH.c: ${.CURDIR}/arch/hppa
 COMMON_SRCS+= fenv.c
+COMMON_SRCS+= s_fma.c s_fmaf.c s_fmal.c
 
 .elif (${LIBC_MACHINE_ARCH} == "sparc")
 .PATH: ${.CURDIR}/arch/sparc
@@ -196,8 +196,9 @@ ARCH_SRCS = e_acos.S e_asin.S e_atanh.S e_cosh.S e_exp.S e_fmod.S e_log.S \
 	    e_log10.S e_remainder.S e_scalb.S e_sinh.S e_sqrt.S s_atan.S \
 	    s_ceil.S s_copysign.S s_cos.S s_expm1.S s_finite.S s_floor.S \
 	    s_log1p.S s_logb.S s_rint.S s_scalbn.S s_sin.S s_tan.S s_tanh.S
-COMMON_SRCS += fenv.c s_nexttoward.c s_rintl.c
+COMMON_SRCS += fenv.c
 .endif
+COMMON_SRCS += s_nexttoward.c s_rintl.c
 COMMON_SRCS+= s_fma.c s_fmaf.c s_fmal.c
 # end of m68k
 

@@ -1,4 +1,4 @@
-/*	$NetBSD: cleanup_user.h,v 1.3 2022/10/08 16:12:45 christos Exp $	*/
+/*	$NetBSD: cleanup_user.h,v 1.5 2026/05/09 18:49:15 christos Exp $	*/
 
 #ifndef _CLEANUP_USER_H_INCLUDED_
 #define _CLEANUP_USER_H_INCLUDED_
@@ -27,8 +27,10 @@
 #define CLEANUP_FLAG_SMTP_REPLY	(1<<7)	/* Enable SMTP reply */
 #define CLEANUP_FLAG_SMTPUTF8	(1<<8)	/* SMTPUTF8 requested */
 #define CLEANUP_FLAG_AUTOUTF8	(1<<9)	/* Autodetect SMTPUTF8 */
+#define CLEANUP_FLAG_REQTLS	(1<<10)	/* REQUIRETLS requested */
 
 #define CLEANUP_FLAG_FILTER_ALL	(CLEANUP_FLAG_FILTER | CLEANUP_FLAG_MILTER)
+
  /*
   * These are normally set when receiving mail from outside.
   */
@@ -65,6 +67,12 @@
 #define CLEANUP_STAT_PROXY	(1<<7)	/* Proxy reject */
 #define CLEANUP_STAT_DEFER	(1<<8)	/* Temporary reject */
 #define CLEANUP_STAT_NOPERM	(1<<9)	/* Denied by non-content policy */
+
+ /*
+  * Non-cleanup errors that live in the same bitmask space, to centralize
+  * error handling.
+  */
+#define CLEANUP_STAT_BARE_LF   (1<<16)	/* Bare <LF> received */
 
  /*
   * These are set when we can't bounce even if we were asked to.

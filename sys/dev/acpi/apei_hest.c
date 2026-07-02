@@ -1,4 +1,4 @@
-/*	$NetBSD: apei_hest.c,v 1.6 2024/10/27 12:13:07 riastradh Exp $	*/
+/*	$NetBSD: apei_hest.c,v 1.8 2026/02/20 07:58:40 yamt Exp $	*/
 
 /*-
  * Copyright (c) 2024 The NetBSD Foundation, Inc.
@@ -52,7 +52,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: apei_hest.c,v 1.6 2024/10/27 12:13:07 riastradh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: apei_hest.c,v 1.8 2026/02/20 07:58:40 yamt Exp $");
 
 #include <sys/types.h>
 
@@ -369,7 +369,7 @@ apei_hest_attach_ghes(struct apei_softc *sc, ACPI_HEST_GENERIC *ghes,
 	}
 
 	/*
-	 * Read the GHES Error Status Addresss.  This is the physical
+	 * Read the GHES Error Status Address.  This is the physical
 	 * address of a GESB, Generic Error Status Block.  Why the
 	 * physical address is exposed via this indirection, and not
 	 * simply stored directly in the GHES, is unclear to me.
@@ -542,7 +542,7 @@ apei_hest_attach_ghes_v2(struct apei_softc *sc, ACPI_HEST_GENERIC_V2 *ghes_v2,
 	}
 
 	/*
-	 * Read the GHESv2 Error Status Addresss.  This is the physical
+	 * Read the GHESv2 Error Status Address.  This is the physical
 	 * address of a GESB, Generic Error Status Block.  Why the
 	 * physical address is exposed via this indirection, and not
 	 * simply stored directly in the GHESv2, is unclear to me.
@@ -919,8 +919,10 @@ apei_hest_attach(struct apei_softc *sc)
 		aprint_error_dev(sc->sc_dev, "HEST: too many error sources\n");
 		return;
 	}
-	hsc->hsc_source = kmem_zalloc(n * sizeof(hsc->hsc_source[0]),
-	    KM_SLEEP);
+	if (n > 0) {
+		hsc->hsc_source = kmem_zalloc(n * sizeof(hsc->hsc_source[0]),
+			KM_SLEEP);
+	}
 
 	header = (ACPI_HEST_HEADER *)(hest + 1);
 	resid = hest->Header.Length - sizeof(*hest);

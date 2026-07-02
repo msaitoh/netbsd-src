@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.13 2021/11/16 09:25:51 nia Exp $
+#	$NetBSD: Makefile,v 1.16 2026/03/21 02:25:09 nat Exp $
 
 USE_FORT?=	yes # data-driven bugs?
 

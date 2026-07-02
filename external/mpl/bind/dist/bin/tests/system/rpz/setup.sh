@@ -17,25 +17,10 @@ set -e
 
 . ../conf.sh
 
-$SHELL clean.sh
-
 for dir in ns*; do
   touch $dir/named.run
   nextpart $dir/named.run >/dev/null
 done
-
-copy_setports ns1/named.conf.in ns1/named.conf
-copy_setports ns2/named.conf.in ns2/named.conf
-copy_setports ns3/named.conf.in ns3/named.conf
-copy_setports ns4/named.conf.in ns4/named.conf
-copy_setports ns5/named.conf.in ns5/named.conf
-copy_setports ns6/named.conf.in ns6/named.conf
-copy_setports ns7/named.conf.in ns7/named.conf
-copy_setports ns8/named.conf.in ns8/named.conf
-copy_setports ns9/named.conf.in ns9/named.conf
-copy_setports ns10/named.conf.in ns10/named.conf
-
-copy_setports dnsrpzd.conf.in dnsrpzd.conf
 
 touch dnsrps.conf
 touch dnsrps.cache
@@ -53,7 +38,16 @@ done
 cp ns3/manual-update-rpz.db.in ns3/manual-update-rpz.db
 cp ns8/manual-update-rpz.db.in ns8/manual-update-rpz.db
 
+cp ns3/evil-cname.db.in ns3/evil-cname.db
+cp ns3/wild-cname.db.in ns3/wild-cname.db
+
 cp ns3/mixed-case-rpz-1.db.in ns3/mixed-case-rpz.db
+
+cp ns3/include-rpz.db.in ns3/include-rpz.db
+cp ns3/include-rpz.inc-1.in ns3/include-rpz.inc
+
+# a "big" zone (tested with '-T rpzslow' enabled to slow down loading)
+cp ns3/slow-rpz.db.in ns3/slow-rpz.db
 
 # a zone that expires quickly and then can't be refreshed
 cp ns5/fast-expire.db.in ns5/fast-expire.db
@@ -120,11 +114,3 @@ cp ns2/bl.tld2.db.in ns2/bl.tld2.db
 cp ns5/empty.db.in ns5/empty.db
 cp ns5/empty.db.in ns5/policy2.db
 cp ns6/bl.tld2s.db.in ns6/bl.tld2s.db
-
-# Run dnsrpzd to get the license and prime the static policy zones
-if test -n "$TEST_DNSRPS"; then
-  DNSRPZD="$(../rpz/dnsrps -p)"
-  cd ns3
-  "$DNSRPZ" -D../dnsrpzd.rpzf -S../dnsrpzd.sock -C../dnsrpzd.conf \
-    -w 0 -dddd -L stdout >./dnsrpzd.run 2>&1
-fi

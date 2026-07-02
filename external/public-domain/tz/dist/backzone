@@ -2,10 +2,10 @@
 
 # This file is in the public domain.
 
-# This file is by no means authoritative; if you think you know
-# better, go ahead and edit it (and please send any changes to
-# tz@iana.org for general use in the future).  For more, please see
-# the file CONTRIBUTING in the tz distribution.
+# This file is by no means authoritative; if you think you know better,
+# go ahead and edit the file, and please send any changes to
+# the public mailing list tz@iana.org for general use in the future.
+# For more, please see the file CONTRIBUTING in the tz distribution.
 
 # When proposing changes to this file, please use 'git format-patch'
 # format, either by attaching the resulting .patch file to your email,
@@ -266,10 +266,8 @@ Link Africa/Asmara Africa/Asmera
 
 # Angola
 #
-# From Paul Eggert (2018-02-16):
-# Shanks gives 1911-05-26 for the transition to WAT,
-# evidently confusing the date of the Portuguese decree
-# (see Europe/Lisbon) with the date that it took effect.
+# From Tim Parenti (2024-07-01), per Paul Eggert (2018-02-16):
+# For timestamps before independence, see commentary for Europe/Lisbon.
 #
 
 # Democratic Republic of the Congo (east)
@@ -879,10 +877,10 @@ Zone	Asia/Kashgar	5:03:56	-	LMT	1928     # or Kashi or Kaxgar
 # Milne says 3:54:24 was the meridian of the Muscat Tidal Observatory.
 
 # India
-# From Paul Eggert (2014-08-11), after a heads-up from Stephen Colebourne:
-# According to a Portuguese decree (1911-05-26)
-# https://dre.pt/pdf1sdip/1911/05/12500/23132313.pdf
-# Portuguese India switched to UT +05 on 1912-01-01.
+# From Tim Parenti (2024-07-01), per Paul Eggert (2014-08-11), after a
+# heads-up from Stephen Colebourne:
+# According to a Portuguese decree (1911-05-24), Portuguese India switched to
+# UT +05 on 1912-01-01 (see Europe/Lisbon).
 #Zone	Asia/Panaji	[not enough info to complete]
 
 # Cambodia
@@ -1310,13 +1308,12 @@ Zone Pacific/Johnston	-10:00	-	HST
 # Midway
 #
 # From Mark Brader (2005-01-23):
-# [Fallacies and Fantasies of Air Transport History, by R.E.G. Davies,
-# published 1994 by Paladwr Press, McLean, VA, USA; ISBN 0-9626483-5-3]
+# [<https://www.timetableimages.com/ttimages/pa/pa36/pa36.pdf>]
 # reproduced a Pan American Airways timetable from 1936, for their weekly
 # "Orient Express" flights between San Francisco and Manila, and connecting
 # flights to Chicago and the US East Coast.  As it uses some time zone
 # designations that I've never seen before:....
-# Fri. 6:30A Lv. HONOLOLU (Pearl Harbor), H.I.   H.L.T. Ar. 5:30P Sun.
+# Fri. 6:30A Lv. HONOLULU (Pearl Harbor), H.I. . H.L.T. Ar. 5:30P Sun.
 #  "   3:00P Ar. MIDWAY ISLAND . . . . . . . . . M.L.T. Lv. 6:00A  "
 #
 
@@ -1357,6 +1354,27 @@ Zone Pacific/Johnston	-10:00	-	HST
 
 
 # Wallis and Futuna
+
+
+# From Paul Eggert (2024-05-22):
+# The following zones pretend that standard time extends backward
+# indefinitely into the past, and so are ahistorical.
+# In current TZDB these entries are links to geographical locations
+# that agree with the ahistorical zones since 1970.
+# These are in numeric rather than alphabetic order.
+
+# Zone	NAME		STDOFF	RULES	FORMAT	[UNTIL]
+Zone	HST		-10:00	-	HST
+Zone	PST8PDT		 -8:00	US	P%sT
+Zone	MST		 -7:00	-	MST
+Zone	MST7MDT		 -7:00	US	M%sT
+Zone	CST6CDT		 -6:00	US	C%sT
+Zone	EST		 -5:00	-	EST
+Zone	EST5EDT		 -5:00	US	E%sT
+Zone	WET		  0:00	EU	WE%sT
+Zone	CET		  1:00	C-Eur	CE%sT
+Zone	MET		  1:00	C-Eur	ME%sT
+Zone	EET		  2:00	EU	EE%sT
 
 # Local Variables:
 # coding: utf-8

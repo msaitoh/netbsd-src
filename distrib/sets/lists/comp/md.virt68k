@@ -1,11 +1,10 @@
-# $NetBSD: md.virt68k,v 1.2 2024/07/11 20:41:07 riastradh Exp $
+# $NetBSD: md.virt68k,v 1.4 2026/03/10 01:27:23 thorpej Exp $
 #
 ./usr/include/ieeefp.h				comp-c-include
 ./usr/include/virt68k				comp-c-include
 ./usr/include/virt68k/ansi.h			comp-c-include
 ./usr/include/virt68k/aout_machdep.h		comp-c-include
 ./usr/include/virt68k/asm.h			comp-c-include
-./usr/include/virt68k/bootinfo.h		comp-c-include
 ./usr/include/virt68k/bswap.h			comp-c-include
 ./usr/include/virt68k/cdefs.h			comp-c-include
 ./usr/include/virt68k/cpu.h			comp-c-include
@@ -27,6 +26,7 @@
 ./usr/include/virt68k/kcore.h			comp-c-include
 ./usr/include/virt68k/limits.h			comp-c-include
 ./usr/include/virt68k/lock.h			comp-c-include
+./usr/include/virt68k/lwp_private.h		comp-c-include
 ./usr/include/virt68k/math.h			comp-c-include
 ./usr/include/virt68k/mcontext.h		comp-c-include
 ./usr/include/virt68k/mutex.h			comp-c-include

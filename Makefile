@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.338 2023/09/08 12:01:56 riastradh Exp $
+#	$NetBSD: Makefile,v 1.342 2025/09/23 20:12:05 rillig Exp $
 
 #
 # This is the top-level makefile for building NetBSD. For an outline of
@@ -25,8 +25,7 @@
 #   MKSHARE, if `no', will prevent building and installing
 #	anything in /usr/share.
 #   MKUPDATE, if not `no', will avoid a `make cleandir' at the start of
-#	`make build', as well as having the effects listed in
-#	/usr/share/mk/bsd.README.
+#	`make build', as well as having the effects listed in mk.conf(5).
 #   NOCLEANDIR, if defined, will avoid a `make cleandir' at the start
 #	of the `make build'.
 #   NOINCLUDES will avoid the `make includes' usually done by `make build'.
@@ -173,7 +172,7 @@ afterinstall: .PHONY .MAKE
 .endif
 
 _POSTINSTALL=	${:!cd ${.CURDIR}/usr.sbin/postinstall && \
-			${MAKE} -v .OBJDIR!}/postinstall  \
+			${MAKE} -B -v .OBJDIR!}/postinstall  \
 		-m ${MACHINE} -a ${MACHINE_ARCH}
 _POSTINSTALL_ENV= \
 	AWK=${TOOL_AWK:Q}		\
@@ -271,7 +270,7 @@ includes-lib:	.PHONY includes-include includes-sys
 CLEANDIRFILES+= params
 params: .EXEC
 	${_MKMSG_CREATE} params
-	@${PRINT_PARAMS} >${.TARGET}.new
+	@${:D make}${PRINT_PARAMS} >${.TARGET}.new
 	@if cmp -s ${.TARGET}.new ${.TARGET} > /dev/null 2>&1; then \
 		: "params is unchanged" ; \
 		rm ${.TARGET}.new ; \
@@ -321,7 +320,7 @@ distribution buildworld: .PHONY .MAKE
 .if defined(DESTDIR) && ${DESTDIR} != "" && ${DESTDIR} != "/"
 	${MAKEDIRTARGET} . postinstall-fix-obsolete
 	${MAKEDIRTARGET} . postinstall-fix-obsolete_stand
-	${MAKEDIRTARGET} distrib/sets checkflist
+	${:D make}${MAKEDIRTARGET} distrib/sets checkflist
 .endif
 	@echo   "make ${.TARGET} started at:  ${START_TIME}"
 	@printf "make ${.TARGET} finished at: " && date
@@ -405,13 +404,13 @@ release snapshot: .PHONY .MAKE
 # Create a CD-ROM image.
 #
 
-iso-image: .PHONY
+iso-image: .PHONY .MAKE
 	${MAKEDIRTARGET} distrib iso_image
 	${MAKEDIRTARGET} etc iso-image
 	@echo   "make ${.TARGET} started at:  ${START_TIME}"
 	@printf "make ${.TARGET} finished at: " && date
 
-iso-image-source: .PHONY
+iso-image-source: .PHONY .MAKE
 	${MAKEDIRTARGET} distrib iso_image CDSOURCE=true
 	${MAKEDIRTARGET} etc iso-image
 	@echo   "make ${.TARGET} started at:  ${START_TIME}"
@@ -421,7 +420,7 @@ iso-image-source: .PHONY
 # Create bootable live images.
 #
 
-live-image: .PHONY
+live-image: .PHONY .MAKE
 	${MAKEDIRTARGET} etc live-image
 	@echo   "make ${.TARGET} started at:  ${START_TIME}"
 	@printf "make ${.TARGET} finished at: " && date
@@ -430,7 +429,7 @@ live-image: .PHONY
 # Create bootable installation images.
 #
 
-install-image: .PHONY
+install-image: .PHONY .MAKE
 	${MAKEDIRTARGET} etc install-image
 	@echo   "make ${.TARGET} started at:  ${START_TIME}"
 	@printf "make ${.TARGET} finished at: " && date

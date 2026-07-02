@@ -1,4 +1,4 @@
-/*	$NetBSD: msg.mi.es,v 1.43 2024/04/25 11:25:08 hannken Exp $	*/
+/*	$NetBSD: msg.mi.es,v 1.46 2026/04/26 13:31:47 martin Exp $	*/
 
 /*
  * Copyright 1997 Piermont Information Systems Inc.
@@ -715,9 +715,8 @@ encontrados, y %d han sido omitidos después de que ocurriera un
 error.  De los %d que se han intentado, %d se han desempaquetado
 sin errores y %d con errores.
 
-La instalación ha sido interrumpida.  Por favor, compruebe de nuevo su
-fuente de distribución y considere el reinstalar los conjuntos desde
-el menú principal.}
+Por favor, compruebe de nuevo su fuente de distribución y considere el
+reinstalar los conjuntos desde el menú principal.}
 
 message abort_inst {Instalación interrumpida.}
 message abort_part {Partitioning aborted.}
@@ -1106,6 +1105,7 @@ message Sectors {Sectores}
 message Select_medium {Seleccione el medio}
 message ftp {FTP}
 message http {HTTP}
+message https {HTTPS}
 message nfs {NFS}
 .if HAVE_INSTALL_IMAGE
 message cdrom {CD-ROM / DVD / install image media}	/* XXX translation */
@@ -1572,3 +1572,32 @@ message network_ok
 {Your network seems to work fine. 
 Should we skip the configuration 
 and just use the network as-is?}
+
+message todr_old
+{The clock seems to be off!}
+
+message setdatetime
+{Set date and time}
+
+message time_ok
+{Save date and time as selected}
+
+/* Called with:				Example
+ *  $0 = header message			The clock is off!
+ *  $1 = current date/time string	Sun, 12 Apr 2026 21:04:50
+ */
+message date_and_time_hdr
+{$0
+
+Please enter the date and time.
+
+Current selection: $1
+
+
+}
+
+message year {Year}
+message month {Month (1-12)}
+message day {Day (1-31)}
+message hour {Hour (0-23)}
+message minute {Minute (0-59)}

@@ -1,4 +1,4 @@
-/* $NetBSD: wskbd.c,v 1.144 2020/12/27 16:09:33 tsutsui Exp $ */
+/* $NetBSD: wskbd.c,v 1.148 2026/06/06 17:56:03 kre Exp $ */
 
 /*
  * Copyright (c) 1996, 1997 Christopher G. Demetriou.  All rights reserved.
@@ -105,7 +105,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: wskbd.c,v 1.144 2020/12/27 16:09:33 tsutsui Exp $");
+__KERNEL_RCSID(0, "$NetBSD: wskbd.c,v 1.148 2026/06/06 17:56:03 kre Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_ddb.h"
@@ -732,17 +732,10 @@ wskbd_deliver_event(struct wskbd_softc *sc, u_int type, int value)
 
 	evar = sc->sc_base.me_evp;
 
-	if (evar == NULL) {
+	if (evar == NULL || evar->q == NULL) {
 		DPRINTF(("wskbd_input: not open\n"));
 		return;
 	}
-
-#ifdef DIAGNOSTIC
-	if (evar->q == NULL) {
-		printf("wskbd_input: evar->q=NULL\n");
-		return;
-	}
-#endif
 
 	event.type = type;
 	event.value = 0;
@@ -922,9 +915,15 @@ wskbdclose(dev_t dev, int flags, int mode,
 	    device_lookup_private(&wskbd_cd, minor(dev));
 	struct wseventvar *evar = sc->sc_base.me_evp;
 
-	if (evar == NULL)
+#if NWSMUX > 0
+	DPRINTF(("wskbdclose: %s mux=%p p=%p\n", device_xname(sc->sc_base.me_dv),
+		 sc->sc_base.me_parent, l));
+#endif
+
+	if (evar == NULL) {
 		/* not open for read */
 		return (0);
+	}
 
 	sc->sc_base.me_evp = NULL;
 	sc->sc_translating = 1;
@@ -958,12 +957,7 @@ wskbdread(dev_t dev, struct uio *uio, int flags)
 	if (sc->sc_dying)
 		return (EIO);
 
-#ifdef DIAGNOSTIC
-	if (sc->sc_base.me_evp == NULL) {
-		printf("wskbdread: evp == NULL\n");
-		return (EINVAL);
-	}
-#endif
+	KASSERTMSG(sc->sc_base.me_evp != NULL, "wskbdread: evp == NULL\n");
 
 	sc->sc_refcnt++;
 	error = wsevent_read(sc->sc_base.me_evp, uio, flags);
@@ -1192,13 +1186,39 @@ getkeyrepeat:
 		free(tbuf, M_TEMP);
 		return(error);
 
-	case WSKBDIO_GETMAP:
+	case WSKBDIO_GETMAP: {
+		int i;
+
 		umdp = (struct wskbd_map_data *)data;
-		if (umdp->maplen > sc->sc_maplen)
-			umdp->maplen = sc->sc_maplen;
-		error = copyout(sc->sc_map, umdp->map,
+		if (sc->sc_evtrans_len > 0) {
+			/* we're translating scancodes so we need to generate an
+			 * appropriate map or clients will be *very* confused */
+			int new_maplen = 0;
+			int code;
+			struct wscons_keymap new_map[256];
+
+			memset(new_map, 0, sizeof(new_map));
+			for (i = 0; i < sc->sc_evtrans_len; i++) {
+				code = sc->sc_evtrans[i];
+				if (code > 255) continue;
+				if (code >= new_maplen)
+					new_maplen = code + 1;
+				/* do not overwrite entries */
+				if (new_map[code].group1[0] == 0)
+					new_map[code] = sc->sc_map[i];
+			}
+			if (umdp->maplen > new_maplen)
+				umdp->maplen = new_maplen;
+			error = copyout(new_map, umdp->map,
 				umdp->maplen*sizeof(struct wscons_keymap));
+		} else {
+			if (umdp->maplen > sc->sc_maplen)
+				umdp->maplen = sc->sc_maplen;
+			error = copyout(sc->sc_map, umdp->map,
+				umdp->maplen*sizeof(struct wscons_keymap));
+		}
 		return(error);
+	}
 
 	case WSKBDIO_GETENCODING:
 		*((kbd_t *) data) = sc->sc_layout;
@@ -1700,7 +1720,7 @@ wskbd_translate(struct wskbd_internal *id, u_int type, int value)
 		update_leds(id);
 		return (0);
 	}
-	
+
 	if (sc != NULL) {
 		if (sc->sc_hotkey != NULL)
 			ishotkey = sc->sc_hotkey(sc, sc->sc_hotkeycookie,

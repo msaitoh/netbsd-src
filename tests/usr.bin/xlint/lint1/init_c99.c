@@ -1,4 +1,4 @@
-/*	$NetBSD: init_c99.c,v 1.2 2024/06/09 10:27:39 rillig Exp $	*/
+/*	$NetBSD: init_c99.c,v 1.6 2026/03/27 21:44:08 rillig Exp $	*/
 # 3 "init_c99.c"
 
 // Tests for initialization in C99 or later, mainly for designators.
@@ -254,7 +254,7 @@ struct ends_with_unnamed_bit_field {
 
 char prefixed_message[] = {
 	'E', ':', ' ',
-	/* expect+1: warning: illegal combination of integer 'char' and pointer 'pointer to char' [183] */
+	/* expect+1: warning: invalid combination of integer 'char' and pointer 'pointer to char' for 'init' [183] */
 	"message\n",
 };
 
@@ -290,7 +290,7 @@ struct ten ten = {
  * covering all tricky edge cases.
  */
 
-/* expect+1: warning: lossy conversion of 3.5 to 'int' [381] */
+/* expect+1: warning: lossy conversion of 3.5 (.....) to 'int' [381] */
 int c99_6_7_8_p24_example1_i = 3.5;
 double _Complex c99_6_7_8_p24_example1_c = 5 + 3 * 1.0fi;
 
@@ -570,17 +570,17 @@ struct {
 	char *s;
 } struct_array[] = {
 	{
-		.i =  2,
+		.i = 2,
 	},
 	{
-		.s =  "foo"
+		.s = "foo"
 	},
 	{
-		.i =  1,
+		.i = 1,
 		.s = "bar"
 	},
 	{
-		.s =  "foo",
+		.s = "foo",
 		.i = -1
 	},
 };

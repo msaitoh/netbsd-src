@@ -1,4 +1,4 @@
-/*	$NetBSD: param.h,v 1.33 2012/02/10 17:35:48 para Exp $	*/
+/*	$NetBSD: param.h,v 1.37 2026/05/10 20:27:29 thorpej Exp $	*/
 
 /*
  * Copyright (c) 1988 University of Utah.
@@ -55,13 +55,8 @@
 #endif /* _KERNEL */
 
 #define	PGSHIFT		12		/* LOG2(NBPG) */
-#define	KERNBASE	0x00000000	/* start of kernel virtual */
-
-#define	UPAGES		2		/* pages of u-area */
 
 #include <m68k/param.h>
-
-#define	NPTEPG		(NBPG/(sizeof (pt_entry_t)))
 
 /*
  * Minimum and maximum sizes of the kernel malloc arena in PAGE_SIZE-sized
@@ -69,11 +64,5 @@
  */
 #define	NKMEMPAGES_MIN_DEFAULT	((16 * 1024 * 1024) >> PAGE_SHIFT)
 #define	NKMEMPAGES_MAX_DEFAULT	((128 * 1024 * 1024) >> PAGE_SHIFT)
-
-#if defined(_KERNEL) && !defined(_LOCORE)
-extern void _delay(unsigned int);
-#define delay(us)	_delay((us)<<10)
-#define DELAY(n)	delay(n)
-#endif	/* _KERNEL && !_LOCORE */
 
 #endif	/* !_MACHINE_PARAM_H_ */

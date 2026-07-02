@@ -1,4 +1,4 @@
-/* $NetBSD: read.c,v 1.92 2024/05/12 18:49:36 rillig Exp $ */
+/* $NetBSD: read.c,v 1.94 2026/01/11 18:11:38 rillig Exp $ */
 
 /*
  * Copyright (c) 1996 Christopher G. Demetriou.  All Rights Reserved.
@@ -38,7 +38,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID)
-__RCSID("$NetBSD: read.c,v 1.92 2024/05/12 18:49:36 rillig Exp $");
+__RCSID("$NetBSD: read.c,v 1.94 2026/01/11 18:11:38 rillig Exp $");
 #endif
 
 #include <ctype.h>
@@ -496,7 +496,7 @@ decldef(pos_t pos, const char *cp)
 			renamed = true;
 		} else if (hte = renamehte->h_hte,
 		    strcmp(hte->h_name, newname) != 0) {
-			/* %s renamed multiple times  \t%s  ::  %s */
+			/* %s is renamed multiple times in %s and %s */
 			msg(18, tname, mkpos(&renamehte->h_syms->s_pos),
 			    mkpos(&sym.s_pos));
 		}
@@ -614,10 +614,8 @@ parse_tspec(const char **pp, char c, bool *osdef)
 		return s == 'u' ? ULONG : LONG;
 	case 'Q':
 		return s == 'u' ? ULLONG : LLONG;
-#ifdef INT128_SIZE
 	case 'J':
 		return s == 'u' ? UINT128 : INT128;
-#endif
 	case 'D':
 		return s == 's' ? FLOAT : (s == 'l' ? LDOUBLE : DOUBLE);
 	case 'V':
@@ -815,14 +813,12 @@ gettlen(const char *cp, const char **epp)
 		else if (s == '\0')
 			t = LLONG;
 		break;
-#ifdef INT128_SIZE
 	case 'J':
 		if (s == 'u')
 			t = UINT128;
 		else if (s == '\0')
 			t = INT128;
 		break;
-#endif
 	case 'D':
 		if (s == 's')
 			t = FLOAT;

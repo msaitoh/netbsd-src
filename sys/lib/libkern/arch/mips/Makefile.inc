@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile.inc,v 1.24 2018/09/03 16:54:54 riastradh Exp $
+#	$NetBSD: Makefile.inc,v 1.26 2026/05/05 21:52:42 mrg Exp $
 #
 #	There are likely more that we will notice when we go native
 

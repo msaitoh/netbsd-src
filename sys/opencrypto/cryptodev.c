@@ -1,4 +1,4 @@
-/*	$NetBSD: cryptodev.c,v 1.125 2022/09/10 12:14:17 rillig Exp $ */
+/*	$NetBSD: cryptodev.c,v 1.133 2026/05/19 19:00:00 riastradh Exp $ */
 /*	$FreeBSD: src/sys/opencrypto/cryptodev.c,v 1.4.2.4 2003/06/03 00:09:02 sam Exp $	*/
 /*	$OpenBSD: cryptodev.c,v 1.53 2002/07/10 22:21:30 mickey Exp $	*/
 
@@ -64,7 +64,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: cryptodev.c,v 1.125 2022/09/10 12:14:17 rillig Exp $");
+__KERNEL_RCSID(0, "$NetBSD: cryptodev.c,v 1.133 2026/05/19 19:00:00 riastradh Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -88,6 +88,8 @@ __KERNEL_RCSID(0, "$NetBSD: cryptodev.c,v 1.125 2022/09/10 12:14:17 rillig Exp $
 #include <sys/module.h>
 #include <sys/compat_stub.h> 
 
+#include "ioconf.h"
+
 #ifdef _KERNEL_OPT
 #include "opt_ocf.h"
 #include "opt_compat_netbsd.h"
@@ -100,43 +102,40 @@ __KERNEL_RCSID(0, "$NetBSD: cryptodev.c,v 1.125 2022/09/10 12:14:17 rillig Exp $
 
 #include "ioconf.h"
 
-kmutex_t cryptodev_mtx;
+static kmutex_t cryptodev_mtx;
 
 struct csession {
 	TAILQ_ENTRY(csession) next;
-	u_int64_t	sid;
-	u_int32_t	ses;
+	kmutex_t	lock;
+	uint64_t	sid;
+	uint32_t	ses;
+	volatile uint32_t	refcnt;
 
-	u_int32_t	cipher;		/* note: shares name space in crd_alg */
+	uint32_t	cipher;		/* note: shares name space in crd_alg */
 	const struct enc_xform *txform;
-	u_int32_t	mac;		/* note: shares name space in crd_alg */
+	uint32_t	mac;		/* note: shares name space in crd_alg */
 	const struct auth_hash *thash;
-	u_int32_t	comp_alg;	/* note: shares name space in crd_alg */
+	uint32_t	comp_alg;	/* note: shares name space in crd_alg */
 	const struct comp_algo *tcomp;
 
 	void *		key;
 	int		keylen;
-	u_char		tmp_iv[EALG_MAX_BLOCK_LEN];
 
 	void *		mackey;
 	int		mackeylen;
-	u_char		tmp_mac[CRYPTO_MAX_MAC_LEN];
-
-	struct iovec	iovec[1];	/* user requests never have more */
-	struct uio	uio;
-	int		error;
 };
 
 struct fcrypt {
 	TAILQ_HEAD(csessionlist, csession) csessions;
 	TAILQ_HEAD(crprethead, cryptop) crp_ret_mq;
 	TAILQ_HEAD(krprethead, cryptkop) crp_ret_mkq;
-	int		sesn;
+	uint32_t	sesn;
 	struct selinfo	sinfo;
-	u_int32_t	requestid;
+	uint32_t	requestid;
 	struct timespec atime;
 	struct timespec mtime;
 	struct timespec btime;
+	kmutex_t	lock;
 };
 
 /* For our fixed-size allocations */
@@ -149,7 +148,37 @@ static int	cryptoread(dev_t dev, struct uio *uio, int ioflag);
 static int	cryptowrite(dev_t dev, struct uio *uio, int ioflag);
 static int	cryptoselect(dev_t dev, int rw, struct lwp *l);
 
+static bool	crypto_detaching = false;
 static int	crypto_refcount = 0;	/* Prevent detaching while in use */
+
+static int
+crypto_refcount_get(void)
+{
+	int error;
+
+	mutex_enter(&cryptodev_mtx);
+	if (crypto_detaching) {
+		error = ENXIO;
+	} else if (crypto_refcount == INT_MAX) {
+		error = EBUSY;
+	} else {
+		crypto_refcount++;
+		error = 0;
+	}
+	mutex_exit(&cryptodev_mtx);
+
+	return error;
+}
+
+static void
+crypto_refcount_put(void)
+{
+
+	mutex_enter(&cryptodev_mtx);
+	KASSERT(crypto_refcount > 0);
+	crypto_refcount--;
+	mutex_exit(&cryptodev_mtx);
+}
 
 /* Declaration of cloned-device (per-ctxt) entrypoints */
 static int	cryptof_read(struct file *, off_t *, struct uio *,
@@ -174,19 +203,18 @@ static const struct fileops cryptofops = {
 	.fo_restart = fnullop_restart,
 };
 
-struct csession *cryptodev_csefind(struct fcrypt *, u_int);
-static struct	csession *csefind(struct fcrypt *, u_int);
-static int	csedelete(struct fcrypt *, struct csession *);
-static struct	csession *cseadd(struct fcrypt *, struct csession *);
-static struct	csession *csecreate(struct fcrypt *, u_int64_t, void *,
-    u_int64_t, void *, u_int64_t, u_int32_t, u_int32_t, u_int32_t,
+static struct	csession *cse_find(struct fcrypt *, uint32_t);
+static int	cse_delete(struct fcrypt *, uint32_t);
+static struct	csession *cse_add(struct fcrypt *, struct csession *);
+static struct	csession *cse_create(struct fcrypt *, uint64_t, void *,
+    uint64_t, void *, uint64_t, uint32_t, uint32_t, uint32_t,
     const struct enc_xform *, const struct auth_hash *,
     const struct comp_algo *);
-static void	csefree(struct csession *);
+static void	cse_free(struct csession *);
 
 static int	cryptodev_key(struct crypt_kop *);
-static int	cryptodev_mkey(struct fcrypt *, struct crypt_n_kop *, int);
-static void	cryptodev_msessionfin(struct fcrypt *, int, u_int32_t *);
+static int	cryptodev_mkey(struct fcrypt *, struct crypt_n_kop *, size_t);
+static void	cryptodev_msessionfin(struct fcrypt *, size_t, uint32_t *);
 
 static void	cryptodev_cb(struct cryptop *);
 static void	cryptodevkey_cb(struct cryptkop *);
@@ -198,9 +226,91 @@ static int 	cryptodev_getmstatus(struct fcrypt *, struct crypt_result *,
     int);
 static int	cryptodev_getstatus(struct fcrypt *, struct crypt_result *);
 
+static struct cryptop_data *
+cod_ctor(struct cryptop_data *cod, struct csession *cse, size_t iov_len)
+{
+	memset(cod, 0, sizeof(*cod));
+	cod->cse = cse;
+	cod->iov_len = iov_len;
+	cod->uio.uio_iovcnt = 1;
+	cod->uio.uio_resid = 0;
+	cod->uio.uio_rw = UIO_WRITE;
+	cod->uio.uio_iov = cod->iovec;
+	UIO_SETUP_SYSSPACE(&cod->uio);
+
+	/* the iov needs to be big enough to handle the uncompressed data.... */
+	cod->uio.uio_iov[0].iov_len = cod->iov_len;
+	if (cod->iov_len > 0)
+		cod->uio.uio_iov[0].iov_base = kmem_zalloc(iov_len, KM_SLEEP);
+	cod->uio.uio_resid = cod->uio.uio_iov[0].iov_len;
+	DPRINTF("lid[%u]: uio.iov_base %p malloced %zu bytes\n",
+		CRYPTO_SESID2LID(cse->sid),
+		cod->uio.uio_iov[0].iov_base, cod->iov_len);
+	return cod;
+}
+
+static void
+cod_dtor(struct cryptop_data *cod)
+{
+	DPRINTF("lid[%u]: uio.iov_base %p freeing %zu bytes\n",
+		CRYPTO_SESID2LID(cod->cse->sid),
+		cod->uio.uio_iov[0].iov_base, cod->iov_len);
+	if (cod->iov_len && cod->uio.uio_iov[0].iov_base) {
+		kmem_free(cod->uio.uio_iov[0].iov_base, cod->iov_len);
+		cod->uio.uio_iov[0].iov_base = NULL;
+	}
+}
+
+static void
+fcrypt_settime(struct fcrypt *fcr)
+{
+	mutex_enter(&fcr->lock);
+	fcr->mtime = fcr->atime;
+	mutex_exit(&fcr->lock);
+}
+
+static struct fcrypt *
+fcrypt_ctor(void)
+{
+	struct fcrypt *fcr;
+
+	fcr = pool_get(&fcrpl, PR_WAITOK);
+	getnanotime(&fcr->btime);
+	fcr->atime = fcr->mtime = fcr->btime;
+	TAILQ_INIT(&fcr->csessions);
+	TAILQ_INIT(&fcr->crp_ret_mq);
+	TAILQ_INIT(&fcr->crp_ret_mkq);
+	selinit(&fcr->sinfo);
+	/*
+	 * Don't ever return session 0, to allow detection of
+	 * failed creation attempts with multi-create ioctl.
+	 */
+	fcr->sesn = 1;
+	fcr->requestid = 1;
+	mutex_init(&fcr->lock, MUTEX_DEFAULT, IPL_NONE);
+
+	return fcr;
+}
+
+static void
+fcrypt_dtor(struct fcrypt *fcr)
+{
+	struct csession *cse;
+
+	while ((cse = TAILQ_FIRST(&fcr->csessions))) {
+		TAILQ_REMOVE(&fcr->csessions, cse, next);
+		KASSERT(atomic_load_relaxed(&cse->refcnt) == 1);
+		cse_free(cse);
+	}
+	seldestroy(&fcr->sinfo);
+	mutex_destroy(&fcr->lock);
+
+	pool_put(&fcrpl, fcr);
+}
+
 /*
  * sysctl-able control variables for /dev/crypto now defined in crypto.c:
- * crypto_usercrypto, crypto_userasmcrypto, crypto_devallowsoft.
+ * crypto_usercrypto, crypto_userasymcrypto, crypto_devallowsoft.
  */
 
 /* ARGSUSED */
@@ -236,190 +346,153 @@ cryptof_ioctl(struct file *fp, u_long cmd, void *data)
 	struct crypt_sfop *sfop;
 	struct cryptret *crypt_ret;
 	struct crypt_result *crypt_res;
-	u_int32_t ses;
-	u_int32_t *sesid;
+	uint32_t ses;
+	uint32_t *sesid;
 	int error = 0;
-	size_t count;
+	size_t count, len;
 
 	/* backwards compatibility */
         file_t *criofp;
 	struct fcrypt *criofcr;
 	int criofd;
 
-	mutex_enter(&cryptodev_mtx);
+	mutex_enter(&fcr->lock);
 	getnanotime(&fcr->atime);
-	mutex_exit(&cryptodev_mtx);
+	mutex_exit(&fcr->lock);
 
 	switch (cmd) {
         case CRIOGET:   /* XXX deprecated, remove after 5.0 */
-		if ((error = fd_allocfile(&criofp, &criofd)) != 0)
+		error = crypto_refcount_get();
+		if (error)
 			return error;
-		criofcr = pool_get(&fcrpl, PR_WAITOK);
-		mutex_enter(&cryptodev_mtx);
-		TAILQ_INIT(&criofcr->csessions);
-		TAILQ_INIT(&criofcr->crp_ret_mq);
-		TAILQ_INIT(&criofcr->crp_ret_mkq);
-		selinit(&criofcr->sinfo);
-
-                /*
-                 * Don't ever return session 0, to allow detection of
-                 * failed creation attempts with multi-create ioctl.
-                 */
-		criofcr->sesn = 1;
-		criofcr->requestid = 1;
-		crypto_refcount++;
-		mutex_exit(&cryptodev_mtx);
-		(void)fd_clone(criofp, criofd, (FREAD|FWRITE),
-			      &cryptofops, criofcr);
-		*(u_int32_t *)data = criofd;
-		return error;
-		break;
+		if ((error = fd_allocfile(&criofp, &criofd)) != 0) {
+			crypto_refcount_put();
+			return error;
+		}
+		criofcr = fcrypt_ctor();
+		error = fd_clone(criofp, criofd, (FREAD|FWRITE),
+		    &cryptofops, criofcr);
+		KASSERTMSG(error == EMOVEFD, "error=%d", error);
+		*(uint32_t *)data = criofd;
+		return 0;
 	case CIOCGSESSION:
 		sop = (struct session_op *)data;
 		error = cryptodev_session(fcr, sop);
+		DPRINTF("create(%#x) error = %d\n", sop->ses, error);
 		break;
 	case CIOCNGSESSION:
 		sgop = (struct crypt_sgop *)data;
-		if (sgop->count <= 0
-		    || SIZE_MAX / sizeof(struct session_n_op) <= sgop->count) {
+		if (sgop->count <= 0 || sgop->count >
+		    MIN(CRYPTODEV_OPS_MAX, SIZE_MAX/sizeof(*snop))) {
 			error = EINVAL;
 			break;
 		}
-		snop = kmem_alloc((sgop->count *
-				  sizeof(struct session_n_op)), KM_SLEEP);
-		error = copyin(sgop->sessions, snop, sgop->count *
-			       sizeof(struct session_n_op));
-		if (error) {
-			goto mbail;
+		len = sgop->count * sizeof(*snop);
+		snop = kmem_alloc(len, KM_SLEEP);
+		error = copyin(sgop->sessions, snop, len);
+		if (!error) {
+			fcrypt_settime(fcr);
+			error = cryptodev_msession(fcr, snop, sgop->count);
+			if (!error) {
+				error = copyout(snop, sgop->sessions, len);
+			}
 		}
-
-		mutex_enter(&cryptodev_mtx);
-		fcr->mtime = fcr->atime;
-		mutex_exit(&cryptodev_mtx);
-		error = cryptodev_msession(fcr, snop, sgop->count);
-		if (error) {
-			goto mbail;
-		}
-
-		error = copyout(snop, sgop->sessions, sgop->count *
-		    sizeof(struct session_n_op));
-mbail:
-		kmem_free(snop, sgop->count * sizeof(struct session_n_op));
+		kmem_free(snop, len);
 		break;
 	case CIOCFSESSION:
-		mutex_enter(&cryptodev_mtx);
-		fcr->mtime = fcr->atime;
-		ses = *(u_int32_t *)data;
-		cse = csefind(fcr, ses);
-		if (cse == NULL) {
-			mutex_exit(&cryptodev_mtx);
-			return EINVAL;
-		}
-		csedelete(fcr, cse);
-		mutex_exit(&cryptodev_mtx);
-		csefree(cse);
+		fcrypt_settime(fcr);
+		ses = *(uint32_t *)data;
+		mutex_enter(&fcr->lock);
+		error = cse_delete(fcr, ses);
+		mutex_exit(&fcr->lock);
+		DPRINTF("destroy(%#x) error = %d\n", ses, error);
 		break;
 	case CIOCNFSESSION:
-		mutex_enter(&cryptodev_mtx);
-		fcr->mtime = fcr->atime;
-		mutex_exit(&cryptodev_mtx);
+		fcrypt_settime(fcr);
 		sfop = (struct crypt_sfop *)data;
-		if (sfop->count <= 0
-		    || SIZE_MAX / sizeof(u_int32_t) <= sfop->count) {
+		if (sfop->count <= 0 || sfop->count >
+		    MIN(CRYPTODEV_OPS_MAX, SIZE_MAX/sizeof(*sesid))) {
 			error = EINVAL;
 			break;
 		}
-		sesid = kmem_alloc((sfop->count * sizeof(u_int32_t)), 
-		    KM_SLEEP);
-		error = copyin(sfop->sesid, sesid,
-		    (sfop->count * sizeof(u_int32_t)));
+		len = sfop->count * sizeof(*sesid);
+		sesid = kmem_alloc(len, KM_SLEEP);
+		error = copyin(sfop->sesid, sesid, len);
 		if (!error) {
 			cryptodev_msessionfin(fcr, sfop->count, sesid);
 		}
-		kmem_free(sesid, (sfop->count * sizeof(u_int32_t)));
+		kmem_free(sesid, len);
 		break;
 	case CIOCCRYPT:
-		mutex_enter(&cryptodev_mtx);
-		fcr->mtime = fcr->atime;
+		fcrypt_settime(fcr);
 		cop = (struct crypt_op *)data;
-		cse = csefind(fcr, cop->ses);
-		mutex_exit(&cryptodev_mtx);
+		cse = cse_find(fcr, cop->ses);
 		if (cse == NULL) {
-			DPRINTF("csefind failed\n");
+			DPRINTF("cse_find failed %#x\n", cop->ses);
 			return EINVAL;
 		}
 		error = cryptodev_op(cse, cop, curlwp);
+		cse_free(cse);
 		DPRINTF("cryptodev_op error = %d\n", error);
 		break;
 	case CIOCNCRYPTM:
-		mutex_enter(&cryptodev_mtx);
-		fcr->mtime = fcr->atime;
-		mutex_exit(&cryptodev_mtx);
+		fcrypt_settime(fcr);
 		mop = (struct crypt_mop *)data;
-		if (mop->count <= 0
-		    || SIZE_MAX / sizeof(struct crypt_n_op) <= mop->count) {
+		if (mop->count <= 0 || mop->count >
+		    MIN(CRYPTODEV_OPS_MAX, SIZE_MAX/sizeof(*cnop))) {
 			error = EINVAL;
 			break;
 		}
-		cnop = kmem_alloc((mop->count * sizeof(struct crypt_n_op)),
-		    KM_SLEEP);
-		error = copyin(mop->reqs, cnop,
-		    (mop->count * sizeof(struct crypt_n_op)));
-		if(!error) {
+		len = mop->count * sizeof(*cnop);
+		cnop = kmem_alloc(len, KM_SLEEP);
+		error = copyin(mop->reqs, cnop, len);
+		if (!error) {
 			error = cryptodev_mop(fcr, cnop, mop->count, curlwp);
 			if (!error) {
-				error = copyout(cnop, mop->reqs, 
-				    (mop->count * sizeof(struct crypt_n_op)));
+				error = copyout(cnop, mop->reqs, len);
 			}
 		}
-		kmem_free(cnop, (mop->count * sizeof(struct crypt_n_op)));
+		kmem_free(cnop, len);
 		break;
 	case CIOCKEY:
 		error = cryptodev_key((struct crypt_kop *)data);
 		DPRINTF("cryptodev_key error = %d\n", error);
 		break;
 	case CIOCNFKEYM:
-		mutex_enter(&cryptodev_mtx);
-		fcr->mtime = fcr->atime;
-		mutex_exit(&cryptodev_mtx);
+		fcrypt_settime(fcr);
 		mkop = (struct crypt_mkop *)data;
-		if (mkop->count <= 0
-		    || SIZE_MAX / sizeof(struct crypt_n_kop) <= mkop->count) {
+		if (mkop->count <= 0 || mkop->count >
+		    MIN(CRYPTODEV_OPS_MAX, SIZE_MAX/sizeof(*knop))) {
 			error = EINVAL;
 			break;
 		}
-		knop = kmem_alloc((mkop->count * sizeof(struct crypt_n_kop)),
-		    KM_SLEEP);
-		error = copyin(mkop->reqs, knop,
-		    (mkop->count * sizeof(struct crypt_n_kop)));
+		len = mkop->count * sizeof(*knop);
+		knop = kmem_alloc(len, KM_SLEEP);
+		error = copyin(mkop->reqs, knop, len);
 		if (!error) {
 			error = cryptodev_mkey(fcr, knop, mkop->count);
 			if (!error)
-				error = copyout(knop, mkop->reqs,
-				    (mkop->count * sizeof(struct crypt_n_kop)));
+				error = copyout(knop, mkop->reqs, len);
 		}
-		kmem_free(knop, (mkop->count * sizeof(struct crypt_n_kop)));
+		kmem_free(knop, len);
 		break;
 	case CIOCASYMFEAT:
 		error = crypto_getfeat((int *)data);
 		break;
 	case CIOCNCRYPTRETM:
-		mutex_enter(&cryptodev_mtx);
-		fcr->mtime = fcr->atime;
-		mutex_exit(&cryptodev_mtx);
+		fcrypt_settime(fcr);
 		crypt_ret = (struct cryptret *)data;
-		count = crypt_ret->count;
-		if (count <= 0
-		    || SIZE_MAX / sizeof(struct crypt_result) <= count) {
+		if (crypt_ret->count <= 0 || crypt_ret->count >
+		    MIN(CRYPTODEV_OPS_MAX, SIZE_MAX/sizeof(*crypt_res))) {
 			error = EINVAL;
 			break;
 		}
-		crypt_res = kmem_alloc((count * sizeof(struct crypt_result)),  
-		    KM_SLEEP);
-		error = copyin(crypt_ret->results, crypt_res,
-		    (count * sizeof(struct crypt_result)));
+		len = crypt_ret->count * sizeof(*crypt_res);
+		crypt_res = kmem_alloc(len, KM_SLEEP);
+		error = copyin(crypt_ret->results, crypt_res, len);
 		if (error)
 			goto reterr;
+		count = crypt_ret->count;
 		crypt_ret->count = cryptodev_getmstatus(fcr, crypt_res,
 		    crypt_ret->count);
 		/* sanity check count */
@@ -430,10 +503,9 @@ mbail:
 			crypt_ret->count = count;
 
 		}
-		error = copyout(crypt_res, crypt_ret->results,
-		    (crypt_ret->count * sizeof(struct crypt_result)));
+		error = copyout(crypt_res, crypt_ret->results, len);
 reterr:
-		kmem_free(crypt_res, (count * sizeof(struct crypt_result)));
+		kmem_free(crypt_res, len);
 		break;
 	case CIOCNCRYPTRET:
 		error = cryptodev_getstatus(fcr, (struct crypt_result *)data);
@@ -454,11 +526,12 @@ int
 cryptodev_op(struct csession *cse, struct crypt_op *cop, struct lwp *l)
 {
 	struct cryptop *crp = NULL;
+	struct cryptop_data *cod = NULL;
 	struct cryptodesc *crde = NULL, *crda = NULL, *crdc = NULL;
 	int error;
-	int iov_len = cop->len;
+	size_t iov_len = cop->len;
 	int flags=0;
-	int dst_len;	/* copyout size */
+	size_t dst_len;	/* copyout size */
 
 	if (cop->len > 256*1024-4)
 		return E2BIG;
@@ -474,39 +547,24 @@ cryptodev_op(struct csession *cse, struct crypt_op *cop, struct lwp *l)
 	if (cse->tcomp == NULL && cse->txform == NULL && cse->thash == NULL)
 		return EINVAL;
 
-	DPRINTF("cryptodev_op[%u]: iov_len %d\n",
+	DPRINTF("[%u]: iov_len %zu\n",
 		CRYPTO_SESID2LID(cse->sid), iov_len);
 	if ((cse->tcomp) && cop->dst_len) {
 		if (iov_len < cop->dst_len) {
 			/* Need larger iov to deal with decompress */
 			iov_len = cop->dst_len;
 		}
-		DPRINTF("cryptodev_op: iov_len -> %d for decompress\n", iov_len);
+		DPRINTF("iov_len -> %zu for decompress\n", iov_len);
 	}
 
-	(void)memset(&cse->uio, 0, sizeof(cse->uio));
-	cse->uio.uio_iovcnt = 1;
-	cse->uio.uio_resid = 0;
-	cse->uio.uio_rw = UIO_WRITE;
-	cse->uio.uio_iov = cse->iovec;
-	UIO_SETUP_SYSSPACE(&cse->uio);
-	memset(&cse->iovec, 0, sizeof(cse->iovec));
 
-	/* the iov needs to be big enough to handle the uncompressed
-	 * data.... */
-	cse->uio.uio_iov[0].iov_len = iov_len;
-	if (iov_len > 0)
-		cse->uio.uio_iov[0].iov_base = kmem_alloc(iov_len, KM_SLEEP);
-	cse->uio.uio_resid = cse->uio.uio_iov[0].iov_len;
-	DPRINTF("lid[%u]: uio.iov_base %p malloced %d bytes\n",
-		CRYPTO_SESID2LID(cse->sid),
-		cse->uio.uio_iov[0].iov_base, iov_len);
-
-	crp = crypto_getreq((cse->tcomp != NULL) + (cse->txform != NULL) + (cse->thash != NULL));
+	crp = crypto_getreq((cse->tcomp != NULL)
+	    + (cse->txform != NULL) + (cse->thash != NULL));
 	if (crp == NULL) {
 		error = ENOMEM;
 		goto bail;
 	}
+	cod = cod_ctor(&crp->cod, cse, iov_len);
 	DPRINTF("lid[%u]: crp %p\n", CRYPTO_SESID2LID(cse->sid), crp);
 
 	/* crds are always ordered tcomp, thash, then txform */
@@ -535,10 +593,10 @@ cryptodev_op(struct csession *cse, struct crypt_op *cop, struct lwp *l)
 
 	DPRINTF("ocf[%u]: iov_len %zu, cop->len %u\n",
 			CRYPTO_SESID2LID(cse->sid),
-			cse->uio.uio_iov[0].iov_len, 
+			cod->uio.uio_iov[0].iov_len, 
 			cop->len);
 
-	if ((error = copyin(cop->src, cse->uio.uio_iov[0].iov_base, cop->len)))
+	if ((error = copyin(cop->src, cod->uio.uio_iov[0].iov_base, cop->len)))
 	{
 		printf("copyin failed %s %d \n", (char *)cop->src, error);
 		goto bail;
@@ -608,10 +666,10 @@ cryptodev_op(struct csession *cse, struct crypt_op *cop, struct lwp *l)
 
 	crp->crp_ilen = cop->len;
 	crp->crp_flags = CRYPTO_F_IOV | (cop->flags & COP_F_BATCH) | flags;
-	crp->crp_buf = (void *)&cse->uio;
+	crp->crp_buf = (void *)&cod->uio;
 	crp->crp_callback = cryptodev_cb;
 	crp->crp_sid = cse->sid;
-	crp->crp_opaque = cse;
+	crp->crp_opaque = cod;
 
 	if (cop->iv) {
 		if (crde == NULL) {
@@ -622,10 +680,10 @@ cryptodev_op(struct csession *cse, struct crypt_op *cop, struct lwp *l)
 			error = EINVAL;
 			goto bail;
 		}
-		if ((error = copyin(cop->iv, cse->tmp_iv,
+		if ((error = copyin(cop->iv, crp->tmp_iv,
 		    cse->txform->ivsize)))
 			goto bail;
-		(void)memcpy(crde->crd_iv, cse->tmp_iv, cse->txform->ivsize);
+		(void)memcpy(crde->crd_iv, crp->tmp_iv, cse->txform->ivsize);
 		crde->crd_flags |= CRD_F_IV_EXPLICIT | CRD_F_IV_PRESENT;
 		crde->crd_skip = 0;
 	} else if (crde) {
@@ -644,29 +702,23 @@ cryptodev_op(struct csession *cse, struct crypt_op *cop, struct lwp *l)
 			error = EINVAL;
 			goto bail;
 		}
-		crp->crp_mac = cse->tmp_mac;
+		crp->crp_mac = crp->tmp_mac;
 	}
 
 	cv_init(&crp->crp_cv, "crydev");
 	crypto_dispatch(crp);
-	mutex_enter(&cryptodev_mtx);
+	mutex_enter(&cse->lock);
 	while (!(crp->crp_devflags & CRYPTODEV_F_RET)) {
-		DPRINTF("cse->sid[%d]: sleeping on cv %p for crp %p\n",
+		DPRINTF("cse->sid[%u]: sleeping on cv %p for crp %p\n",
 			(uint32_t)cse->sid, &crp->crp_cv, crp);
-		cv_wait(&crp->crp_cv, &cryptodev_mtx);	/* XXX cv_wait_sig? */
+		cv_wait(&crp->crp_cv, &cse->lock);	/* XXX cv_wait_sig? */
 	}
-	mutex_exit(&cryptodev_mtx);
+	mutex_exit(&cse->lock);
 	cv_destroy(&crp->crp_cv);
 
 	if (crp->crp_etype != 0) {
 		DPRINTF("crp_etype %d\n", crp->crp_etype);
 		error = crp->crp_etype;
-		goto bail;
-	}
-
-	if (cse->error) {
-		DPRINTF("cse->error %d\n", cse->error);
-		error = cse->error;
 		goto bail;
 	}
 
@@ -681,10 +733,10 @@ cryptodev_op(struct csession *cse, struct crypt_op *cop, struct lwp *l)
 	}
 
 	if (cop->dst) {
-		DPRINTF("copyout %d bytes to %p\n", dst_len, cop->dst);
+		DPRINTF("copyout %zu bytes to %p\n", dst_len, cop->dst);
 	}
 	if (cop->dst &&
-	    (error = copyout(cse->uio.uio_iov[0].iov_base, cop->dst, dst_len)))
+	    (error = copyout(cod->uio.uio_iov[0].iov_base, cop->dst, dst_len)))
 	{
 		DPRINTF("copyout error %d\n", error);
 		goto bail;
@@ -698,59 +750,55 @@ cryptodev_op(struct csession *cse, struct crypt_op *cop, struct lwp *l)
 
 
 bail:
-	if (crp) {
+	if (cod)
+		cod_dtor(cod);
+	if (crp)
 		crypto_freereq(crp);
-	}
-	if (cse->uio.uio_iov[0].iov_base) {
-		kmem_free(cse->uio.uio_iov[0].iov_base,iov_len);
-	}
-
 	return error;
 }
 
 static void
 cryptodev_cb(struct cryptop *crp)
 {
-	struct csession *cse = crp->crp_opaque;
+	struct cryptop_data *cod = crp->crp_opaque;
+	DPRINTF("cod = %p\n", cod);
 
-	mutex_enter(&cryptodev_mtx);
-	cse->error = crp->crp_etype;
+	mutex_enter(&cod->cse->lock);
 	crp->crp_devflags |= CRYPTODEV_F_RET;
 	cv_signal(&crp->crp_cv);
-	mutex_exit(&cryptodev_mtx);
+	mutex_exit(&cod->cse->lock);
 }
 
 static void
 cryptodev_mcb(struct cryptop *crp)
 {
-	struct csession *cse = crp->crp_opaque;
+	struct cryptop_data *cod = crp->crp_opaque;
 
-	mutex_enter(&cryptodev_mtx);
-	cse->error = crp->crp_etype;
+	mutex_enter(&cod->cse->lock);
 	TAILQ_INSERT_TAIL(&crp->fcrp->crp_ret_mq, crp, crp_next);
 	selnotify(&crp->fcrp->sinfo, 0, 0);
-	mutex_exit(&cryptodev_mtx);
+	mutex_exit(&cod->cse->lock);
 }
 
 static void
 cryptodevkey_cb(struct cryptkop *krp)
 {
 
-	mutex_enter(&cryptodev_mtx);
+	mutex_enter(&krp->krp_lock);
 	krp->krp_devflags |= CRYPTODEV_F_RET;
 	cv_signal(&krp->krp_cv);
-	mutex_exit(&cryptodev_mtx);
+	mutex_exit(&krp->krp_lock);
 }
 
 static void
 cryptodevkey_mcb(struct cryptkop *krp)
 {
 
-	mutex_enter(&cryptodev_mtx);
+	mutex_enter(&krp->krp_lock);
 	cv_signal(&krp->krp_cv);
 	TAILQ_INSERT_TAIL(&krp->fcrp->crp_ret_mkq, krp, krp_next);
 	selnotify(&krp->fcrp->sinfo, 0, 0);
-	mutex_exit(&cryptodev_mtx);
+	mutex_exit(&krp->krp_lock);
 }
 
 static int
@@ -758,7 +806,7 @@ cryptodev_key(struct crypt_kop *kop)
 {
 	struct cryptkop *krp = NULL;
 	int error = EINVAL;
-	int in, out, size, i;
+	size_t in, out, size, i;
 
 	if (kop->crk_iparams + kop->crk_oparams > CRK_MAXPARAM)
 		return EFBIG;
@@ -821,6 +869,7 @@ cryptodev_key(struct crypt_kop *kop)
 	}
 	(void)memset(krp, 0, sizeof *krp);
 	cv_init(&krp->krp_cv, "crykdev");
+	mutex_init(&krp->krp_lock, MUTEX_DEFAULT, IPL_NONE);
 	krp->krp_op = kop->crk_op;
 	krp->krp_status = kop->crk_status;
 	krp->krp_iparams = kop->crk_iparams;
@@ -845,11 +894,11 @@ cryptodev_key(struct crypt_kop *kop)
 
 	crypto_kdispatch(krp);
 
-	mutex_enter(&cryptodev_mtx);
+	mutex_enter(&krp->krp_lock);
 	while (!(krp->krp_devflags & CRYPTODEV_F_RET)) {
-		cv_wait(&krp->krp_cv, &cryptodev_mtx);	/* XXX cv_wait_sig? */
+		cv_wait(&krp->krp_cv, &krp->krp_lock);	/* XXX cv_wait_sig? */
 	}
-	mutex_exit(&cryptodev_mtx);
+	mutex_exit(&krp->krp_lock);
 
 	if (krp->krp_status != 0) {
 		DPRINTF("krp->krp_status 0x%08x\n", krp->krp_status);
@@ -865,7 +914,7 @@ cryptodev_key(struct crypt_kop *kop)
 		error = copyout(krp->krp_param[i].crp_p,
 		    kop->crk_param[i].crp_p, size);
 		if (error) {
-			DPRINTF("copyout oparam %d failed, "
+			DPRINTF("copyout oparam %zu failed, "
 			    "error=%d\n", i-krp->krp_iparams, error);
 			goto fail;
 		}
@@ -888,82 +937,89 @@ fail:
 	return error;
 }
 
+
 /* ARGSUSED */
 static int
 cryptof_close(struct file *fp)
 {
 	struct fcrypt *fcr = fp->f_fcrypt;
-	struct csession *cse;
 
-	mutex_enter(&cryptodev_mtx);
-	while ((cse = TAILQ_FIRST(&fcr->csessions))) {
-		TAILQ_REMOVE(&fcr->csessions, cse, next);
-		mutex_exit(&cryptodev_mtx);
-		csefree(cse);
-		mutex_enter(&cryptodev_mtx);
-	}
-	seldestroy(&fcr->sinfo);
 	fp->f_fcrypt = NULL;
-	crypto_refcount--;
-	mutex_exit(&cryptodev_mtx);
-
-	pool_put(&fcrpl, fcr);
+	fcrypt_dtor(fcr);
+	crypto_refcount_put();
 	return 0;
 }
 
 /* needed for compatibility module */
-struct	csession *cryptodev_csefind(struct fcrypt *fcr, u_int ses)
+struct	csession *
+cryptodev_cse_find(struct fcrypt *fcr, uint32_t ses)
 {
-	return csefind(fcr, ses);
+	return cse_find(fcr, ses);
 }
 
-/* csefind: call with cryptodev_mtx held. */
+/* needed for compatibility module */
+void
+cryptodev_cse_free(struct csession *cse)
+{
+	cse_free(cse);
+}
+
 static struct csession *
-csefind(struct fcrypt *fcr, u_int ses)
-{
-	struct csession *cse, *cnext, *ret = NULL;
-
-	KASSERT(mutex_owned(&cryptodev_mtx));
-	TAILQ_FOREACH_SAFE(cse, &fcr->csessions, next, cnext)
-		if (cse->ses == ses)
-			ret = cse;
-
-	return ret;
-}
-
-/* csedelete: call with cryptodev_mtx held. */
-static int
-csedelete(struct fcrypt *fcr, struct csession *cse_del)
+cse_find(struct fcrypt *fcr, uint32_t ses)
 {
 	struct csession *cse, *cnext;
-	int ret = 0;
 
-	KASSERT(mutex_owned(&cryptodev_mtx));
+	mutex_enter(&fcr->lock);
+	TAILQ_FOREACH_SAFE(cse, &fcr->csessions, next, cnext)
+		if (cse->ses == ses) {
+			if (atomic_inc_uint_nv(&cse->refcnt) == UINT_MAX) {
+				atomic_dec_uint(&cse->refcnt);
+				cse = NULL;
+			}
+			mutex_exit(&fcr->lock);
+			return cse;
+		}
+	mutex_exit(&fcr->lock);
+
+	return NULL;
+}
+
+static int
+cse_delete(struct fcrypt *fcr, uint32_t ses)
+{
+	struct csession *cse, *cnext;
+
 	TAILQ_FOREACH_SAFE(cse, &fcr->csessions, next, cnext) {
-		if (cse == cse_del) {
+		if (cse->ses == ses) {
+			if (atomic_load_relaxed(&cse->refcnt) != 1)
+				return EBUSY;
 			TAILQ_REMOVE(&fcr->csessions, cse, next);
-			ret = 1;
+			cse_free(cse);
+			return 0;
 		}
 	}
-	return ret;
+	return EINVAL;
 }
 
 static struct csession *
-cseadd(struct fcrypt *fcr, struct csession *cse)
+cse_add(struct fcrypt *fcr, struct csession *cse)
 {
-	mutex_enter(&cryptodev_mtx);
+	mutex_enter(&fcr->lock);
 	/* don't let session ID wrap! */
-	if (fcr->sesn + 1 == 0) return NULL;
+	if (fcr->sesn + 1 == 0) {
+		mutex_exit(&fcr->lock);
+		return NULL;
+	}
 	TAILQ_INSERT_TAIL(&fcr->csessions, cse, next);
 	cse->ses = fcr->sesn++;
-	mutex_exit(&cryptodev_mtx);
+	mutex_exit(&fcr->lock);
 	return cse;
 }
 
 static struct csession *
-csecreate(struct fcrypt *fcr, u_int64_t sid, void *key, u_int64_t keylen,
-    void *mackey, u_int64_t mackeylen, u_int32_t cipher, u_int32_t mac,
-    u_int32_t comp_alg, const struct enc_xform *txform,
+cse_create(struct fcrypt *fcr, uint64_t sid, void *key, uint64_t keylen,
+    void *mackey, uint64_t mackeylen, uint32_t cipher, uint32_t mac,
+    uint32_t comp_alg, const struct enc_xform *txform,
     const struct auth_hash *thash, const struct comp_algo *tcomp)
 {
 	struct csession *cse;
@@ -972,6 +1028,8 @@ csecreate(struct fcrypt *fcr, u_int64_t sid, void *key, u_int64_t keylen,
 	if (cse == NULL)
 		return NULL;
 	cse->key = key;
+	mutex_init(&cse->lock, MUTEX_DEFAULT, IPL_NONE);
+	cse->refcnt = 1;
 	cse->keylen = keylen/8;
 	cse->mackey = mackey;
 	cse->mackeylen = mackeylen/8;
@@ -982,19 +1040,26 @@ csecreate(struct fcrypt *fcr, u_int64_t sid, void *key, u_int64_t keylen,
 	cse->txform = txform;
 	cse->thash = thash;
 	cse->tcomp = tcomp;
-	cse->error = 0;
-	if (cseadd(fcr, cse))
+	if (cse_add(fcr, cse)) {
+		DPRINTF("created %p\n", cse);
 		return cse;
-	else {
-		pool_put(&csepl, cse);
-		return NULL;
 	}
+
+	mutex_destroy(&cse->lock);
+	pool_put(&csepl, cse);
+	return NULL;
 }
 
 static void
-csefree(struct csession *cse)
+cse_free(struct csession *cse)
 {
 
+	DPRINTF("destroying %p %d\n", cse, atomic_load_relaxed(&cse->refcnt));
+	membar_release();
+	if (atomic_dec_uint_nv(&cse->refcnt) > 0)
+		return;
+	membar_acquire();
+	mutex_destroy(&cse->lock);
 	crypto_freesession(cse->sid);
 	if (cse->key)
 		free(cse->key, M_XDATA);
@@ -1014,26 +1079,18 @@ cryptoopen(dev_t dev, int flag, int mode,
 	if (crypto_usercrypto == 0)
 		return ENXIO;
 
-	if ((error = fd_allocfile(&fp, &fd)) != 0)
+	if ((error = crypto_refcount_get()) != 0)
 		return error;
 
-	fcr = pool_get(&fcrpl, PR_WAITOK);
-	getnanotime(&fcr->btime);
-	fcr->atime = fcr->mtime = fcr->btime;
-	mutex_enter(&cryptodev_mtx);
-	TAILQ_INIT(&fcr->csessions);
-	TAILQ_INIT(&fcr->crp_ret_mq);
-	TAILQ_INIT(&fcr->crp_ret_mkq);
-	selinit(&fcr->sinfo);
-	/*
-	 * Don't ever return session 0, to allow detection of
-	 * failed creation attempts with multi-create ioctl.
-	 */
-	fcr->sesn = 1;
-	fcr->requestid = 1;
-	crypto_refcount++;
-	mutex_exit(&cryptodev_mtx);
-	return fd_clone(fp, fd, flag, &cryptofops, fcr);
+	if ((error = fd_allocfile(&fp, &fd)) != 0) {
+		crypto_refcount_put();
+		return error;
+	}
+
+	fcr = fcrypt_ctor();
+	error = fd_clone(fp, fd, flag, &cryptofops, fcr);
+	KASSERTMSG(error == EMOVEFD, "error=%d", error);
+	return error;
 }
 
 static int
@@ -1073,25 +1130,24 @@ struct cdevsw crypto_cdevsw = {
 int 
 cryptodev_mop(struct fcrypt *fcr, 
               struct crypt_n_op * cnop,
-              int count, struct lwp *l)
+              size_t count, struct lwp *l)
 {
 	struct cryptop *crp = NULL;
+	struct cryptop_data *cod = NULL;
 	struct cryptodesc *crde = NULL, *crda = NULL, *crdc = NULL;
-	int req, error=0;
+	int error = 0;
 	struct csession *cse;
 	int flags=0;
-	int iov_len;
+	size_t req, iov_len;
+
 
 	for (req = 0; req < count; req++) {
-		mutex_enter(&cryptodev_mtx);
-		cse = csefind(fcr, cnop[req].ses);
+		cse = cse_find(fcr, cnop[req].ses);
 		if (cse == NULL) {
-			DPRINTF("csefind failed\n");
+			DPRINTF("cse_find failed %#x\n", cnop[req].ses);
 			cnop[req].status = EINVAL;
-			mutex_exit(&cryptodev_mtx);
 			continue;
 		}
-		mutex_exit(&cryptodev_mtx);
 	
 		if (cnop[req].len > 256*1024-4) {
 			DPRINTF("length failed\n");
@@ -1137,20 +1193,10 @@ cryptodev_mop(struct fcrypt *fcr,
 				/* Need larger iov to deal with decompress */
 				iov_len = cnop[req].dst_len;
 			}
-			DPRINTF("iov_len -> %d for decompress\n", iov_len);
+			DPRINTF("iov_len -> %zu for decompress\n", iov_len);
 		}
 
-		(void)memset(&crp->uio, 0, sizeof(crp->uio));
-		crp->uio.uio_iovcnt = 1;
-		crp->uio.uio_resid = 0;
-		crp->uio.uio_rw = UIO_WRITE;
-		crp->uio.uio_iov = crp->iovec;
-		UIO_SETUP_SYSSPACE(&crp->uio);
-		memset(&crp->iovec, 0, sizeof(crp->iovec));
-		crp->uio.uio_iov[0].iov_len = iov_len;
-		DPRINTF("kmem_alloc(%d) for iov \n", iov_len);
-		crp->uio.uio_iov[0].iov_base = kmem_alloc(iov_len, KM_SLEEP);
-		crp->uio.uio_resid = crp->uio.uio_iov[0].iov_len;
+		cod = cod_ctor(&crp->cod, cse, iov_len);
 
 		if (cse->tcomp) {
 			crdc = crp->crp_desc;
@@ -1170,7 +1216,7 @@ cryptodev_mop(struct fcrypt *fcr,
 		}
 
 		if ((copyin(cnop[req].src, 
-		    crp->uio.uio_iov[0].iov_base, cnop[req].len))) {
+		    cod->uio.uio_iov[0].iov_base, cnop[req].len))) {
 			cnop[req].status = EINVAL;
 			goto bail;
 		}
@@ -1240,16 +1286,16 @@ cryptodev_mop(struct fcrypt *fcr,
 		crp->crp_ilen = cnop[req].len;
 		crp->crp_flags = CRYPTO_F_IOV |
 		    (cnop[req].flags & COP_F_BATCH) | flags;
-		crp->crp_buf = (void *)&crp->uio;
+		crp->crp_buf = (void *)&cod->uio;
 		crp->crp_callback = cryptodev_mcb;
 		crp->crp_sid = cse->sid;
-		crp->crp_opaque = cse;
+		crp->crp_opaque = cod;
 		crp->fcrp = fcr;
 		crp->dst = cnop[req].dst;
 		crp->len = cnop[req].len; /* input len, iov may be larger */
 		crp->mac = cnop[req].mac;
 		DPRINTF("iov_base %p dst %p len %d mac %p\n",
-			    crp->uio.uio_iov[0].iov_base, crp->dst, crp->len,
+			    cod->uio.uio_iov[0].iov_base, crp->dst, crp->len,
 			    crp->mac);
 
 		if (cnop[req].iv) {
@@ -1286,7 +1332,7 @@ cryptodev_mop(struct fcrypt *fcr,
 				cnop[req].status = EINVAL;
 				goto bail;
 			}
-			crp->crp_mac=cse->tmp_mac;
+			crp->crp_mac = crp->tmp_mac;
 		}
 		cnop[req].reqid = atomic_inc_32_nv(&(fcr->requestid));
 		crp->crp_reqid = cnop[req].reqid;
@@ -1297,13 +1343,12 @@ cryptodev_mop(struct fcrypt *fcr,
 		cv_destroy(&crp->crp_cv);
 bail:
 		if (cnop[req].status) {
-			if (crp) {
-				if (crp->uio.uio_iov[0].iov_base) {
-					kmem_free(crp->uio.uio_iov[0].iov_base,
-					    crp->uio.uio_iov[0].iov_len);
-				}
+			DPRINTF("%zu status %d\n", req, cnop[req].status);
+			cse_free(cse);
+			if (cod)
+				cod_dtor(cod);
+			if (crp)
 				crypto_freereq(crp);
-			}
 			error = 0;
 		}
 	}
@@ -1311,11 +1356,11 @@ bail:
 }
 
 static int
-cryptodev_mkey(struct fcrypt *fcr, struct crypt_n_kop *kop, int count)
+cryptodev_mkey(struct fcrypt *fcr, struct crypt_n_kop *kop, size_t count)
 {
 	struct cryptkop *krp = NULL;
 	int error = EINVAL;
-	int in, out, size, i, req;
+	size_t in, out, size, i, req;
 
 	for (req = 0; req < count; req++) {
 		if (kop[req].crk_iparams + kop[req].crk_oparams > CRK_MAXPARAM)
@@ -1461,7 +1506,7 @@ cryptodev_session(struct fcrypt *fcr, struct session_op *sop)
 	const struct auth_hash *thash = NULL;
 	const struct comp_algo *tcomp = NULL;
 	struct csession *cse;
-	u_int64_t sid;
+	uint64_t sid;
 	int error = 0;
 
 	DPRINTF("cipher=%d, mac=%d\n", sop->cipher, sop->mac);
@@ -1655,7 +1700,7 @@ cryptodev_session(struct fcrypt *fcr, struct session_op *sop)
 	error = crypto_newsession(&sid, crihead, crypto_devallowsoft);
 	if (!error) {
 		DPRINTF("got session %d\n", (uint32_t)sid);
-		cse = csecreate(fcr, sid, crie.cri_key, crie.cri_klen,
+		cse = cse_create(fcr, sid, crie.cri_key, crie.cri_klen,
 		    cria.cri_key, cria.cri_klen, (txform ? sop->cipher : 0), sop->mac,
 		    (tcomp ? sop->comp_alg : 0), txform, thash, tcomp);
 		if (cse != NULL) {
@@ -1684,9 +1729,9 @@ bail:
 
 int
 cryptodev_msession(struct fcrypt *fcr, struct session_n_op *sn_ops,
-		   int count)
+    size_t count)
 {
-	int i;
+	size_t i;
 
 	for (i = 0; i < count; i++, sn_ops++) {
 		struct session_op s_op;
@@ -1700,7 +1745,9 @@ cryptodev_msession(struct fcrypt *fcr, struct session_n_op *sn_ops,
 		s_op.ses =		~0;
 
 		sn_ops->status = cryptodev_session(fcr, &s_op);
-
+		if (sn_ops->status) {
+			DPRINTF("%zu: create failed %d\n", i, sn_ops->status);
+		}
 		sn_ops->ses =		s_op.ses;
 	}
 
@@ -1708,22 +1755,14 @@ cryptodev_msession(struct fcrypt *fcr, struct session_n_op *sn_ops,
 }
 
 static void
-cryptodev_msessionfin(struct fcrypt *fcr, int count, u_int32_t *sesid)
+cryptodev_msessionfin(struct fcrypt *fcr, size_t count, uint32_t *sesid)
 {
-	struct csession *cse;
-	int req;
-
-	mutex_enter(&cryptodev_mtx);
-	for(req = 0; req < count; req++) {
-		cse = csefind(fcr, sesid[req]);
-		if (cse == NULL)
-			continue;
-		csedelete(fcr, cse);
-		mutex_exit(&cryptodev_mtx);
-		csefree(cse);
-		mutex_enter(&cryptodev_mtx);
+	mutex_enter(&fcr->lock);
+	for (size_t req = 0; req < count; req++) {
+		// XXX: What to do if busy?
+		cse_delete(fcr, sesid[req]);
 	}
-	mutex_exit(&cryptodev_mtx);
+	mutex_exit(&fcr->lock);
 }
 
 /*
@@ -1737,7 +1776,6 @@ cryptodev_getmstatus(struct fcrypt *fcr, struct crypt_result *crypt_res,
 {
 	struct cryptop *crp = NULL;
 	struct cryptkop *krp = NULL;
-	struct csession *cse;
 	int i, size, req = 0;
 	int completed=0;
 
@@ -1754,25 +1792,16 @@ cryptodev_getmstatus(struct fcrypt *fcr, struct crypt_result *crypt_res,
 	 * if 3 then 2 symmetric and 1 asymmetric and so on */
 
 	/* pull off a list of requests while protected from changes */
-	mutex_enter(&cryptodev_mtx);
+	mutex_enter(&fcr->lock);
 	while (req < count) {
 		crp = TAILQ_FIRST(&fcr->crp_ret_mq);
 		if (crp) {
 			TAILQ_REMOVE(&fcr->crp_ret_mq, crp, crp_next);
 			TAILQ_INSERT_TAIL(&crp_delfree_q, crp, crp_next);
-			cse = (struct csession *)crp->crp_opaque;
-
-			/* see if the session is still valid */
-			cse = csefind(fcr, cse->ses);
-			if (cse != NULL) {
-				crypt_res[req].status = 0;
-			} else {
-				DPRINTF("csefind failed\n");
-				crypt_res[req].status = EINVAL;
-			}
+			crypt_res[req].status = 0;
 			req++;
 		}
-		if(req < count) {
+		if (req < count) {
 			crypt_res[req].status = 0;
 			krp = TAILQ_FIRST(&fcr->crp_ret_mkq);
 			if (krp) {
@@ -1782,17 +1811,17 @@ cryptodev_getmstatus(struct fcrypt *fcr, struct crypt_result *crypt_res,
 			}
 		}
 	}
-	mutex_exit(&cryptodev_mtx);
+	mutex_exit(&fcr->lock);
 
 	/* now do all the work outside the mutex */
 	for(req=0; req < count ;) {
 		crp = TAILQ_FIRST(&crp_delfree_q);
 		if (crp) {
+			struct cryptop_data *cod = crp->crp_opaque;
 			if (crypt_res[req].status != 0) {
-				/* csefind failed during collection */
+				/* cse_find failed during collection */
 				goto bail;
 			}
-			cse = (struct csession *)crp->crp_opaque;
 			crypt_res[req].reqid = crp->crp_reqid;
 			crypt_res[req].opaque = crp->crp_usropaque;
 			completed++;
@@ -1802,25 +1831,20 @@ cryptodev_getmstatus(struct fcrypt *fcr, struct crypt_result *crypt_res,
 				goto bail;
 			}
 
-			if (cse->error) {
-				crypt_res[req].status = cse->error;
-				goto bail;
-			}
-
 			if (crp->dst && (crypt_res[req].status =
-			    copyout(crp->uio.uio_iov[0].iov_base, crp->dst,
+			    copyout(cod->uio.uio_iov[0].iov_base, crp->dst,
 			    crp->len)))
 				goto bail;
 
 			if (crp->mac && (crypt_res[req].status =
 			    copyout(crp->crp_mac, crp->mac,
-			    cse->thash->authsize)))
+			    cod->cse->thash->authsize)))
 				goto bail;
 
 bail:
 			TAILQ_REMOVE(&crp_delfree_q, crp, crp_next);
-			kmem_free(crp->uio.uio_iov[0].iov_base,
-			    crp->uio.uio_iov[0].iov_len);
+			cse_free(cod->cse);
+			cod_dtor(cod);
 			crypto_freereq(crp);
 			req++;
 		}
@@ -1883,46 +1907,34 @@ cryptodev_getstatus (struct fcrypt *fcr, struct crypt_result *crypt_res)
 {
         struct cryptop *crp = NULL, *cnext;
         struct cryptkop *krp = NULL, *knext;
-        struct csession *cse;
         int i, size, req = 0;
 
-	mutex_enter(&cryptodev_mtx);
+	mutex_enter(&fcr->lock);
 	/* Here we dont know for which request the user is requesting the 
 	 * response so checking in both the queues */
 	TAILQ_FOREACH_SAFE(crp, &fcr->crp_ret_mq, crp_next, cnext) {
 		if(crp && (crp->crp_reqid == crypt_res->reqid)) {
-			cse = (struct csession *)crp->crp_opaque;
+			struct cryptop_data *cod = crp->crp_opaque;
 		        crypt_res->opaque = crp->crp_usropaque;
-			cse = csefind(fcr, cse->ses);
-			if (cse == NULL) {
-				DPRINTF("csefind failed\n");
-				crypt_res->status = EINVAL;
-				goto bail;
-			}
-
 			if (crp->crp_etype != 0) {
 				crypt_res->status = crp->crp_etype;
 				goto bail;
 			}
 
-			if (cse->error) {
-				crypt_res->status = cse->error;
-				goto bail;
-			}
-
 			if (crp->dst && (crypt_res->status =
-			    copyout(crp->uio.uio_iov[0].iov_base, 
+			    copyout(cod->uio.uio_iov[0].iov_base, 
 			    crp->dst, crp->len)))
 				goto bail;
 			
 			if (crp->mac && (crypt_res->status =
 			    copyout(crp->crp_mac, crp->mac,
-			    cse->thash->authsize)))
+			    cod->cse->thash->authsize)))
 				goto bail;
 bail:
 			TAILQ_REMOVE(&fcr->crp_ret_mq, crp, crp_next);
-
-			mutex_exit(&cryptodev_mtx);
+			mutex_exit(&fcr->lock);
+			cse_free(cod->cse);
+			cod_dtor(cod);
 			crypto_freereq(crp);
 			return 0;
 		}
@@ -1956,7 +1968,7 @@ bail:
 			}
 fail:
 			TAILQ_REMOVE(&fcr->crp_ret_mkq, krp, krp_next);
-			mutex_exit(&cryptodev_mtx);
+			mutex_exit(&fcr->lock);
 			/* not sure what to do for this */
 			/* kop[req].crk_status = krp->krp_status; */ 
 			for (i = 0; i < CRK_MAXPARAM; i++) {
@@ -1973,7 +1985,7 @@ fail:
 			return 0;
 		}
 	}
-	mutex_exit(&cryptodev_mtx);
+	mutex_exit(&fcr->lock);
 	return EINPROGRESS;
 }
 
@@ -1984,14 +1996,14 @@ cryptof_stat(struct file *fp, struct stat *st)
 
 	(void)memset(st, 0, sizeof(*st));
 
-	mutex_enter(&cryptodev_mtx);
+	mutex_enter(&fcr->lock);
 	st->st_dev = makedev(cdevsw_lookup_major(&crypto_cdevsw), fcr->sesn);
 	st->st_atimespec = fcr->atime;
 	st->st_mtimespec = fcr->mtime;
 	st->st_ctimespec = st->st_birthtimespec = fcr->btime;
 	st->st_uid = kauth_cred_geteuid(fp->f_cred);
 	st->st_gid = kauth_cred_getegid(fp->f_cred);
-	mutex_exit(&cryptodev_mtx);
+	mutex_exit(&fcr->lock);
 
 	return 0;
 }
@@ -2007,7 +2019,7 @@ cryptof_poll(struct file *fp, int events)
 		return 0;
 	}
 
-	mutex_enter(&cryptodev_mtx);
+	mutex_enter(&fcr->lock);
 	if (TAILQ_EMPTY(&fcr->crp_ret_mq) && TAILQ_EMPTY(&fcr->crp_ret_mkq)) {
 		/* no completed requests pending, save the poll for later */
 		selrecord(curlwp, &fcr->sinfo);
@@ -2015,19 +2027,14 @@ cryptof_poll(struct file *fp, int events)
 		/* let the app(s) know that there are completed requests */
 		revents = events & (POLLIN | POLLRDNORM);
 	}
-	mutex_exit(&cryptodev_mtx);
+	mutex_exit(&fcr->lock);
 
 	return revents;
 }
 
-/*
- * Pseudo-device initialization routine for /dev/crypto
- */
-void
-cryptoattach(int num)
+static void
+cryptodev_init(void)
 {
-
-	crypto_init();
 
 	mutex_init(&cryptodev_mtx, MUTEX_DEFAULT, IPL_NONE);
 
@@ -2047,139 +2054,73 @@ cryptoattach(int num)
 	pool_prime(&csepl, 64 * 5);
 }
 
-void	crypto_attach(device_t, device_t, void *);
-
-void
-crypto_attach(device_t parent, device_t self, void * opaque)
+static void
+cryptodev_fini(void)
 {
 
-	cryptoattach(0);
-}
+	KASSERTMSG(crypto_refcount == 0,
+	    "crypto_refcount=%d", crypto_refcount);
 
-int	crypto_detach(device_t, int);
-
-int
-crypto_detach(device_t self, int num)
-{
-
-	pool_destroy(&fcrpl);
 	pool_destroy(&csepl);
+	pool_destroy(&fcrpl);
 
 	mutex_destroy(&cryptodev_mtx);
-
-	return 0;
 }
 
-int crypto_match(device_t, cfdata_t, void *);
- 
-int
-crypto_match(device_t parent, cfdata_t data, void *opaque) 
-{   
- 
-	return 1;
+/*
+ * Pseudo-device initialization routine for /dev/crypto
+ */
+void
+cryptoattach(int num)
+{
+#ifndef _MODULE
+	crypto_init();
+	cryptodev_init();
+#endif
 }
 
 MODULE(MODULE_CLASS_DRIVER, crypto, "opencrypto");
 
-CFDRIVER_DECL(crypto, DV_DULL, NULL);
-
-CFATTACH_DECL2_NEW(crypto, 0, crypto_match, crypto_attach, crypto_detach,
-    NULL, NULL, NULL);
-
-#ifdef _MODULE
-static int cryptoloc[] = { -1, -1 };
-
-static struct cfdata crypto_cfdata[] = {
-	{
-		.cf_name = "crypto",
-		.cf_atname = "crypto",
-		.cf_unit = 0,
-		.cf_fstate = 0,
-		.cf_loc = cryptoloc,
-		.cf_flags = 0,
-		.cf_pspec = NULL,
-	},
-	{ NULL, NULL, 0, 0, NULL, 0, NULL }
-};
-#endif
-
 static int
 crypto_modcmd(modcmd_t cmd, void *arg)
 {
-	int error = 0;
 #ifdef _MODULE
+	int error = 0;
 	devmajor_t cmajor = NODEVMAJOR, bmajor = NODEVMAJOR;
 #endif
 
 	switch (cmd) {
 	case MODULE_CMD_INIT:
 #ifdef _MODULE
-
-		error = devsw_attach(crypto_cd.cd_name, NULL, &bmajor,
+		cryptodev_init();
+		error = devsw_attach("crypto", NULL, &bmajor,
 		    &crypto_cdevsw, &cmajor);
 		if (error) {
-			aprint_error("%s: unable to register devsw, error %d\n",
-				crypto_cd.cd_name, error);
+			aprint_error("crypto: unable to register devsw,"
+			    " error %d\n", error);
+			cryptodev_fini();
 			return error;
 		}
-
-		error = config_cfdriver_attach(&crypto_cd);
-		if (error) {
-			devsw_detach(NULL, &crypto_cdevsw);
-			return error;
-		}
-
-		error = config_cfattach_attach(crypto_cd.cd_name, &crypto_ca);
-		if (error) {
-			config_cfdriver_detach(&crypto_cd);
-			devsw_detach(NULL, &crypto_cdevsw);
-			aprint_error("%s: unable to register cfattach\n",
-				crypto_cd.cd_name);
-
-			return error;
-		}
-
-		error = config_cfdata_attach(crypto_cfdata, 1);
-		if (error) {
-			config_cfattach_detach(crypto_cd.cd_name, &crypto_ca);
-			config_cfdriver_detach(&crypto_cd);
-			devsw_detach(NULL, &crypto_cdevsw);
-			aprint_error("%s: unable to register cfdata\n",
-				crypto_cd.cd_name);
-
-			return error;
-		}
-
-		(void)config_attach_pseudo(crypto_cfdata);
 #endif
-
-		return error;
+		return 0;
 	case MODULE_CMD_FINI:
-#ifdef _MODULE
-		if (crypto_refcount != 0)
+		/*
+		 * Can't unload safely because there is no way to wait
+		 * for all files with a given struct fileops to be
+		 * closed.
+		 */
+		return ENOTTY;
+
+		mutex_enter(&cryptodev_mtx);
+		if (crypto_refcount != 0) {
+			mutex_exit(&cryptodev_mtx);
 			return EBUSY;
-		error = config_cfdata_detach(crypto_cfdata);
-		if (error) {
-			return error;
 		}
-
-		config_cfattach_detach(crypto_cd.cd_name, &crypto_ca);
-		config_cfdriver_detach(&crypto_cd);
+		crypto_detaching = true;
+		mutex_exit(&cryptodev_mtx);
 		devsw_detach(NULL, &crypto_cdevsw);
-#endif
-
-		return error;
-#ifdef _MODULE
-	case MODULE_CMD_AUTOUNLOAD:
-#if 0	/*
-	 * XXX Completely disable auto-unload for now, since there is still
-	 * XXX a (small) window where in-module ref-counting doesn't help
-	 */
-		if (crypto_refcount != 0)
-#endif
-			return EBUSY;
-	/* FALLTHROUGH */
-#endif
+		cryptodev_fini();
+		return 0;
 	default:
 		return ENOTTY;
 	}

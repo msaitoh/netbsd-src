@@ -1,4 +1,4 @@
-/*	$NetBSD: cleanup_bounce.c,v 1.2 2017/02/14 01:16:44 christos Exp $	*/
+/*	$NetBSD: cleanup_bounce.c,v 1.4 2026/05/09 18:49:15 christos Exp $	*/
 
 /*++
 /* NAME
@@ -77,7 +77,7 @@ static void cleanup_bounce_append(CLEANUP_STATE *state, RECIPIENT *rcpt,
      */
     if (bounce_append(BOUNCE_FLAG_CLEAN, state->queue_id,
 		      CLEANUP_MSG_STATS(&stats, state),
-		      rcpt, "none", dsn) != 0) {
+		      rcpt, "none", NO_TLS_STATS, dsn) != 0) {
 	state->errs |= CLEANUP_STAT_WRITE;
     }
 }
@@ -231,13 +231,13 @@ int     cleanup_bounce(CLEANUP_STATE *state)
 	    bounce_err =
 		bounce_flush(BOUNCE_FLAG_CLEAN,
 			     state->queue_name, state->queue_id,
-			     encoding, state->smtputf8, state->sender,
+			     encoding, state->sendopts, state->sender,
 			     dsn_envid, dsn_ret);
 	} else {
 	    bounce_err =
 		bounce_flush_verp(BOUNCE_FLAG_CLEAN,
 				  state->queue_name, state->queue_id,
-				  encoding, state->smtputf8, state->sender,
+				  encoding, state->sendopts, state->sender,
 				  dsn_envid, dsn_ret, state->verp_delims);
 	}
 	if (bounce_err != 0) {

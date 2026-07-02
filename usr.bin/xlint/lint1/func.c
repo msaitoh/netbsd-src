@@ -1,4 +1,4 @@
-/*	$NetBSD: func.c,v 1.187 2024/05/12 12:28:34 rillig Exp $	*/
+/*	$NetBSD: func.c,v 1.200 2026/06/16 05:27:57 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -37,7 +37,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID)
-__RCSID("$NetBSD: func.c,v 1.187 2024/05/12 12:28:34 rillig Exp $");
+__RCSID("$NetBSD: func.c,v 1.200 2026/06/16 05:27:57 rillig Exp $");
 #endif
 
 #include <stdlib.h>
@@ -116,9 +116,6 @@ pos_t scanflike_pos;
  */
 bool plibflg;
 
-/* Temporarily suppress warnings about constants in conditional context. */
-bool suppress_constcond;
-
 /*
  * Whether a lint library shall be created. The effect of this flag is that
  * all defined symbols are treated as used.
@@ -181,11 +178,11 @@ set_reached(bool new_reached)
  * Prints a warning if a statement cannot be reached.
  */
 void
-check_statement_reachable(void)
+check_statement_reachable(const char *stmt_kind)
 {
 	if (!reached && warn_about_unreachable) {
-		/* statement not reached */
-		warning(193);
+		/* '%s' statement not reached */
+		warning(193, stmt_kind);
 		warn_about_unreachable = false;
 	}
 }
@@ -241,7 +238,7 @@ begin_function(sym_t *fsym)
 
 	if (fsym->s_scl == TYPEDEF) {
 		fsym->s_scl = EXTERN;
-		/* illegal storage class */
+		/* invalid storage class */
 		error(8);
 	}
 
@@ -311,12 +308,11 @@ begin_function(sym_t *fsym)
 		symtab_remove_forever(rdsym);
 	}
 
-	if (fsym->s_osdef && !fsym->s_type->t_proto) {
-		/* TODO: Make this an error in C99 mode as well. */
-		if (!allow_trad && !allow_c99 && hflag &&
-		    strcmp(fsym->s_name, "main") != 0)
-			/* function definition is not a prototype */
-			warning(286);
+	if (fsym->s_osdef && !fsym->s_type->t_proto && !fsym->s_type->t_identifier_params) {
+		if (!allow_trad &&
+		    (allow_c99 || strcmp(fsym->s_name, "main") != 0))
+			/* function definition for '%s' is not a prototype */
+			warning(286, fsym->s_name);
 	}
 
 	if (dcs->d_no_type_specifier)
@@ -399,7 +395,8 @@ named_label(sym_t *sym)
 static void
 check_case_label_bitand(const tnode_t *case_expr, const tnode_t *switch_expr)
 {
-	if (switch_expr->tn_op != BITAND ||
+	if (switch_expr == NULL ||
+	    switch_expr->tn_op != BITAND ||
 	    switch_expr->u.ops.right->tn_op != CON)
 		return;
 
@@ -408,8 +405,8 @@ check_case_label_bitand(const tnode_t *case_expr, const tnode_t *switch_expr)
 	uint64_t mask = (uint64_t)switch_expr->u.ops.right->u.value.u.integer;
 
 	if ((case_value & ~mask) != 0)
-		/* statement not reached */
-		warning(193);
+		/* '%s' statement not reached */
+		warning(193, "case");
 }
 
 static void
@@ -558,15 +555,15 @@ check_controlling_expression(tnode_t *tn, bool is_do_while)
 		/* C99 6.5.15p4 for the ?: operator; see typeok:QUEST */
 		/* C99 6.8.4.1p1 for if statements */
 		/* C99 6.8.5p2 for while, do and for loops */
-		/* controlling expressions must have scalar type */
-		error(204);
+		/* controlling expressions must have scalar type, not '%s' */
+		error(204, type_name(tn->tn_type));
 		return NULL;
 	}
 
 	if (tn != NULL && Tflag
 	    && !is_typeok_bool_compares_with_zero(tn, is_do_while)) {
 		/* controlling expression must be bool, not '%s' */
-		error(333, tn->tn_type->t_is_enum ? type_name(tn->tn_type)
+		error(333, tn->tn_type->t_is_enum ? expr_type_name(tn)
 		    : tspec_name(tn->tn_type->t_tspec));
 	}
 
@@ -579,7 +576,7 @@ stmt_if_expr(tnode_t *tn)
 	if (tn != NULL)
 		tn = check_controlling_expression(tn, false);
 	if (tn != NULL)
-		expr(tn, false, true, false, false);
+		expr(tn, false, true, false, false, "if");
 	begin_control_statement(CS_IF);
 
 	if (tn != NULL && tn->tn_op == CON && !tn->tn_system_dependent) {
@@ -619,8 +616,8 @@ stmt_switch_expr(tnode_t *tn)
 	if (tn != NULL)
 		tn = promote(NOOP, false, tn);
 	if (tn != NULL && !is_integer(tn->tn_type->t_tspec)) {
-		/* switch expression must have integral type */
-		error(205);
+		/* switch expression must have integral type, not '%s' */
+		error(205, type_name(tn->tn_type));
 		tn = NULL;
 	}
 	if (tn != NULL && !allow_c90) {
@@ -648,7 +645,7 @@ stmt_switch_expr(tnode_t *tn)
 	(void)expr_save_memory();
 
 	check_getopt_begin_switch();
-	expr(tn, true, false, false, false);
+	expr(tn, true, false, false, false, "switch");
 
 	begin_control_statement(CS_SWITCH);
 	cstmt->c_switch = true;
@@ -715,8 +712,6 @@ void
 stmt_while_expr(tnode_t *tn)
 {
 	if (!reached) {
-		/* loop not entered at top */
-		warning(207);
 		/* FIXME: that's plain wrong. */
 		set_reached(true);
 	}
@@ -730,7 +725,7 @@ stmt_while_expr(tnode_t *tn)
 	bool body_reached = !is_zero(tn);
 
 	check_getopt_begin_while(tn);
-	expr(tn, false, true, true, false);
+	expr(tn, false, true, true, false, "while");
 
 	set_reached(body_reached);
 }
@@ -746,11 +741,8 @@ stmt_while_expr_stmt(void)
 void
 stmt_do(void)
 {
-	if (!reached) {
-		/* loop not entered at top */
-		warning(207);
+	if (!reached)
 		set_reached(true);
-	}
 
 	begin_control_statement(CS_DO_WHILE);
 	cstmt->c_loop = true;
@@ -772,7 +764,7 @@ stmt_do_while_expr(tnode_t *tn)
 			error(323);
 	}
 
-	expr(tn, false, true, true, true);
+	expr(tn, false, true, true, true, "do-while");
 
 	if (cstmt->c_maybe_endless)
 		set_reached(false);
@@ -789,11 +781,8 @@ stmt_for_exprs(tnode_t *tn1, tnode_t *tn2, tnode_t *tn3)
 	 * If there is no initialization expression it is possible that it is
 	 * intended not to enter the loop at top.
 	 */
-	if (tn1 != NULL && !reached) {
-		/* loop not entered at top */
-		warning(207);
+	if (tn1 != NULL && !reached)
 		set_reached(true);
-	}
 
 	begin_control_statement(CS_FOR);
 	cstmt->c_loop = true;
@@ -809,12 +798,12 @@ stmt_for_exprs(tnode_t *tn1, tnode_t *tn2, tnode_t *tn3)
 	cstmt->c_for_expr3_csrc_pos = csrc_pos;
 
 	if (tn1 != NULL)
-		expr(tn1, false, false, true, false);
+		expr(tn1, false, false, true, false, "for");
 
 	if (tn2 != NULL)
 		tn2 = check_controlling_expression(tn2, false);
 	if (tn2 != NULL)
-		expr(tn2, false, true, true, false);
+		expr(tn2, false, true, true, false, "for");
 
 	cstmt->c_maybe_endless = tn2 == NULL || is_nonzero(tn2);
 
@@ -845,7 +834,7 @@ stmt_for_exprs_stmt(void)
 	}
 
 	if (tn3 != NULL)
-		expr(tn3, false, false, true, false);
+		expr(tn3, false, false, true, false, "for continuation");
 	else
 		expr_free_all();
 
@@ -861,7 +850,7 @@ void
 stmt_goto(sym_t *lab)
 {
 	mark_as_used(lab, false, false);
-	check_statement_reachable();
+	check_statement_reachable("goto");
 	set_reached(false);
 }
 
@@ -879,7 +868,7 @@ stmt_break(void)
 		cs->c_break = true;
 
 	if (bflag)
-		check_statement_reachable();
+		check_statement_reachable("break");
 
 	set_reached(false);
 }
@@ -899,8 +888,14 @@ stmt_continue(void)
 		/* TODO: only if reachable, for symmetry with c_break */
 		cs->c_continue = true;
 
-	check_statement_reachable();
+	check_statement_reachable("continue");
 
+	set_reached(false);
+}
+
+void
+stmt_call_noreturn(void)
+{
 	set_reached(false);
 }
 
@@ -915,10 +910,9 @@ is_parenthesized(const tnode_t *tn)
 static void
 check_return_value(bool sys, tnode_t *tn)
 {
-	if (any_query_enabled && is_parenthesized(tn)) {
+	if (any_query_enabled && is_parenthesized(tn))
 		/* parenthesized return value */
 		query_message(9);
-	}
 
 	/* Create a temporary node for the left side */
 	tnode_t *ln = expr_zero_alloc(sizeof(*ln), "tnode");
@@ -939,7 +933,7 @@ check_return_value(bool sys, tnode_t *tn)
 			warning(302, funcsym->s_name);
 	}
 
-	expr(retn, true, false, true, false);
+	expr(retn, true, false, true, false, "return");
 }
 
 void
@@ -980,7 +974,7 @@ stmt_return(bool sys, tnode_t *tn)
 	if (tn != NULL)
 		check_return_value(sys, tn);
 	else
-		check_statement_reachable();
+		check_statement_reachable("return");
 
 	set_reached(false);
 }
@@ -1130,7 +1124,6 @@ handle_lint_comment(lint_comment comment, int arg)
 	switch (comment) {
 	case LC_ARGSUSED:	argsused(arg);			break;
 	case LC_BITFIELDTYPE:	suppress_bitfieldtype = true;	break;
-	case LC_CONSTCOND:	suppress_constcond = true;	break;
 	case LC_FALLTHROUGH:	suppress_fallthrough = true;	break;
 	case LC_LINTLIBRARY:	lintlib();			break;
 	case LC_LINTED:		debug_step("set lwarn %d", arg);

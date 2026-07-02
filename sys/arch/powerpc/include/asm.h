@@ -1,4 +1,4 @@
-/*	$NetBSD: asm.h,v 1.54 2024/02/10 08:36:04 andvar Exp $	*/
+/*	$NetBSD: asm.h,v 1.58 2026/01/09 22:54:33 jmcneill Exp $	*/
 
 /*
  * Copyright (C) 1995, 1996 Wolfgang Solfrank.
@@ -33,6 +33,10 @@
 
 #ifndef _PPC_ASM_H_
 #define _PPC_ASM_H_
+
+#ifdef _KERNEL_OPT
+#include "opt_ppcarch.h"
+#endif
 
 #ifdef _LP64
 
@@ -155,10 +159,20 @@ y:	.quad	.##y,.TOC.@tocbase,0;	\
 #define	ASMSTR		.asciz
 
 #undef __RCSID
+
 #define RCSID(x)	__RCSID(x)
+#ifdef _NETBSD_REVISIONID
+#define __RCSID(x)	.pushsection ".ident","MS",@progbits,1;		\
+			.asciz x;					\
+			.ascii "$"; .ascii "NetBSD: "; .ascii __FILE__;	\
+			.ascii " "; .ascii _NETBSD_REVISIONID;		\
+			.asciz " $";					\
+			.popsection
+#else
 #define __RCSID(x)	.pushsection ".ident","MS",@progbits,1;		\
 			.asciz x;					\
 			.popsection
+#endif
 
 #ifdef __ELF__
 # define WEAK_ALIAS(alias,sym)						\
@@ -434,7 +448,13 @@ y:	.quad	.##y,.TOC.@tocbase,0;	\
 .endm
 #endif /* _LOCORE */
 
-#if defined(IBM405_ERRATA77) || \
+#if defined(PPC_IBMESPRESSO)
+/*
+ * Workaround for IBM Espresso erratum.
+ */
+#define POWERPC_STWCX_PRE(ra, rb)	dcbst ra,rb
+#define IBM405_ERRATA77_SYNC		/* nothing */
+#elif defined(IBM405_ERRATA77) || \
     ((defined(_MODULE) || !defined(_KERNEL)) && !defined(_LP64))
 /*
  * Workaround for IBM405 Errata 77 (CPU_210): interrupted stwcx. may
@@ -442,11 +462,14 @@ y:	.quad	.##y,.TOC.@tocbase,0;	\
  *
  * (1) Insert dcbt before every stwcx. instruction
  * (2) Insert sync before every rfi/rfci instruction
+ *
+ * https://elinux.org/images/1/1d/Ppc405gp-errata.pdf
+ * https://web.archive.org/web/20240630134919/https://elinux.org/images/1/1d/Ppc405gp-errata.pdf
  */
-#define	IBM405_ERRATA77_DCBT(ra, rb)	dcbt ra,rb
+#define	POWERPC_STWCX_PRE(ra, rb)	dcbt ra,rb
 #define	IBM405_ERRATA77_SYNC		sync
 #else
-#define	IBM405_ERRATA77_DCBT(ra, rb)	/* nothing */
+#define	POWERPC_STWCX_PRE(ra, rb)	/* nothing */
 #define	IBM405_ERRATA77_SYNC		/* nothing */
 #endif
 

@@ -1,11 +1,11 @@
-/*	$NetBSD: msg_361.c,v 1.3 2024/08/31 06:57:31 rillig Exp $	*/
+/*	$NetBSD: msg_361.c,v 1.5 2026/03/15 18:21:44 rillig Exp $	*/
 # 3 "msg_361.c"
 
 // Test for message: number base '%.*s' is %ju, must be 8, 10 or 16 [361]
 
 /*
  * The first or second character of the snprintb format specifies the number
- * base.  It must be given in binary.
+ * base.  It must be given as an octal or hexadecimal escape sequence.
  */
 
 /* lint1-extra-flags: -X 351 */
@@ -22,6 +22,8 @@ old_style_number_base(void)
 
 	/* expect+1: warning: missing new-style '\177' or old-style number base [359] */
 	snprintb(buf, sizeof(buf), "", 0);
+	/* expect+1: warning: number base '\2' is 2, must be 8, 10 or 16 [361] */
+	snprintb(buf, sizeof(buf), "\2", 0);
 	/* expect+1: warning: number base '\002' is 2, must be 8, 10 or 16 [361] */
 	snprintb(buf, sizeof(buf), "\002", 0);
 	snprintb(buf, sizeof(buf), "\010", 0);
@@ -41,6 +43,8 @@ new_style_number_base(void)
 	snprintb(buf, sizeof(buf), "\177", 0);
 	/* expect+1: warning: number base '\0' is 0, must be 8, 10 or 16 [361] */
 	snprintb(buf, sizeof(buf), "\177\0", 0);
+	/* expect+1: warning: number base '\2' is 2, must be 8, 10 or 16 [361] */
+	snprintb(buf, sizeof(buf), "\177\2", 0);
 	/* expect+1: warning: number base '\002' is 2, must be 8, 10 or 16 [361] */
 	snprintb(buf, sizeof(buf), "\177\002", 0);
 	snprintb(buf, sizeof(buf), "\177\010", 0);

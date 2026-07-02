@@ -11,11 +11,17 @@ dist-hook:
 
 SUBDIRS = dyndb/driver dlzexternal/driver hooks/driver
 
+if DNSRPS
+SUBDIRS += rpz/testlib
+endif
+
 AM_CPPFLAGS +=			\
-	$(LIBISC_CFLAGS)
+	$(LIBISC_CFLAGS) 	\
+	$(LIBDNS_CFLAGS)
 
 LDADD +=			\
-	$(LIBISC_LIBS)
+	$(LIBISC_LIBS)		\
+	$(LIBDNS_LIBS)
 
 if HAVE_PERL
 if HAVE_PYTHON
@@ -25,15 +31,18 @@ noinst_PROGRAMS =		\
 	feature-test		\
 	makejournal		\
 	pipelined/pipequeries	\
-	resolve			\
 	rndc/gencheck		\
-	rpz/dnsrps		\
-	tkey/keycreate		\
-	tkey/keydelete
+	rpz/dnsrps
 
 feature_test_CPPFLAGS =		\
 	$(AM_CPPFLAGS)		\
-	$(LIBDNS_CFLAGS)
+	$(LIBDNS_CFLAGS)	\
+	$(OPENSSL_CFLAGS)
+
+feature_test_LDADD =		\
+	$(LDADD)		\
+	$(LIBDNS_LIBS)		\
+	$(OPENSSL_LIBS)
 
 makejournal_CPPFLAGS =		\
 	$(AM_CPPFLAGS)		\
@@ -51,54 +60,33 @@ pipelined_pipequeries_LDADD =	\
 	$(LDADD)		\
 	$(LIBDNS_LIBS)
 
-resolve_CPPFLAGS =		\
-	$(AM_CPPFLAGS)		\
-	$(LIBISC_CFLAGS)	\
-	$(LIBDNS_CFLAGS)	\
-	$(LIBIRS_CFLAGS)
-
-resolve_LDADD = $(LIBISC_LIBS) $(LIBIRS_LIBS) $(LIBDNS_LIBS)
-
 rpz_dnsrps_CPPFLAGS =		\
 	$(AM_CPPFLAGS)		\
-	$(LIBDNS_CFLAGS)
+	$(LIBDNS_CFLAGS)	\
+	-DLIBRPZ_LIB_OPEN=\"$(abs_builddir)/rpz/testlib/.libs/libdummyrpz.so\"
 
 rpz_dnsrps_LDADD =		\
 	$(LDADD)		\
-	$(LIBDNS_LIBS)
-
-tkey_keycreate_CPPFLAGS =	\
-	$(AM_CPPFLAGS)		\
-	$(LIBDNS_CFLAGS)
-
-tkey_keycreate_LDADD =		\
-	$(LDADD)		\
-	$(LIBDNS_LIBS)
-
-tkey_keydelete_CPPFLAGS =	\
-	$(AM_CPPFLAGS)		\
-	$(LIBDNS_CFLAGS)
-
-tkey_keydelete_LDADD =		\
-	$(LDADD)		\
-	$(LIBDNS_LIBS)
+	$(LIBDNS_LIBS)		\
+	$(DLOPEN_LIBS)
 
 # Longer running tests are listed (and executed) first to take the most
 # advantage of parallel execution.
 TESTS =				\
 	rpz			\
 	rpzrecurse		\
-	serve-stale		\
+	serve_stale		\
 	timeouts		\
 	upforwd			\
 	acl			\
 	additional		\
 	addzone			\
-	allow-query		\
+	allow_query		\
 	auth			\
 	autosign		\
 	builtin			\
 	cacheclean		\
+	camp			\
 	case			\
 	catz			\
 	cds			\
@@ -119,21 +107,20 @@ TESTS =				\
 	dnstap			\
 	doth			\
 	dsdigest		\
-	dupsigs			\
 	dyndb			\
 	ecdsa			\
 	eddsa			\
 	ednscompliance		\
 	emptyzones		\
 	enginepkcs11		\
-	filter-aaaa		\
+	filters			\
 	fetchlimit		\
 	formerr			\
 	forward			\
 	geoip2			\
 	glue			\
 	idna			\
-	include-multiplecfg	\
+	include_multiplecfg	\
 	inline			\
 	integrity		\
 	ixfr			\
@@ -143,7 +130,7 @@ TESTS =				\
 	kasp			\
 	keepalive		\
 	keyfromlabel		\
-	keymgr2kasp		\
+	ksr			\
 	legacy			\
 	limits			\
 	logfileconfig		\
@@ -152,6 +139,7 @@ TESTS =				\
 	metadata		\
 	mirror			\
 	mkeys			\
+	multisigner		\
 	names			\
 	notify			\
 	nsec3			\
@@ -160,12 +148,28 @@ TESTS =				\
 	nzd2nzf			\
 	padding			\
 	pending			\
+	proxy			\
 	pipelined		\
 	qmin			\
+	query_source		\
 	reclimit		\
 	redirect		\
 	resolver		\
 	rndc			\
+	rollover		\
+	rollover_algo_csk	\
+	rollover_algo_ksk_zsk	\
+	rollover_csk_roll1	\
+	rollover_csk_roll2	\
+	rollover_dynamic2inline	\
+	rollover_enable_dnssec	\
+	rollover_going_insecure	\
+	rollover_ksk_3crowd	\
+	rollover_ksk_doubleksk	\
+	rollover_lifetime	\
+	rollover_multisigner	\
+	rollover_straight2none	\
+	rollover_zsk_prepub	\
 	rootkeysentinel		\
 	rpzextra		\
 	rrchecker		\
@@ -185,9 +189,8 @@ TESTS =				\
 	stub			\
 	synthfromdnssec		\
 	tcp			\
-	tkey			\
 	tools			\
-	transport-acl		\
+	transport_acl		\
 	tsig			\
 	tsiggss			\
 	ttl			\
@@ -229,4 +232,4 @@ LOG_COMPILER = $(srcdir)/run.sh
 test-local: check
 
 clean-local::
-	-find -L . -mindepth 1 -maxdepth 1 -type d -name "*_*" -and -not -name "_common" -exec rm -rf {} \;
+	-find -L . -mindepth 1 -maxdepth 1 -type d -name "*-*" -exec rm -rf {} \;

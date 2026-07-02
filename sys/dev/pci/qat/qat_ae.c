@@ -1,4 +1,4 @@
-/*	$NetBSD: qat_ae.c,v 1.2 2021/12/05 07:28:20 msaitoh Exp $	*/
+/*	$NetBSD: qat_ae.c,v 1.4 2026/06/03 17:17:38 andvar Exp $	*/
 
 /*
  * Copyright (c) 2019 Internet Initiative Japan, Inc.
@@ -57,7 +57,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: qat_ae.c,v 1.2 2021/12/05 07:28:20 msaitoh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: qat_ae.c,v 1.4 2026/06/03 17:17:38 andvar Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -1619,7 +1619,7 @@ qat_ae_exec_ucode(struct qat_softc *sc, u_char ae, u_char ctx,
 	}
 #endif
 
-	/* retore to previous states: */
+	/* restore to previous states: */
 	/* disable context */
 	qat_ae_disable_ctx(sc, ae, 1 << ctx);
 	if (ninst <= MAX_EXEC_INST) {
@@ -3357,7 +3357,7 @@ qat_aefw_do_pagein(struct qat_softc *sc, u_char ae, struct qat_uof_page *qup)
 		/* load the buffer */
 		for (i = 0; i < cpylen; i++) {
 			/* keep below code structure in case there are
-			 * different handling for shared secnarios */
+			 * different handling for shared scenarios */
 			if (!qae->qae_shareable_ustore) {
 				/* qat_aefw_get_uof_inst() takes an address that
 				 * is relative to the start of the page.

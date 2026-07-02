@@ -1,4 +1,4 @@
-/*	$NetBSD: forward.c,v 1.4 2022/10/08 16:12:46 christos Exp $	*/
+/*	$NetBSD: forward.c,v 1.6 2026/05/09 18:49:17 christos Exp $	*/
 
 /*++
 /* NAME
@@ -55,6 +55,9 @@
 /*	Google, Inc.
 /*	111 8th Avenue
 /*	New York, NY 10011, USA
+/*
+/*	Wietse Venema
+/*	porcupine.org
 /*--*/
 
 /* System library. */
@@ -162,7 +165,9 @@ static FORWARD_INFO *forward_open(DELIVER_REQUEST *request, const char *sender)
 #define FORWARD_CLEANUP_FLAGS \
 	(CLEANUP_FLAG_BOUNCE | CLEANUP_FLAG_MASK_INTERNAL \
 	| smtputf8_autodetect(MAIL_SRC_MASK_FORWARD) \
-	| ((request->smtputf8 & SMTPUTF8_FLAG_REQUESTED) ? \
+	| ((request->sendopts & SOPT_REQUIRETLS_ESMTP) ? \
+	CLEANUP_FLAG_REQTLS : 0) \
+	| ((request->sendopts & SMTPUTF8_FLAG_REQUESTED) ? \
 	CLEANUP_FLAG_SMTPUTF8 : 0))
 
     attr_print(cleanup, ATTR_FLAG_NONE,

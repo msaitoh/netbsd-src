@@ -1,4 +1,4 @@
-# $NetBSD: deptgt.mk,v 1.21 2024/08/29 20:20:36 rillig Exp $
+# $NetBSD: deptgt.mk,v 1.24 2025/06/28 22:39:28 rillig Exp $
 #
 # Tests for special targets like .BEGIN or .SUFFIXES in dependency
 # declarations.
@@ -7,7 +7,7 @@
 
 # Just in case anyone tries to compile several special targets in a single
 # dependency line: That doesn't work, and make immediately rejects it.
-# expect+1: warning: Extra target '.PHONY' ignored
+# expect+1: warning: Extra target ".PHONY" ignored
 .SUFFIXES .PHONY: .c.o
 
 # The following lines demonstrate how 'targets' is set and reset during
@@ -39,19 +39,25 @@ ${:U}: empty-source
 	: command for empty targets list
 .MAKEFLAGS: -d0
 
+# An expression based on an undefined variable is allowed on both sides of
+# the dependency declaration.
+.MAKEFLAGS: -dv
+deptgt-${UNDEF}: depsrc-${UNDEF}
+.MAKEFLAGS: -d0
+
 # In a dependency declaration, the whole line is expanded before interpreting
 # the line.
-# expect+1: Unknown modifier "Z"
+# expect+1: Unknown modifier ":Z"
 ${:U:Z}:
 # After expanding the line as a whole, each target is parsed but not
 # evaluated, separately, in ParseDependencyTargetWord.
-# expect+1: Unknown modifier "Z"
+# expect+1: Unknown modifier ":Z"
 $${:U:Z}:
 
-# expect+1: warning: Extra target 'ordinary' ignored
+# expect+1: warning: Extra target "ordinary" ignored
 .END ordinary:
 
-# expect+1: warning: Extra target (ordinary) ignored
+# expect+1: warning: Extra target "ordinary" ignored
 .PATH ordinary:
 
 # expect+1: warning: Special and mundane targets don't mix. Mundane ones ignored

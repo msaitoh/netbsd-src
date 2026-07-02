@@ -1,4 +1,4 @@
-/*	$NetBSD: compat.c,v 1.261 2024/07/20 11:05:11 rillig Exp $	*/
+/*	$NetBSD: compat.c,v 1.268 2025/07/06 07:11:31 rillig Exp $	*/
 
 /*
  * Copyright (c) 1988, 1989, 1990 The Regents of the University of California.
@@ -87,13 +87,16 @@
 #include "make.h"
 #include "dir.h"
 #include "job.h"
+#ifdef USE_META
+# include "meta.h"
+#endif
 #include "metachar.h"
 #include "pathnames.h"
 
 /*	"@(#)compat.c	8.2 (Berkeley) 3/19/94"	*/
-MAKE_RCSID("$NetBSD: compat.c,v 1.261 2024/07/20 11:05:11 rillig Exp $");
+MAKE_RCSID("$NetBSD: compat.c,v 1.268 2025/07/06 07:11:31 rillig Exp $");
 
-static GNode *curTarg = NULL;
+static GNode *curTarg;
 static pid_t compatChild;
 static int compatSigno;
 
@@ -104,7 +107,7 @@ static int compatSigno;
 static void
 CompatDeleteTarget(GNode *gn)
 {
-	if (gn != NULL && !GNode_IsPrecious(gn) &&
+	if (!GNode_IsPrecious(gn) &&
 	    (gn->type & OP_PHONY) == 0) {
 		const char *file = GNode_VarTarget(gn);
 		if (!opts.noExecute && unlink_file(file) == 0)
@@ -124,11 +127,9 @@ CompatDeleteTarget(GNode *gn)
 static void
 CompatInterrupt(int signo)
 {
-	CompatDeleteTarget(curTarg);
-
-	if (curTarg != NULL && !GNode_IsPrecious(curTarg)) {
-		/* Run .INTERRUPT only if hit with interrupt signal. */
-		if (signo == SIGINT) {
+	if (curTarg != NULL) {
+		CompatDeleteTarget(curTarg);
+		if (signo == SIGINT && !GNode_IsPrecious(curTarg)) {
 			GNode *gn = Targ_FindNode(".INTERRUPT");
 			if (gn != NULL)
 				Compat_Make(gn, gn);
@@ -203,7 +204,7 @@ UseShell(const char *cmd MAKE_ATTR_UNUSED)
 static int
 Compat_Spawn(const char **av)
 {
-	int pid = vfork();
+	int pid = FORK_FUNCTION();
 	if (pid < 0)
 		Fatal("Could not fork");
 
@@ -306,8 +307,6 @@ Compat_RunCommand(const char *cmdp, GNode *gn, StringListNode *ln)
 		cmd++;
 	}
 
-	while (ch_isspace(*cmd))
-		cmd++;
 	if (cmd[0] == '\0')
 		goto register_command;
 
@@ -332,11 +331,8 @@ Compat_RunCommand(const char *cmdp, GNode *gn, StringListNode *ln)
 	if (useShell) {
 		static const char *shargv[5];
 
-		if (Cmd_Argv(cmd, cmd_len, shargv, 5,
-			cmd_file, sizeof(cmd_file),
-			(errCheck && shellErrFlag != NULL),
-			DEBUG(SHELL)) < 0)
-			Fatal("cannot run \"%s\"", cmd);
+		Cmd_Argv(cmd, cmd_len, shargv, cmd_file, sizeof(cmd_file),
+		    errCheck && shellErrFlag != NULL, DEBUG(SHELL));
 		av = shargv;
 		bp = NULL;
 		mav = NULL;
@@ -353,6 +349,7 @@ Compat_RunCommand(const char *cmdp, GNode *gn, StringListNode *ln)
 #endif
 
 	Var_ReexportVars(gn);
+	Var_ExportStackTrace(gn->name, cmd);
 
 	compatChild = Compat_Spawn(av);
 	free(mav);
@@ -727,7 +724,7 @@ InitSignals(void)
 }
 
 void
-Compat_MakeAll(GNodeList *targs)
+Compat_MakeAll(GNodeList *targets)
 {
 	GNode *errorNode = NULL;
 
@@ -750,10 +747,10 @@ Compat_MakeAll(GNodeList *targs)
 	 * Expand .USE nodes right now, because they can modify the structure
 	 * of the tree.
 	 */
-	Make_ExpandUse(targs);
+	Make_ExpandUse(targets);
 
-	while (!Lst_IsEmpty(targs)) {
-		GNode *gn = Lst_Dequeue(targs);
+	while (!Lst_IsEmpty(targets)) {
+		GNode *gn = Lst_Dequeue(targets);
 		Compat_Make(gn, gn);
 
 		if (gn->made == UPTODATE) {

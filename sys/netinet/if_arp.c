@@ -1,4 +1,4 @@
-/*	$NetBSD: if_arp.c,v 1.316 2024/10/04 23:31:06 roy Exp $	*/
+/*	$NetBSD: if_arp.c,v 1.320 2026/05/29 02:45:14 ozaki-r Exp $	*/
 
 /*
  * Copyright (c) 1998, 2000, 2008 The NetBSD Foundation, Inc.
@@ -68,7 +68,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_arp.c,v 1.316 2024/10/04 23:31:06 roy Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_arp.c,v 1.320 2026/05/29 02:45:14 ozaki-r Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_ddb.h"
@@ -157,6 +157,7 @@ static struct nd_domain arp_nd_domain = {
 	.nd_maxretrans = MAX_RETRANS_TIMER,
 	.nd_maxnudhint = 0,	/* max # of subsequent upper layer hints */
 	.nd_maxqueuelen = 1,	/* max # of packets in unresolved ND entries */
+	.nd_gctimer = 24*60*60, /* stale neighbor GC timer duration */
 	.nd_nud_enabled = arp_nud_enabled,
 	.nd_reachable = arp_llinfo_reachable,
 	.nd_retrans = arp_llinfo_retrans,
@@ -217,7 +218,7 @@ static struct ifnet *myip_ifp = NULL;
 
 static int arp_drainwanted;
 
-static int log_movements = 1;
+static int log_movements = 0;
 static int log_permanent_modify = 1;
 static int log_wrong_iface = 1;
 
@@ -793,6 +794,16 @@ in_arpinput(struct mbuf *m)
 	if (ah->ar_pln != sizeof(struct in_addr))
 		goto out;
 
+	/* RFC5227 2.4 says any of the host's own interface addresses
+	 * are not conflicting ARP packets. */
+	ifp = if_get_bylla(ar_sha(ah), ah->ar_hln, &psref);
+	if (ifp) {
+		/* it's from me, ignore it. */
+		if_put(ifp, &psref);
+		ARP_STATINC(ARP_STAT_RCVLOCALSHA);
+		goto out;
+	}
+
 	rcvif = ifp = m_get_rcvif_psref(m, &psref);
 	if (__predict_false(rcvif == NULL))
 		goto out;
@@ -901,12 +912,6 @@ again:
 	}
 
 	myaddr = ia->ia_addr.sin_addr;
-
-	/* XXX checks for bridge case? */
-	if (!memcmp(ar_sha(ah), CLLADDR(ifp->if_sadl), ifp->if_addrlen)) {
-		ARP_STATINC(ARP_STAT_RCVLOCALSHA);
-		goto out;	/* it's from me, ignore it. */
-	}
 
 	/* XXX checks for bridge case? */
 	if (!memcmp(ar_sha(ah), ifp->if_broadcastaddr, ifp->if_addrlen)) {
@@ -1052,6 +1057,7 @@ again:
 	KASSERT(sizeof(la->ll_addr) >= ifp->if_addrlen);
 	memcpy(&la->ll_addr, ar_sha(ah), ifp->if_addrlen);
 	la->la_flags |= LLE_VALID;
+	la->la_flags &= ~LLE_UNRESOLVED;
 	la->ln_asked = 0;
 	if (new_state != 0) {
 		la->ln_state = new_state;
@@ -1184,6 +1190,7 @@ reply:
 		break;
 	}
 	m->m_pkthdr.len = m->m_len;
+	m->m_pkthdr.csum_flags = 0; /* Clear any in-bound checksum flags. */
 	sa.sa_family = AF_ARP;
 	sa.sa_len = 2;
 	arps = ARP_STAT_GETREF();

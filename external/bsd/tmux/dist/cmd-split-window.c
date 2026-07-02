@@ -42,7 +42,7 @@ const struct cmd_entry cmd_split_window_entry = {
 	.args = { "bc:de:fF:hIl:p:Pt:vZ", 0, -1, NULL },
 	.usage = "[-bdefhIPvZ] [-c start-directory] [-e environment] "
 		 "[-F format] [-l size] " CMD_TARGET_PANE_USAGE
-		 "[shell-command]",
+		 " [shell-command [argument ...]]",
 
 	.target = { 't', CMD_FIND_PANE, 0 },
 
@@ -93,10 +93,10 @@ cmd_split_window_exec(struct cmd *self, struct cmdq_item *item)
 	size = -1;
 	if (args_has(args, 'l')) {
 		size = args_percentage_and_expand(args, 'l', 0, INT_MAX, curval,
-			   item, &cause);
+		    item, &cause);
 	} else if (args_has(args, 'p')) {
-		size = args_strtonum_and_expand(args, 'l', 0, 100, item,
-			    &cause);
+		size = args_strtonum_and_expand(args, 'p', 0, 100, item,
+		    &cause);
 		if (cause == NULL)
 			size = curval * size / 100;
 	}

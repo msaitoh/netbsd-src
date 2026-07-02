@@ -1,4 +1,4 @@
-/*	$NetBSD: cleanup_out_recipient.c,v 1.4 2022/10/08 16:12:45 christos Exp $	*/
+/*	$NetBSD: cleanup_out_recipient.c,v 1.6 2026/05/09 18:49:15 christos Exp $	*/
 
 /*++
 /* NAME
@@ -106,7 +106,7 @@ static void cleanup_trace_append(CLEANUP_STATE *state, RECIPIENT *rcpt,
     }
     if (trace_append(BOUNCE_FLAG_CLEAN, state->queue_id,
 		     CLEANUP_MSG_STATS(&stats, state),
-		     rcpt, "none", dsn) != 0) {
+		     rcpt, "none", NO_TLS_STATS, dsn) != 0) {
 	msg_warn("%s: trace logfile update error", state->queue_id);
 	state->errs |= CLEANUP_STAT_WRITE;
     }
@@ -120,7 +120,7 @@ static void cleanup_verify_append(CLEANUP_STATE *state, RECIPIENT *rcpt,
     MSG_STATS stats;
 
     if (verify_append(state->queue_id, CLEANUP_MSG_STATS(&stats, state),
-		      rcpt, "none", dsn, verify_status) != 0) {
+		      rcpt, "none", NO_TLS_STATS, dsn, verify_status) != 0) {
 	msg_warn("%s: verify service update error", state->queue_id);
 	state->errs |= CLEANUP_STAT_WRITE;
     }
@@ -220,9 +220,9 @@ void    cleanup_out_recipient(CLEANUP_STATE *state,
      * in the expansion because that results in multiple verify(8) updates
      * for one verify(8) request.
      * 
-     * Multiple verify(8) updates for one verify(8) request would overwrite
-     * each other's status, and if the last status update is "undeliverable",
-     * then the whole alias is flagged as undeliverable.
+     * Multiple verify(8) updates for one verify(8) request would overwrite each
+     * other's status, and if the last status update is "undeliverable", then
+     * the whole alias is flagged as undeliverable.
      */
     else {
 	RECIPIENT rcpt;

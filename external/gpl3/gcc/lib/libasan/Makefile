@@ -1,4 +1,4 @@
-# $NetBSD: Makefile,v 1.37 2024/09/30 00:32:12 kalvisd Exp $
+# $NetBSD: Makefile,v 1.39 2025/10/20 14:31:37 nat Exp $
 
 UNSUPPORTED_COMPILER.clang=	# defined
 NOSANITIZER=	# defined
@@ -56,9 +56,11 @@ COPTS.asan_interceptors.cpp += -O1
 .endif
 
 # This helps, but isn't enough.
-.if ${MACHINE_ARCH} == "m68k" || ${MACHINE_ARCH} == "m68000"
+.if ${MACHINE_ARCH:S/m68ksf/m68k/} == "m68k" || ${MACHINE_ARCH} == "m68000"
 COPTS.asan_interceptors.cpp += -fno-jump-tables -Os
 COPTS.asan_interceptors.cpp += -mlong-jump-table-offsets -Os
 .endif
+
+.include "../preinit.mk"
 
 .include <bsd.lib.mk>

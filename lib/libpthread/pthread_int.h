@@ -1,4 +1,4 @@
-/*	$NetBSD: pthread_int.h,v 1.111 2023/05/25 14:30:03 riastradh Exp $	*/
+/*	$NetBSD: pthread_int.h,v 1.115 2026/05/05 09:49:10 yamt Exp $	*/
 
 /*-
  * Copyright (c) 2001, 2002, 2003, 2006, 2007, 2008, 2020
@@ -50,6 +50,8 @@
 #include <signal.h>
 #include <stdbool.h>
 
+#include <machine/lwp_private.h>
+
 #ifdef __GNUC__
 #define	PTHREAD_HIDE	__attribute__ ((visibility("hidden")))
 #else
@@ -94,10 +96,11 @@ struct	__pthread_st {
 	unsigned int	pt_magic;	/* Magic number */
 	int		pt_state;	/* running, blocked, etc. */
 	int		pt_flags;	/* see PT_FLAG_* below */
-	int		pt_cancel;	/* Deferred cancellation */
+	_Atomic unsigned int	pt_cancel;	/* Cancellation */
 	int		pt_errno;	/* Thread-specific errno. */
 	stack_t		pt_stack;	/* Our stack */
 	bool		pt_stack_allocated;
+	bool		pt_is_main;	/* is the main thread? */
 	size_t		pt_guardsize;
 	void		*pt_exitval;	/* Read by pthread_join() */
 	char		*pt_name;	/* Thread's name, set by the app. */
@@ -150,12 +153,16 @@ struct	__pthread_st {
 /* Flag values */
 
 #define PT_FLAG_DETACHED	0x0001
-#define PT_FLAG_CS_DISABLED	0x0004	/* Cancellation disabled */
-#define PT_FLAG_CS_ASYNC	0x0008  /* Cancellation is async */
-#define PT_FLAG_CS_PENDING	0x0010
 #define PT_FLAG_SCOPE_SYSTEM	0x0040
 #define PT_FLAG_EXPLICIT_SCHED	0x0080
 #define PT_FLAG_SUSPENDED	0x0100	/* In the suspended queue */
+
+/* pt_cancel word */
+
+#define	PT_CANCEL_DISABLED	__BIT(0)
+#define	PT_CANCEL_ASYNC		__BIT(1)
+#define	PT_CANCEL_PENDING	__BIT(2)
+#define	PT_CANCEL_CANCELLED	__BIT(3)
 
 #define PT_MAGIC	0x11110001
 #define PT_DEAD		0xDEAD0001

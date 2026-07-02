@@ -18,6 +18,7 @@ set -e
 
 DIGCMD="$DIG @10.53.0.2 -p ${PORT}"
 RNDCCMD="$RNDC -c ../_common/rndc.conf -p ${CONTROLPORT} -s"
+NS_PARAMS="-m record -c named.conf -d 99 -g -T maxcachesize=2097152"
 
 if ! $FEATURETEST --have-json-c; then
   unset PERL_JSON
@@ -44,6 +45,33 @@ if [ ! "$PERL_JSON" ] && [ ! "$PERL_XML" ]; then
   exit 0
 fi
 
+retry_quiet_fast() {
+  __retries="${1}"
+  shift
+
+  while :; do
+    if "$@"; then
+      return 0
+    fi
+    __retries=$((__retries - 1))
+    if [ "${__retries}" -gt 0 ]; then
+      # sleep for 0.1 seconds
+      perl -e 'select(undef, undef, undef, .1)'
+    else
+      return 1
+    fi
+  done
+}
+
+wait_for_log_fast() (
+  timeout="$1"
+  msg="$2"
+  file="$3"
+  retry_quiet_fast "$timeout" _search_log "$msg" "$file" && return 0
+  echo_i "exceeded time limit waiting for literal '$msg' in $file"
+  return 1
+)
+
 getzones() {
   sleep 1
   echo_i "... using $1"
@@ -58,6 +86,19 @@ getzones() {
     $PERL zones-${1}.pl $file $2 2>/dev/null | sort >zones.out.$3
     result=$?
   } || true
+  return $result
+}
+
+getxfrins() {
+  echo_i "... using $1"
+  case $1 in
+    xml) path='xml/v3/xfrins' ;;
+    json) path='json/v1/xfrins' ;;
+    *) return 1 ;;
+  esac
+  file=$($PERL fetch.pl -s 10.53.0.3 -p ${EXTRAPORT1} $path)
+  cp $file $file.$1.$2
+  result=$?
   return $result
 }
 
@@ -150,7 +191,7 @@ $RNDCCMD 10.53.0.2 stats 2>&1 | sed 's/^/I:ns1 /'
 query_count=$(awk '/QUERY/ {print $1}' ns2/named.stats)
 txt_count=$(awk '/TXT/ {print $1}' ns2/named.stats)
 noerror_count=$(awk '/NOERROR/ {print $1}' ns2/named.stats)
-if [ $PERL_XML ]; then
+if [ "$PERL_XML" ]; then
   file=$($PERL fetch.pl -p ${EXTRAPORT1} xml/v3/server)
   mv $file xml.stats
   $PERL server-xml.pl >xml.fmtstats 2>/dev/null
@@ -164,7 +205,7 @@ if [ $PERL_XML ]; then
   xml_noerror_count=${xml_noerror_count:-0}
   [ "$noerror_count" -eq "$xml_noerror_count" ] || ret=1
 fi
-if [ $PERL_JSON ]; then
+if [ "$PERL_JSON" ]; then
   file=$($PERL fetch.pl -p ${EXTRAPORT1} json/v1/server)
   mv $file json.stats
   $PERL server-json.pl >json.fmtstats 2>/dev/null
@@ -184,20 +225,18 @@ n=$((n + 1))
 
 ret=0
 echo_i "checking malloced memory statistics xml/json ($n)"
-if [ $PERL_XML ]; then
+if [ "$PERL_XML" ]; then
   file=$($PERL fetch.pl -p ${EXTRAPORT1} xml/v3/mem)
   mv $file xml.mem
   $PERL mem-xml.pl $file >xml.fmtmem
-  grep "'Malloced' => '[0-9][0-9]*'" xml.fmtmem >/dev/null || ret=1
-  grep "'malloced' => '[0-9][0-9]*'" xml.fmtmem >/dev/null || ret=1
-  grep "'maxmalloced' => '[0-9][0-9]*'" xml.fmtmem >/dev/null || ret=1
+  grep "'InUse' => '[0-9][0-9]*'" xml.fmtmem >/dev/null || ret=1
+  grep "'inuse' => '[0-9][0-9]*'" xml.fmtmem >/dev/null || ret=1
 fi
-if [ $PERL_JSON ]; then
+if [ "$PERL_JSON" ]; then
   file=$($PERL fetch.pl -p ${EXTRAPORT1} json/v1/mem)
   mv $file json.mem
-  grep '"malloced":[0-9][0-9]*,' json.mem >/dev/null || ret=1
-  grep '"maxmalloced":[0-9][0-9]*,' json.mem >/dev/null || ret=1
-  grep '"Malloced":[0-9][0-9]*,' json.mem >/dev/null || ret=1
+  grep '"inuse":[0-9][0-9]*,' json.mem >/dev/null || ret=1
+  grep '"InUse":[0-9][0-9]*,' json.mem >/dev/null || ret=1
 fi
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
@@ -270,11 +309,11 @@ cat zones.expect | sort >zones.expect.$n
 rm -f zones.expect
 # Fetch and check the dnssec sign statistics.
 echo_i "fetching zone '$zone' stats data after zone maintenance at startup ($n)"
-if [ $PERL_XML ]; then
+if [ "$PERL_XML" ]; then
   getzones xml $zone x$n || ret=1
   cmp zones.out.x$n zones.expect.$n || ret=1
 fi
-if [ $PERL_JSON ]; then
+if [ "$PERL_JSON" ]; then
   getzones json 0 j$n || ret=1
   cmp zones.out.j$n zones.expect.$n || ret=1
 fi
@@ -300,11 +339,11 @@ cat zones.expect | sort >zones.expect.$n
 rm -f zones.expect
 # Fetch and check the dnssec sign statistics.
 echo_i "fetching zone '$zone' stats data after dynamic update ($n)"
-if [ $PERL_XML ]; then
+if [ "$PERL_XML" ]; then
   getzones xml $zone x$n || ret=1
   cmp zones.out.x$n zones.expect.$n || ret=1
 fi
-if [ $PERL_JSON ]; then
+if [ "$PERL_JSON" ]; then
   getzones json 0 j$n || ret=1
   cmp zones.out.j$n zones.expect.$n || ret=1
 fi
@@ -315,23 +354,28 @@ n=$((n + 1))
 # Test sign operations of KSK.
 ret=0
 echo_i "fetch zone '$zone' stats data after updating DNSKEY RRset ($n)"
-# Add a standby DNSKEY, this triggers resigning the DNSKEY RRset.
-zsk=$("$KEYGEN" -K ns2 -q -a "$DEFAULT_ALGORITHM" -b "$DEFAULT_BITS" "$zone")
-$SETTIME -K ns2 -P now -A never $zsk.key >/dev/null
-loadkeys_on 2 $zone || ret=1
+id=$(echo "${zsk_id}" | cut -d+ -f2 -)
+# Add a DNSKEY, this triggers resigning the DNSKEY RRset.
+zsk=$("$KEYGEN" -L 3600 -q -a "$DEFAULT_ALGORITHM" -b "$DEFAULT_BITS" "$zone")
+(
+  echo zone $zone
+  echo server 10.53.0.2 "$PORT"
+  echo update add $(cat "${zsk}.key" | grep -v ";.*")
+  echo send
+) | $NSUPDATE
 # This should trigger the resign of SOA (+1 zsk) and DNSKEY (+1 ksk).
-echo "${refresh_prefix} ${zsk_id}: 11" >zones.expect
-echo "${refresh_prefix} ${ksk_id}: 2" >>zones.expect
+echo "${refresh_prefix} ${zsk_id}: 10" >zones.expect
+echo "${refresh_prefix} ${ksk_id}: 1" >>zones.expect
 echo "${sign_prefix} ${zsk_id}: 14" >>zones.expect
 echo "${sign_prefix} ${ksk_id}: 2" >>zones.expect
 cat zones.expect | sort >zones.expect.$n
 rm -f zones.expect
 # Fetch and check the dnssec sign statistics.
-if [ $PERL_XML ]; then
+if [ "$PERL_XML" ]; then
   getzones xml $zone x$n || ret=1
   cmp zones.out.x$n zones.expect.$n || ret=1
 fi
-if [ $PERL_JSON ]; then
+if [ "$PERL_JSON" ]; then
   getzones json 0 j$n || ret=1
   cmp zones.out.j$n zones.expect.$n || ret=1
 fi
@@ -348,31 +392,31 @@ ksk13_id=$(cat ns2/$zone.ksk13.id)
 zsk13_id=$(cat ns2/$zone.zsk13.id)
 ksk14_id=$(cat ns2/$zone.ksk14.id)
 zsk14_id=$(cat ns2/$zone.zsk14.id)
-# The dnssec zone has 10 RRsets to sign (including NSEC) with the ZSKs and one
-# RRset (DNSKEY) with the KSKs. So starting named with signatures that expire
-# almost right away, this should trigger 10 zsk and 1 ksk sign operations per
-# key.
+# The dnssec zone has 10 RRsets to sign (including NSEC) with the ZSKs and the
+# DNSKEY, CDS, and CDNSKEY RRsets with the KSKs. So starting named with
+# signatures that expire almost right away, this should trigger 10 zsk and 3
+# ksk sign operations per key.
 echo "${refresh_prefix} ${zsk8_id}: 10" >zones.expect
 echo "${refresh_prefix} ${zsk13_id}: 10" >>zones.expect
 echo "${refresh_prefix} ${zsk14_id}: 10" >>zones.expect
-echo "${refresh_prefix} ${ksk8_id}: 1" >>zones.expect
-echo "${refresh_prefix} ${ksk13_id}: 1" >>zones.expect
-echo "${refresh_prefix} ${ksk14_id}: 1" >>zones.expect
+echo "${refresh_prefix} ${ksk8_id}: 3" >>zones.expect
+echo "${refresh_prefix} ${ksk13_id}: 3" >>zones.expect
+echo "${refresh_prefix} ${ksk14_id}: 3" >>zones.expect
 echo "${sign_prefix} ${zsk8_id}: 10" >>zones.expect
 echo "${sign_prefix} ${zsk13_id}: 10" >>zones.expect
 echo "${sign_prefix} ${zsk14_id}: 10" >>zones.expect
-echo "${sign_prefix} ${ksk8_id}: 1" >>zones.expect
-echo "${sign_prefix} ${ksk13_id}: 1" >>zones.expect
-echo "${sign_prefix} ${ksk14_id}: 1" >>zones.expect
+echo "${sign_prefix} ${ksk8_id}: 3" >>zones.expect
+echo "${sign_prefix} ${ksk13_id}: 3" >>zones.expect
+echo "${sign_prefix} ${ksk14_id}: 3" >>zones.expect
 cat zones.expect | sort >zones.expect.$n
 rm -f zones.expect
 # Fetch and check the dnssec sign statistics.
 echo_i "fetching zone '$zone' stats data after zone maintenance at startup ($n)"
-if [ $PERL_XML ]; then
+if [ "$PERL_XML" ]; then
   getzones xml $zone x$n || ret=1
   cmp zones.out.x$n zones.expect.$n || ret=1
 fi
-if [ $PERL_JSON ]; then
+if [ "$PERL_JSON" ]; then
   getzones json 2 j$n || ret=1
   cmp zones.out.j$n zones.expect.$n || ret=1
 fi
@@ -393,24 +437,24 @@ ret=0
 echo "${refresh_prefix} ${zsk8_id}: 10" >zones.expect
 echo "${refresh_prefix} ${zsk13_id}: 10" >>zones.expect
 echo "${refresh_prefix} ${zsk14_id}: 10" >>zones.expect
-echo "${refresh_prefix} ${ksk8_id}: 1" >>zones.expect
-echo "${refresh_prefix} ${ksk13_id}: 1" >>zones.expect
-echo "${refresh_prefix} ${ksk14_id}: 1" >>zones.expect
+echo "${refresh_prefix} ${ksk8_id}: 3" >>zones.expect
+echo "${refresh_prefix} ${ksk13_id}: 3" >>zones.expect
+echo "${refresh_prefix} ${ksk14_id}: 3" >>zones.expect
 echo "${sign_prefix} ${zsk8_id}: 13" >>zones.expect
 echo "${sign_prefix} ${zsk13_id}: 13" >>zones.expect
 echo "${sign_prefix} ${zsk14_id}: 13" >>zones.expect
-echo "${sign_prefix} ${ksk8_id}: 1" >>zones.expect
-echo "${sign_prefix} ${ksk13_id}: 1" >>zones.expect
-echo "${sign_prefix} ${ksk14_id}: 1" >>zones.expect
+echo "${sign_prefix} ${ksk8_id}: 3" >>zones.expect
+echo "${sign_prefix} ${ksk13_id}: 3" >>zones.expect
+echo "${sign_prefix} ${ksk14_id}: 3" >>zones.expect
 cat zones.expect | sort >zones.expect.$n
 rm -f zones.expect
 # Fetch and check the dnssec sign statistics.
 echo_i "fetching zone '$zone' stats data after dynamic update ($n)"
-if [ $PERL_XML ]; then
+if [ "$PERL_XML" ]; then
   getzones xml $zone x$n || ret=1
   cmp zones.out.x$n zones.expect.$n || ret=1
 fi
-if [ $PERL_JSON ]; then
+if [ "$PERL_JSON" ]; then
   getzones json 2 j$n || ret=1
   cmp zones.out.j$n zones.expect.$n || ret=1
 fi
@@ -420,26 +464,26 @@ n=$((n + 1))
 
 # Test sign operations after dnssec-policy change (removing keys).
 ret=0
-copy_setports ns2/named2.conf.in ns2/named.conf
+cp ns2/named2.conf ns2/named.conf
 $RNDCCMD 10.53.0.2 reload 2>&1 | sed 's/^/I:ns2 /'
-# This should trigger the resign of DNSKEY (+1 ksk), and SOA, NSEC,
-# TYPE65534 (+3 zsk). The dnssec-sign statistics for the removed keys should
-# be cleared and thus no longer visible. But NSEC and SOA are (mistakenly)
-# counted double, one time because of zone_resigninc and one time because of
-# zone_nsec3chain. So +5 zsk in total.
+# This should trigger the resign of DNSKEY, CDS, and CDNSKEY (+3 ksk),
+# and SOA, NSEC, TYPE65534 (+3 zsk). The dnssec-sign statistics for the
+# removed keys should be cleared and thus no longer visible. But NSEC and SOA
+# are (mistakenly) counted double, one time because of zone_resigninc and one
+# time because of zone_nsec3chain. So +5 zsk in total.
 echo "${refresh_prefix} ${zsk8_id}: 15" >zones.expect
-echo "${refresh_prefix} ${ksk8_id}: 2" >>zones.expect
+echo "${refresh_prefix} ${ksk8_id}: 6" >>zones.expect
 echo "${sign_prefix} ${zsk8_id}: 18" >>zones.expect
-echo "${sign_prefix} ${ksk8_id}: 2" >>zones.expect
+echo "${sign_prefix} ${ksk8_id}: 6" >>zones.expect
 cat zones.expect | sort >zones.expect.$n
 rm -f zones.expect
 # Fetch and check the dnssec sign statistics.
 echo_i "fetching zone '$zone' stats data after dnssec-policy change ($n)"
-if [ $PERL_XML ]; then
+if [ "$PERL_XML" ]; then
   getzones xml $zone x$n || ret=1
   cmp zones.out.x$n zones.expect.$n || ret=1
 fi
-if [ $PERL_JSON ]; then
+if [ "$PERL_JSON" ]; then
   getzones json 2 j$n || ret=1
   cmp zones.out.j$n zones.expect.$n || ret=1
 fi
@@ -591,7 +635,8 @@ i=0
 if [ -x "${CURL_NEXT}" ]; then
   # build input stream.
   printf 'X-Bloat: ' >header.in$n
-  while test $i -lt 5000; do
+  # curl 8.13 and newer rejects to read line larger than 100KB
+  while test $i -lt 1023; do
     printf '%s' "VGhlIG1vc3QgY29tbW9uIHJlYXNvbiBmb3IgYmxvYXRpbmcgaXMgaGF2aW5nIGEgbG90IG9mIGdhcyBpbiB5b3VyIGd1dC4gCg==" >>header.in$n
     i=$((i + 1))
   done
@@ -641,6 +686,107 @@ if $FEATURETEST --have-libxml2 && [ -x "${CURL}" ]; then
 else
   echo_i "skipping test: requires libxml2 and curl"
 fi
+if [ $ret != 0 ]; then echo_i "failed"; fi
+status=$((status + ret))
+n=$((n + 1))
+
+echo_i "Checking that there are no 'first refresh' zones in ns3 ($n)"
+ret=0
+$RNDCCMD 10.53.0.3 status | grep -E '^xfers first refresh: 0$' >/dev/null || ret=1
+if [ $ret != 0 ]; then echo_i "failed"; fi
+status=$((status + ret))
+n=$((n + 1))
+
+echo_i "Transfering zones from ns1 to ns3 in slow mode ($n)"
+ret=0
+i=0
+# Restart ns1 with '-T transferslowly' to see the xfrins information in ns3's statschannel while it's ongoing
+stop_server ns1
+start_server --noclean --restart --port ${PORT} ns1 -- "-D statschannel-ns1 $NS_PARAMS -T transferslowly"
+# Request a retransfer of the secondary zones
+nextpart ns3/named.run >/dev/null
+$RNDCCMD 10.53.0.3 retransfer example | sed "s/^/ns3 /" | cat_i
+$RNDCCMD 10.53.0.3 retransfer example-tcp | sed "s/^/ns3 /" | cat_i
+$RNDCCMD 10.53.0.3 retransfer example-tls | sed "s/^/ns3 /" | cat_i
+$RNDCCMD 10.53.0.3 addzone 'example-new { type secondary; primaries { 10.53.0.1; }; file "example-new.db"; };' 2>&1 | sed "s/^/ns3 /" | cat_i
+wait_for_log_fast 200 "zone example/IN: Transfer started" ns3/named.run || ret=1
+if [ $ret != 0 ]; then echo_i "failed"; fi
+status=$((status + ret))
+n=$((n + 1))
+
+_wait_for_transfers() {
+  if [ "$PERL_XML" ] && [ -x "$XMLLINT" ]; then
+    getxfrins xml x$n || return 1
+
+    # We expect 4 transfers
+    count=$("$XMLLINT" --xpath 'count(/statistics/views/view[@name="_default"]/xfrins/xfrin)' xfrins.xml.x$n)
+    if [ $count != 4 ]; then return 1; fi
+
+    # We expect 3 of 4 to be retransfers
+    count=$("$XMLLINT" --xpath 'count(/statistics/views/view[@name="_default"]/xfrins/xfrin[firstrefresh[text()="No"]])' xfrins.xml.x$n)
+    if [ $count != 3 ]; then return 1; fi
+
+    # We expect 1 of 4 to be a new transfer
+    count=$("$XMLLINT" --xpath 'count(/statistics/views/view[@name="_default"]/xfrins/xfrin[firstrefresh[text()="Yes"]])' xfrins.xml.x$n)
+    if [ $count != 1 ]; then return 1; fi
+  fi
+
+  if [ "$PERL_JSON" ] && [ -x "$JQ" ]; then
+    getxfrins json j$n || return 1
+
+    # We expect 4 transfers
+    count=$("$JQ" '.views._default.xfrins | length' <xfrins.json.j$n)
+    if [ $count != 4 ]; then return 1; fi
+
+    # We expect 3 of 4 to be retransfers
+    count=$("$JQ" '.views._default.xfrins | map(select(.firstrefresh == "No")) | length' <xfrins.json.j$n)
+    if [ $count != 3 ]; then return 1; fi
+
+    # We expect 1 of 4 to be a new transfer
+    count=$("$JQ" '.views._default.xfrins | map(select(.firstrefresh == "Yes")) | length' <xfrins.json.j$n)
+    if [ $count != 1 ]; then return 1; fi
+  fi
+}
+
+# We have now less than one second to catch the zone transfers in progress
+echo_i "Checking zone transfer information in the statistics channel ($n)"
+ret=0
+retry_quiet_fast 200 _wait_for_transfers || ret=1
+if [ $ret != 0 ]; then echo_i "failed"; fi
+status=$((status + ret))
+n=$((n + 1))
+
+echo_i "Checking that there is one 'first refresh' zone in ns3 ($n)"
+ret=0
+$RNDCCMD 10.53.0.3 status | grep -E '^xfers first refresh: 1$' >/dev/null || ret=1
+if [ $ret != 0 ]; then echo_i "failed"; fi
+status=$((status + ret))
+n=$((n + 1))
+
+if [ "$PERL_JSON" ] && [ -x "$JQ" ]; then
+  echo_i "Checking zone transfer transports ($n)"
+  ret=0
+  cp xfrins.json.j$((n - 2)) xfrins.json.j$n
+  $PERL xfrins-json.pl xfrins.json.j$n example >xfrins.example.format$n
+  echo "soatransport: UDP" >xfrins.example.expect$n
+  echo "transport: TCP" >>xfrins.example.expect$n
+  cmp xfrins.example.format$n xfrins.example.expect$n || ret=1
+  $PERL xfrins-json.pl xfrins.json.j$n example-tcp >xfrins.example-tcp.format$n
+  echo "soatransport: TCP" >xfrins.example-tcp.expect$n
+  echo "transport: TCP" >>xfrins.example-tcp.expect$n
+  cmp xfrins.example-tcp.format$n xfrins.example-tcp.expect$n || ret=1
+  $PERL xfrins-json.pl xfrins.json.j$n example-tls >xfrins.example-tls.format$n
+  echo "soatransport: TLS" >xfrins.example-tls.expect$n
+  echo "transport: TLS" >>xfrins.example-tls.expect$n
+  cmp xfrins.example-tls.format$n xfrins.example-tls.expect$n || ret=1
+  if [ $ret != 0 ]; then echo_i "failed"; fi
+  status=$((status + ret))
+  n=$((n + 1))
+fi
+
+echo_i "Wait for slow zone transfer to complete ($n)"
+ret=0
+wait_for_log 20 "zone example/IN: zone transfer finished: success" ns3/named.run || ret=1
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 n=$((n + 1))

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * dhcpcd - DHCP client daemon
- * Copyright (c) 2006-2023 Roy Marples <roy@marples.name>
+ * Copyright (c) 2006-2025 Roy Marples <roy@marples.name>
  * All rights reserved
 
  * Redistribution and use in source and binary forms, with or without
@@ -35,13 +35,10 @@
 #include <stdio.h>
 
 #include "config.h"
-#ifdef HAVE_SYS_QUEUE_H
-#include <sys/queue.h>
-#endif
-
 #include "defs.h"
 #include "control.h"
 #include "if-options.h"
+#include "queue.h"
 
 #define HWADDR_LEN	20
 #define IF_SSIDLEN	32
@@ -80,12 +77,16 @@ struct interface {
 	uint16_t hwtype; /* ARPHRD_ETHER for example */
 	unsigned char hwaddr[HWADDR_LEN];
 	uint8_t hwlen;
+	int mtu;
 	unsigned short vlanid;
 	unsigned int metric;
 	int carrier;
 	bool wireless;
 	uint8_t ssid[IF_SSIDLEN];
 	unsigned int ssid_len;
+
+	int argc;
+	char **argv;
 
 	char profile[PROFILE_LEN];
 	struct if_options *options;
@@ -158,9 +159,6 @@ struct dhcpcd_ctx {
 	int seq;	/* route message sequence no */
 	int sseq;	/* successful seq no sent */
 
-#ifdef USE_SIGNALS
-	sigset_t sigset;
-#endif
 	struct eloop *eloop;
 
 	char *script;
@@ -201,7 +199,6 @@ struct dhcpcd_ctx {
 	int ps_data_fd;		/* data returned from processes */
 	int ps_log_fd;		/* chroot logging */
 	int ps_log_root_fd;	/* outside chroot log reader */
-	struct eloop *ps_eloop;	/* eloop for polling root data */
 	struct fd_list *ps_control;		/* Queue for the above */
 	struct fd_list *ps_control_client;	/* Queue for the above */
 #endif
@@ -264,14 +261,13 @@ int dhcpcd_afwaiting(const struct dhcpcd_ctx *);
 void dhcpcd_daemonised(struct dhcpcd_ctx *);
 void dhcpcd_daemonise(struct dhcpcd_ctx *);
 
-void dhcpcd_signal_cb(int, void *);
-
 void dhcpcd_linkoverflow(struct dhcpcd_ctx *);
 int dhcpcd_handleargs(struct dhcpcd_ctx *, struct fd_list *, int, char **);
 void dhcpcd_handlecarrier(struct interface *, int, unsigned int);
 int dhcpcd_handleinterface(void *, int, const char *);
 void dhcpcd_handlehwaddr(struct interface *, uint16_t, const void *, uint8_t);
 void dhcpcd_dropinterface(struct interface *, const char *);
+void dhcpcd_dropped(struct interface *);
 int dhcpcd_selectprofile(struct interface *, const char *);
 
 void dhcpcd_startinterface(void *);

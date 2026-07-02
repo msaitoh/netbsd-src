@@ -1,4 +1,4 @@
-/*	$NetBSD: ncr53c9xvar.h,v 1.57 2022/01/01 21:07:14 andvar Exp $	*/
+/*	$NetBSD: ncr53c9xvar.h,v 1.59 2026/01/02 23:33:59 nia Exp $	*/
 
 /*-
  * Copyright (c) 1997 The NetBSD Foundation, Inc.
@@ -41,10 +41,7 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 3. All advertising materials mentioning features or use of this software
- *    must display the following acknowledgement:
- *	This product includes software developed by Peter Galbavy.
- * 4. The name of the author may not be used to endorse or promote products
+ * 3. The name of the author may not be used to endorse or promote products
  *    derived from this software without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
@@ -180,7 +177,7 @@ struct ncr53c9x_tinfo {
 	uint8_t	offset;		/* Offset suggestion */
 	uint8_t	cfg3;		/* per target config 3  */
 	uint8_t	nextag;		/* Next available tag */
-	uint8_t	width;		/* width suggesion */
+	uint8_t	width;		/* width suggestion */
 	LIST_HEAD(lun_list, ncr53c9x_linfo) luns;
 	struct ncr53c9x_linfo *lun[NCR_NLUN]; /* For speedy lookups */
 };

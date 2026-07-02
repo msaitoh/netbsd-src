@@ -1,4 +1,4 @@
-# $NetBSD: directive-export-gmake.mk,v 1.9 2023/12/17 09:44:00 rillig Exp $
+# $NetBSD: directive-export-gmake.mk,v 1.11 2026/01/02 14:21:46 rillig Exp $
 #
 # Tests for the export directive (without leading dot), as in GNU make.
 
@@ -67,7 +67,7 @@ export VAR=an ${UNDEF} variable
 .for value in 1
 # XXX: The ':' in this line is inside an expression and should thus not be
 # interpreted as a dependency operator.
-# expect+1: Invalid line 'export VAR=${:U1}', expanded to 'export VAR=1'
+# expect+1: Invalid line "export VAR=${:U1}", expanded to "export VAR=1"
 export VAR=${value}
 .endfor
 
@@ -102,5 +102,14 @@ INDIRECT_NAME=	I_NAME
 INDIRECT_VALUE=	indirect value
 export ${INDIRECT_NAME}=${INDIRECT_VALUE}
 .if ${:!env!:MI_NAME=*}
+.  error
+.endif
+
+
+# Quotes and other special characters are preserved.
+export DQUOT="dquot"
+export SQUOT='squot'
+export PLAIN=plain
+.if ${:!echo "\$DQUOT \$SQUOT \$PLAIN"!} != "\"dquot\" 'squot' plain"
 .  error
 .endif

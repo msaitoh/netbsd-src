@@ -1,4 +1,4 @@
-/*	$NetBSD: smtp.h,v 1.5 2023/12/23 20:30:45 christos Exp $	*/
+/*	$NetBSD: smtp.h,v 1.7 2026/05/09 18:49:20 christos Exp $	*/
 
 /*++
 /* NAME
@@ -34,6 +34,8 @@
 #include <tok822.h>
 #include <dsn_buf.h>
 #include <header_body_checks.h>
+#include <sendopts.h>
+#include <pol_stats.h>
 
  /*
   * Postfix TLS library.
@@ -44,6 +46,11 @@
   * tlsproxy client.
   */
 #include <tls_proxy.h>
+
+ /*
+  * This application.
+  */
+#include <smtp_reqtls_policy.h>
 
  /*
   * Global iterator support. This is updated by the connection-management
@@ -109,7 +116,28 @@ typedef struct SMTP_TLS_POLICY {
     TLS_DANE *dane;			/* DANE TLSA digests */
     char   *sni;			/* Optional SNI name when not DANE */
     int     conn_reuse;			/* enable connection reuse */
+    int     enable_rpk;			/* Enable server->client RPK */
+    /* External policy info, for TLSRPT. */
+    int     ext_policy_ttl;		/* TTL from DNS etc. */
+    char   *ext_policy_type;		/* (sts) */
+    ARGV   *ext_policy_strings;		/* policy strings from DNS etc. */
+    char   *ext_policy_domain;		/* policy scope */
+    ARGV   *ext_mx_host_patterns;	/* (sts) MX host patterns */
+    char   *ext_policy_failure;		/* (sts) policy failure */
 } SMTP_TLS_POLICY;
+
+ /*
+  * Names and values for external policy attributes in smtp_tls_policy_maps.
+  * These are not #ifdef USE_TLSRPT, so that a TLSRPT-aware STS plugin can be
+  * used whether or not Postfix was built with TLSRPT support.
+  */
+#define EXT_POLICY_TTL		"policy_ttl"
+#define EXT_POLICY_TTL_UNSET	(-1)
+#define EXT_POLICY_TYPE		"policy_type"
+#define EXT_POLICY_DOMAIN	"policy_domain"
+#define EXT_POLICY_STRING	"policy_string"
+#define EXT_MX_HOST_PATTERN	"mx_host_pattern"
+#define EXT_POLICY_FAILURE	"policy_failure"
 
  /*
   * smtp_tls_policy.c
@@ -117,6 +145,7 @@ typedef struct SMTP_TLS_POLICY {
 extern void smtp_tls_list_init(void);
 extern int smtp_tls_policy_cache_query(DSN_BUF *, SMTP_TLS_POLICY *, SMTP_ITERATOR *);
 extern void smtp_tls_policy_cache_flush(void);
+extern int smtp_tls_authorize_mx_hostname(SMTP_TLS_POLICY *, const char *);
 
  /*
   * Macros must use distinct names for local temporary variables, otherwise
@@ -144,6 +173,13 @@ extern void smtp_tls_policy_cache_flush(void);
 	_tls_policy_init_tmp->dane = 0; \
 	_tls_policy_init_tmp->sni = 0; \
 	_tls_policy_init_tmp->conn_reuse = 0; \
+	_tls_policy_init_tmp->enable_rpk = 0; \
+	_tls_policy_init_tmp->ext_policy_ttl = EXT_POLICY_TTL_UNSET; \
+	_tls_policy_init_tmp->ext_policy_type = 0; \
+	_tls_policy_init_tmp->ext_policy_domain = 0; \
+	_tls_policy_init_tmp->ext_policy_strings = 0; \
+	_tls_policy_init_tmp->ext_mx_host_patterns = 0; \
+	_tls_policy_init_tmp->ext_policy_failure = 0; \
     } while (0)
 
 #endif
@@ -167,11 +203,16 @@ typedef struct SMTP_STATE {
     SMTP_ITERATOR iterator[1];		/* Usage: state->iterator->member */
 
     /*
-     * Global iterator.
+     * TLS policy related.
      */
 #ifdef USE_TLS
     SMTP_TLS_POLICY tls[1];		/* Usage: state->tls->member */
+#ifdef USE_TLSRPT
+    struct TLSRPT_WRAPPER *tlsrpt;
 #endif
+    int     reqtls_level;		/* from smtp_reqtls_policy */
+#endif
+    POL_STATS *tls_stats;		/* TLS feature policy compliance */
 
     /*
      * Connection cache support.
@@ -208,6 +249,45 @@ typedef struct SMTP_STATE {
      */
     unsigned logged_line_length_limit:1;
 } SMTP_STATE;
+
+#define SMTP_TLS_STAT_IDX_SEC_LEVEL	0
+#define SMTP_TLS_STAT_IDX_REQTLS	1
+
+/* Use the TLS policy name for the TLS security level status feature. */
+#define SMTP_TLS_STAT_NAME_REQTLS	"requiretls"
+#define SMTP_TLS_STAT_NAME_NOCMATCH	"nocertmatch"
+#define SMTP_TLS_STAT_NAME_NOSTTLS	"nostarttls"
+#define SMTP_TLS_STAT_NAME_NOTLS	"noencryption"
+#define SMTP_TLS_STAT_NAME_NONE		"none"
+#define SMTP_TLS_STAT_NAME_UNKNOWN	"unknown"
+
+#define smtp_tls_stat_activate_sec_level(tstats, level) \
+	pol_stat_activate((tstats), SMTP_TLS_STAT_IDX_SEC_LEVEL, \
+	    str_tls_level(level))
+
+#define smtp_tls_stat_activate_sec_unknown(tstats) \
+	pol_stat_activate((tstats), SMTP_TLS_STAT_IDX_SEC_LEVEL, \
+	    SMTP_TLS_STAT_NAME_UNKNOWN)
+
+#define smtp_tls_stat_decide_sec_level(tstats, level, status) \
+	pol_stat_decide((tstats), SMTP_TLS_STAT_IDX_SEC_LEVEL, \
+	    str_tls_level(level), (status))
+
+#define smtp_tls_stat_activate_reqtls(tstats, name) \
+	pol_stat_activate((tstats), SMTP_TLS_STAT_IDX_REQTLS, \
+	(name))
+
+#define smtp_tls_stat_decide_reqtls(tstats, name, status) \
+	pol_stat_decide((tstats), SMTP_TLS_STAT_IDX_REQTLS, \
+	(name), (status))
+
+#ifdef USE_TLS
+#define STATE_TLS_NOT_REQUIRED(state) \
+	(var_tls_required_enable \
+	    && (var_reqtls_enable == 0 \
+		|| ((state)->request->sendopts & SOPT_REQUIRETLS_ESMTP) == 0) \
+	    && ((state)->request->sendopts & SOPT_REQUIRETLS_HEADER))
+#endif
 
  /*
   * Primitives to enable/disable/test connection caching and reuse based on
@@ -257,9 +337,12 @@ typedef struct SMTP_STATE {
 #define SMTP_FEATURE_XFORWARD_IDENT	(1<<20)
 #define SMTP_FEATURE_SMTPUTF8		(1<<21)	/* RFC 6531 */
 #define SMTP_FEATURE_FROM_PROXY		(1<<22)	/* proxied connection */
+#define SMTP_FEATURE_REQTLS		(1<<23)	/* RFC 8689 */
 
  /*
-  * Features that passivate under the endpoint.
+  * Features that passivate under the endpoint. Be sure to passivate all
+  * features that are needed in SMTP_KEY_MASK_SCACHE_DEST_LABEL, otherwise a
+  * reused connection may be stored under the wrong key.
   */
 #define SMTP_FEATURE_ENDPOINT_MASK \
 	(~(SMTP_FEATURE_BEST_MX | SMTP_FEATURE_RSET_REJECTED \
@@ -329,6 +412,7 @@ extern STRING_LIST *smtp_use_srv_lookup;/* services with SRV record lookup */
 
 extern TLS_APPL_STATE *smtp_tls_ctx;	/* client-side TLS engine */
 extern int smtp_tls_insecure_mx_policy;	/* DANE post insecure MX? */
+extern SMTP_REQTLS_POLICY *smtp_reqtls_policy;	/* parsed list */
 
 #endif
 
@@ -490,8 +574,8 @@ extern HBC_CALL_BACKS smtp_hbc_callbacks[];
 	(session->expire_time = (when))
 
  /*
-  * Encapsulate the following so that we don't expose details of
-  * connection management and error handling to the SMTP protocol engine.
+  * Encapsulate the following so that we don't expose details of connection
+  * management and error handling to the SMTP protocol engine.
   */
 #ifdef USE_SASL_AUTH
 #define HAVE_SASL_CREDENTIALS \
@@ -511,6 +595,7 @@ extern HBC_CALL_BACKS smtp_hbc_callbacks[];
 #define PLAINTEXT_FALLBACK_OK_AFTER_STARTTLS_FAILURE \
 	(session->tls_context == 0 \
 	    && state->tls->level == TLS_LEV_MAY \
+	    && !TLS_REQUIRED_BY_REQTLS_POLICY(state->reqtls_level) \
 	    && (TRACE_REQ_ONLY || PREACTIVE_DELAY >= var_min_backoff_time) \
 	    && !HAVE_SASL_CREDENTIALS)
 
@@ -518,6 +603,7 @@ extern HBC_CALL_BACKS smtp_hbc_callbacks[];
 	(session->tls_context != 0 \
 	    && SMTP_RCPT_LEFT(state) > SMTP_RCPT_MARK_COUNT(state) \
 	    && state->tls->level == TLS_LEV_MAY \
+	    && !TLS_REQUIRED_BY_REQTLS_POLICY(state->reqtls_level) \
 	    && (TRACE_REQ_ONLY || PREACTIVE_DELAY >= var_min_backoff_time) \
 	    && !HAVE_SASL_CREDENTIALS)
 
@@ -608,8 +694,10 @@ extern void smtp_rcpt_done(SMTP_STATE *, SMTP_RESP *, RECIPIENT *);
  /*
   * smtp_trouble.c
   */
-#define SMTP_THROTTLE	1
-#define SMTP_NOTHROTTLE	0
+#define SMTP_MISC_FAIL_NONE		0
+#define SMTP_MISC_FAIL_THROTTLE		(1<<0)
+#define SMTP_MISC_FAIL_SOFT_NON_FINAL	(1<<1)
+#define SMTP_MISC_FAIL_DONT_CACHE	(1<<2)
 extern int smtp_sess_fail(SMTP_STATE *);
 extern int PRINTFLIKE(5, 6) smtp_misc_fail(SMTP_STATE *, int, const char *,
 				             SMTP_RESP *, const char *,...);
@@ -619,9 +707,9 @@ extern void PRINTFLIKE(5, 6) smtp_rcpt_fail(SMTP_STATE *, RECIPIENT *,
 extern int smtp_stream_except(SMTP_STATE *, int, const char *);
 
 #define smtp_site_fail(state, mta, resp, ...) \
-	smtp_misc_fail((state), SMTP_THROTTLE, (mta), (resp), __VA_ARGS__)
+    smtp_misc_fail((state), SMTP_MISC_FAIL_THROTTLE, (mta), (resp), __VA_ARGS__)
 #define smtp_mesg_fail(state, mta, resp, ...) \
-	smtp_misc_fail((state), SMTP_NOTHROTTLE, (mta), (resp), __VA_ARGS__)
+    smtp_misc_fail((state), SMTP_MISC_FAIL_NONE, (mta), (resp), __VA_ARGS__)
 
  /*
   * smtp_unalias.c
@@ -655,12 +743,15 @@ char   *smtp_key_prefix(VSTRING *, const char *, SMTP_ITERATOR *, int);
 #define SMTP_KEY_FLAG_ADDR		(1<<5)	/* remote address */
 #define SMTP_KEY_FLAG_PORT		(1<<6)	/* remote port */
 #define SMTP_KEY_FLAG_TLS_LEVEL		(1<<7)	/* requested TLS level */
+#define SMTP_KEY_FLAG_REQ_SMTPUTF8	(1<<8)	/* SMTPUTF8 is required */
+#define SMTP_KEY_FLAG_REQTLS_LEVEL	(1<<9)	/* REQUIRETLS enforcement */
 
 #define SMTP_KEY_MASK_ALL \
 	(SMTP_KEY_FLAG_SERVICE | SMTP_KEY_FLAG_SENDER | \
 	SMTP_KEY_FLAG_REQ_NEXTHOP | \
 	SMTP_KEY_FLAG_CUR_NEXTHOP | SMTP_KEY_FLAG_HOSTNAME | \
-	SMTP_KEY_FLAG_ADDR | SMTP_KEY_FLAG_PORT | SMTP_KEY_FLAG_TLS_LEVEL)
+	SMTP_KEY_FLAG_ADDR | SMTP_KEY_FLAG_PORT | SMTP_KEY_FLAG_TLS_LEVEL | \
+	SMTP_KEY_FLAG_REQ_SMTPUTF8 | SMTP_KEY_FLAG_REQTLS_LEVEL)
 
  /*
   * Conditional lookup-key flags for cached connections that may be
@@ -696,10 +787,15 @@ char   *smtp_key_prefix(VSTRING *, const char *, SMTP_ITERATOR *, int);
   * (REQ_NEXTHOP) prevents false sharing of TLS identities (the destination
   * key links only to appropriate endpoint lookup keys). The SERVICE
   * attribute is a proxy for all request-independent configuration details.
+  * 
+  * Be sure to include all features that are preserved in
+  * SMTP_FEATURE_ENDPOINT_MASK, otherwise a reused connection may be stored
+  * under the wrong key.
   */
 #define SMTP_KEY_MASK_SCACHE_DEST_LABEL \
 	(SMTP_KEY_FLAG_SERVICE | COND_SASL_SMTP_KEY_FLAG_SENDER \
-	| SMTP_KEY_FLAG_REQ_NEXTHOP)
+	| SMTP_KEY_FLAG_REQ_NEXTHOP | SMTP_KEY_FLAG_TLS_LEVEL \
+	| SMTP_KEY_FLAG_REQ_SMTPUTF8 | SMTP_KEY_FLAG_REQTLS_LEVEL)
 
  /*
   * Connection-cache endpoint lookup key. The SENDER, CUR_NEXTHOP, HOSTNAME,
@@ -708,13 +804,18 @@ char   *smtp_key_prefix(VSTRING *, const char *, SMTP_ITERATOR *, int);
   * when different SASL credentials or TLS identities may be required for
   * different deliveries to the same IP address and port. The SERVICE
   * attribute is a proxy for all request-independent configuration details.
+  * 
+  * Be sure to include all features that are preserved in
+  * SMTP_FEATURE_ENDPOINT_MASK, otherwise a reused connection may be stored
+  * under the wrong key.
   */
 #define SMTP_KEY_MASK_SCACHE_ENDP_LABEL \
 	(SMTP_KEY_FLAG_SERVICE | COND_SASL_SMTP_KEY_FLAG_SENDER \
 	| COND_SASL_SMTP_KEY_FLAG_CUR_NEXTHOP \
 	| COND_SASL_SMTP_KEY_FLAG_HOSTNAME \
-	| COND_TLS_SMTP_KEY_FLAG_CUR_NEXTHOP | SMTP_KEY_FLAG_ADDR | \
-	SMTP_KEY_FLAG_PORT | SMTP_KEY_FLAG_TLS_LEVEL)
+	| COND_TLS_SMTP_KEY_FLAG_CUR_NEXTHOP | SMTP_KEY_FLAG_ADDR \
+	| SMTP_KEY_FLAG_PORT | SMTP_KEY_FLAG_TLS_LEVEL \
+	| SMTP_KEY_FLAG_REQ_SMTPUTF8 | SMTP_KEY_FLAG_REQTLS_LEVEL)
 
  /*
   * Silly little macros.
@@ -726,6 +827,8 @@ extern int smtp_mode;
 
 #define VAR_LMTP_SMTP(x) (smtp_mode ? VAR_SMTP_##x : VAR_LMTP_##x)
 #define LMTP_SMTP_SUFFIX(x) (smtp_mode ? x##_SMTP : x##_LMTP)
+#define WARN_COMPAT_BREAK_LMTP_SMTP(x) \
+    (smtp_mode ? warn_compat_break_smtp_##x : warn_compat_break_lmtp_##x)
 
  /*
   * Parsed command-line attributes. These do not change during the process
@@ -756,6 +859,36 @@ extern void smtp_quote_821_address(VSTRING *, const char *);
   * header_from_format support, for postmaster notifications.
   */
 extern int smtp_hfrom_format;
+
+ /*
+  * smtp_tlsrpt.c.
+  */
+#if defined(USE_TLS) && defined(USE_TLSRPT)
+extern int smtp_tlsrpt_post_jail(const char *sockname_pname, const char *sockname_pval);
+extern void smtp_tlsrpt_create_wrapper(SMTP_STATE *state, const char *domain);
+extern void smtp_tlsrpt_set_tls_policy(SMTP_STATE *state);
+extern void smtp_tlsrpt_set_tcp_connection(SMTP_STATE *state);
+extern void smtp_tlsrpt_set_ehlo_resp(SMTP_STATE *, const char *ehlo_resp);
+
+#endif					/* USE_TLSRPT && USE_TLS */
+
+ /*
+  * This delivery requires SMTPUTF8 server support if the sender requested
+  * SMTPUTF8 support AND the delivery request involves at least one UTF-8
+  * envelope address or header value.
+  * 
+  * If the sender requested SMTPUTF8 support but the delivery request involves
+  * no UTF-8 envelope address or header value, then we could still deliver
+  * such mail to a non-SMTPUTF8 server, except that we must either
+  * uxtext-encode ORCPT parameters or not send them. We cannot encode the
+  * ORCPT in xtext, because legacy SMTP requires that the unencoded address
+  * consist entirely of printable (graphic and white space) characters from
+  * the US-ASCII repertoire (RFC 3461 section 4). A correct uxtext encoder
+  * will produce a result that an xtext decoder will pass through unchanged.
+  */
+#define DELIVERY_REQUIRES_SMTPUTF8(request) \
+	(((request)->sendopts & SMTPUTF8_FLAG_REQUESTED) \
+	&& ((request)->sendopts & SMTPUTF8_FLAG_DERIVED))
 
 /* LICENSE
 /* .ad

@@ -2,7 +2,7 @@
 # NAME
 #	mysql_table 5
 # SUMMARY
-#	Postfix MySQL client configuration
+#	Postfix MySQL/MariaDB client configuration
 # SYNOPSIS
 #	\fBpostmap -q "\fIstring\fB" mysql:/etc/postfix/\fIfilename\fR
 #
@@ -10,9 +10,12 @@
 # DESCRIPTION
 #	The Postfix mail system uses optional tables for address
 #	rewriting or mail routing. These tables are usually in
-#	\fBdbm\fR or \fBdb\fR format.
+#	\fBlmdb:\fR, \fBcdb:\fR, \fBhash:\fR, or \fBdbm:\fR format.
 #
 #	Alternatively, lookup tables can be specified as MySQL databases.
+#	To find out what types of lookup tables your Postfix system
+#	supports use the "\fBpostconf -m\fR" command.
+#
 #	In order to use MySQL lookups, define a MySQL source as a lookup
 #	table in main.cf, for example:
 # .nf
@@ -22,6 +25,11 @@
 #	The file /etc/postfix/mysql-aliases.cf has the same format as
 #	the Postfix main.cf file, and can specify the parameters
 #	described below.
+#
+#	Even though the component name is 'mysql' in Postfix,
+#	MariaDB/MySQL client and servers can be used interchangeably as
+#	the functionality Postfix relies on is available in both. However,
+#	their code bases may still diverge in the future.
 # LIST MEMBERSHIP
 # .ad
 # .fi
@@ -66,6 +74,11 @@
 # .nf
 #	    hosts = 127.0.0.1
 # .fi
+#
+#	NOTE: if the \fBhosts\fR setting specifies only one server,
+#	this client assumes that the target is a load balancer and
+#	will reconnect immediately after a single failure. With Postfix
+#	versions 3.9 and earlier, specify the same server twice.
 # .IP "\fBuser\fR"
 # .IP "\fBpassword\fR"
 #	The user name and password to log into the mysql server.
@@ -79,6 +92,29 @@
 # .nf
 #	    dbname = customer_database
 # .fi
+# .IP "\fBcharset (default: utf8mb4)\fR"
+#	The default MySQL client character set; this also implies
+#	the collation order.
+#
+#	This parameter is available with Postfix 3.9 and later.
+#	With earlier Postfix versions, the default was chosen by
+#	the MySQL implementation (\fButf8mb4\fR as of MySQL 8.0,
+#	\fBlatin1\fR historically).
+# .IP "\fBidle_interval (default: 60)\fR"
+#	The number of seconds after which an idle database connection
+#	will be closed.
+#
+#	This feature is available in Postfix 3.9 and later.
+# .IP "\fBretry_interval (default: 60)\fR"
+#	The number of seconds that a database connection will be
+#	skipped after an error.
+#
+#	NOTE: if the \fBhosts\fR setting specifies only one server,
+#	this client assumes that the target is a load balancer and
+#	will reconnect immediately after a single failure. With Postfix
+#	versions 3.9 and earlier, specify the same server twice.
+#
+#	This feature is available in Postfix 3.9 and later.
 # .IP "\fBquery\fR"
 #	The SQL query template used to search the database, where \fB%s\fR
 #	is a substitute for the address Postfix is trying to resolve,
@@ -243,6 +279,12 @@
 #	"not found".
 # .sp
 #	This parameter is available with Postfix 3.2 and later.
+# TLS-RELATED SETTINGS
+# .ad
+# .fi
+#	See https://dev.mysql.com/doc/c-api/en/mysql-options.html
+#	or https://mariadb.com/kb/en/mysql_optionsv/ for details of
+#	the underlying MYSQL_OPT_SSL_* features.
 # .IP "\fBtls_cert_file\fR"
 #	File containing client's X509 certificate.
 # .sp
@@ -252,7 +294,7 @@
 # .sp
 #	This parameter is available with Postfix 2.11 and later.
 # .IP "\fBtls_CAfile\fR"
-#	File containing certificates for all of the X509 Certification
+#	File containing X509 certificates for all of the Certification
 #	Authorities the client will recognize.  Takes precedence over
 #	\fBtls_CApath\fR.
 # .sp

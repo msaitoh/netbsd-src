@@ -1,4 +1,4 @@
-/* $NetBSD: cpu.c,v 1.81 2024/10/07 23:11:33 jakllsch Exp $ */
+/* $NetBSD: cpu.c,v 1.84 2026/03/29 11:15:03 skrll Exp $ */
 
 /*
  * Copyright (c) 2017 Ryo Shimizu
@@ -27,7 +27,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(1, "$NetBSD: cpu.c,v 1.81 2024/10/07 23:11:33 jakllsch Exp $");
+__KERNEL_RCSID(1, "$NetBSD: cpu.c,v 1.84 2026/03/29 11:15:03 skrll Exp $");
 
 #include "locators.h"
 #include "opt_arm_debug.h"
@@ -229,7 +229,9 @@ const struct cpuidtab cpuids[] = {
 	{ CPU_ID_CORTEXA76R3 & CPU_PARTMASK, "Cortex-A76", "Arm", "v8.2-A+" },
 	{ CPU_ID_CORTEXA76AER1 & CPU_PARTMASK, "Cortex-A76AE", "Arm", "v8.2-A+" },
 	{ CPU_ID_CORTEXA77R0 & CPU_PARTMASK, "Cortex-A77", "Arm", "v8.2-A+" },
+	{ CPU_ID_CORTEXA520R0 & CPU_PARTMASK, "Cortex-A520", "Arm", "v9.2-A" },
 	{ CPU_ID_CORTEXA710R2 & CPU_PARTMASK, "Cortex-A710", "Arm", "v9.0-A" },
+	{ CPU_ID_CORTEXA720R0 & CPU_PARTMASK, "Cortex-A720", "Arm", "v9.2-A" },
 	{ CPU_ID_NVIDIADENVER2 & CPU_PARTMASK, "Denver2", "NVIDIA", "v8-A" },
 	{ CPU_ID_EMAG8180 & CPU_PARTMASK, "eMAG", "Ampere", "v8-A" },
 	{ CPU_ID_NEOVERSEE1R1 & CPU_PARTMASK, "Neoverse E1", "Arm", "v8.2-A+" },
@@ -245,6 +247,7 @@ const struct cpuidtab cpuids[] = {
 	{ CPU_ID_AMPERE1 & CPU_PARTMASK, "Ampere-1", "Ampere", "v8.6-A+" },
 	{ CPU_ID_AMPERE1A & CPU_PARTMASK, "Ampere-1A", "Ampere", "v8.6-A+" },
 	{ CPU_ID_A64FX & CPU_PARTMASK, "A64FX", "Fujitsu", "v8.2-A+" },
+	{ CPU_ID_ORYON & CPU_PARTMASK, "Oryon", "Qualcomm", "v8.7-A+" },
 };
 
 static void
@@ -368,10 +371,22 @@ cpu_identify2(device_t self, struct cpu_info *ci)
 	/* ID_AA64DFR0_EL1 */
 	switch (__SHIFTOUT(id->ac_aa64dfr0, ID_AA64DFR0_EL1_PMUVER)) {
 	case ID_AA64DFR0_EL1_PMUVER_V3:
-		aprint_verbose(", PMCv3");
+		aprint_verbose(", PMUv3");
 		break;
-	case ID_AA64DFR0_EL1_PMUVER_NOV3:
-		aprint_verbose(", PMC");
+	case ID_AA64DFR0_EL1_PMUVER_V3P1:
+		aprint_verbose(", PMUv3p1");
+		break;
+	case ID_AA64DFR0_EL1_PMUVER_V3P4:
+		aprint_verbose(", PMUv3p4");
+		break;
+	case ID_AA64DFR0_EL1_PMUVER_V3P5:
+		aprint_verbose(", PMUv3p5");
+		break;
+	case ID_AA64DFR0_EL1_PMUVER_V3P7:
+		aprint_verbose(", PMUv3p7");
+		break;
+	case ID_AA64DFR0_EL1_PMUVER_V3P8:
+		aprint_verbose(", PMUv3p8");
 		break;
 	}
 

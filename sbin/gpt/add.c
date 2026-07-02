@@ -33,11 +33,13 @@
 __FBSDID("$FreeBSD: src/sbin/gpt/add.c,v 1.14 2006/06/22 22:05:28 marcel Exp $");
 #endif
 #ifdef __RCSID
-__RCSID("$NetBSD: add.c,v 1.44 2018/07/03 03:41:23 jnemeth Exp $");
+__RCSID("$NetBSD: add.c,v 1.48 2025/12/17 16:18:11 nia Exp $");
 #endif
 
 #include <sys/types.h>
-#include <sys/param.h>
+#if defined(HAVE_SYS_ENDIAN_H) || ! defined(HAVE_NBTOOL_CONFIG_H)
+#include <sys/endian.h>
+#endif
 #include <sys/stat.h>
 
 #include <err.h>
@@ -58,7 +60,7 @@ static const char *addhelp[] = {
 	"[-s size] [-t type]",
 };
 
-struct gpt_cmd c_add = {
+const struct gpt_cmd c_add = {
 	"add",
 	cmd_add,
 	addhelp, __arraycount(addhelp),
@@ -81,7 +83,7 @@ ent_set(struct gpt_ent *ent, const map_t map, const gpt_uuid_t xtype,
 }
 
 static int
-add(gpt_t gpt, off_t alignment, off_t block, off_t sectors, off_t size,
+add(gpt_t gpt, off_t alignment, off_t block, off_t sectors, off_t size __unused,
     u_int entry, uint8_t *name, gpt_uuid_t type)
 {
 	map_t map;
@@ -121,6 +123,12 @@ add(gpt_t gpt, off_t alignment, off_t block, off_t sectors, off_t size,
 			return -1;
 		}
 	}
+
+	if (gpt_uuid_is_nil(ent->ent_guid))
+		if (gpt_uuid_generate(gpt, ent->ent_guid) == -1) {
+			gpt_warnx(gpt, "Unable to make UUID");
+			return -1;
+		}
 
 	if (alignment > 0) {
 		alignsecs = alignment / gpt->secsz;
@@ -178,11 +186,15 @@ cmd_add(gpt_t gpt, int argc, char *argv[])
 			if (gpt_uuid_get(gpt, &type) == -1)
 				goto usage;
 			break;
-		default:
+		case 'a':
+		case 's':
+		case 'i':
 			if (gpt_add_ais(gpt, &alignment, &entry, &size, ch)
 			    == -1)
 				goto usage;
 			break;
+		default:
+			goto usage;
 		}
 	}
 

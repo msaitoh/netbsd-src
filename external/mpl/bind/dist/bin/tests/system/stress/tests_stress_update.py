@@ -10,36 +10,30 @@
 # information regarding copyright ownership.
 
 import concurrent.futures
-import os
 import time
 
-import dns.query
+import dns.exception
+import dns.rcode
 import dns.update
+import pytest
 
 import isctest
 
+pytestmark = pytest.mark.extra_artifacts(
+    [
+        "ns2/zone0*.db",
+        "ns2/zone0*.jnl",
+    ]
+)
+
 
 def rndc_loop(test_state, server):
-    rndc = os.getenv("RNDC")
-    port = os.getenv("CONTROLPORT")
-
-    cmdline = [
-        rndc,
-        "-c",
-        "../_common/rndc.conf",
-        "-p",
-        port,
-        "-s",
-        server,
-        "reload",
-    ]
-
     while not test_state["finished"]:
-        isctest.run.cmd(cmdline, raise_on_exception=False)
+        server.rndc("reload", raise_on_exception=False)
         time.sleep(1)
 
 
-def update_zone(test_state, zone, named_port):
+def update_zone(test_state, zone):
     server = "10.53.0.2"
     for i in range(1000):
         if test_state["finished"]:
@@ -47,7 +41,9 @@ def update_zone(test_state, zone, named_port):
         update = dns.update.UpdateMessage(zone)
         update.add(f"dynamic-{i}.{zone}", 300, "TXT", f"txt-{i}")
         try:
-            response = dns.query.udp(update, server, 10, named_port)
+            response = isctest.query.udp(
+                update, server, log_query=False, log_response=False
+            )
             assert response.rcode() == dns.rcode.NOERROR
         except dns.exception.Timeout:
             isctest.log.info(f"error: query timeout for {zone}")
@@ -56,7 +52,7 @@ def update_zone(test_state, zone, named_port):
 
 
 # If the test has run to completion without named crashing, it has succeeded.
-def test_update_stress(named_port):
+def test_update_stress():
     test_state = {"finished": False}
 
     with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -65,7 +61,7 @@ def test_update_stress(named_port):
         updaters = []
         for i in range(5):
             zone = f"zone00000{i}.example."
-            updaters.append(executor.submit(update_zone, test_state, zone, named_port))
+            updaters.append(executor.submit(update_zone, test_state, zone))
 
         # All the update_zone() tasks are expected to complete within 5
         # minutes.  If they do not, we cannot assert immediately as that will

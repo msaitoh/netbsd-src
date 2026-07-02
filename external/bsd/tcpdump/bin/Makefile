@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.27 2023/08/18 12:55:50 tnn Exp $	
+#	$NetBSD: Makefile,v 1.31 2026/03/19 00:05:12 christos Exp $	
 
 WARNS?=	1	# XXX: need to cleanup later
 
@@ -118,7 +118,6 @@ print-openflow-1.0.c \
 print-openflow-1.3.c \
 print-openflow.c \
 print-ospf.c \
-print-otv.c \
 print-pflog.c \
 print-pfsync.c \
 print-pgm.c \
@@ -196,7 +195,8 @@ CPPFLAGS+=-DHAVE_CONFIG_H
 CPPFLAGS+=-DWITH_USER=\"_tcpdump\"
 CPPFLAGS+=-DWITH_CHROOT=\"/var/chroot/tcpdump\"
 
-.if (${USE_INET6} != "no")
+# XXX INET6 is too entangled into many of the L2 printers.
+#.if (${USE_INET6} != "no")
 SRCS+= \
 print-babel.c \
 print-ip6opts.c \
@@ -208,7 +208,7 @@ print-ospf6.c \
 print-rt6.c
 
 CPPFLAGS+=-DHAVE_OS_IPV6_SUPPORT=1
-.endif
+#.endif
 
 CPPFLAGS+=-DHAVE_LIBCRYPTO=1 -DHAVE_OPENSSL_EVP_H 
 LDADD+=	-lcrypto -lcrypt

@@ -1,4 +1,4 @@
-/*	$NetBSD: vm_machdep.c,v 1.43 2024/01/19 03:35:31 thorpej Exp $	*/
+/*	$NetBSD: vm_machdep.c,v 1.47 2026/05/10 19:33:32 thorpej Exp $	*/
 
 /*
  * Copyright (c) 1988 University of Utah.
@@ -39,7 +39,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: vm_machdep.c,v 1.43 2024/01/19 03:35:31 thorpej Exp $");
+__KERNEL_RCSID(0, "$NetBSD: vm_machdep.c,v 1.47 2026/05/10 19:33:32 thorpej Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -51,10 +51,14 @@ __KERNEL_RCSID(0, "$NetBSD: vm_machdep.c,v 1.43 2024/01/19 03:35:31 thorpej Exp 
 #include <sys/exec.h>
 
 #include <machine/frame.h>
-#include <machine/pte.h>
 #include <machine/pcb.h>
 
 #include <uvm/uvm_extern.h>
+
+struct vm_map *phys_map;
+
+__CTASSERT(USPACE >= PAGE_SIZE);
+__CTASSERT((USPACE & PAGE_MASK) == 0);
 
 void
 cpu_proc_fork(struct proc *p1, struct proc *p2)
@@ -139,6 +143,12 @@ cpu_lwp_free2(struct lwp *l)
 
 	/* Nothing to do */
 }
+
+/*
+ * Ensure phys_map is large enough for at least 2 concurrent
+ * MAXPHYS transfers.
+ */
+__CTASSERT((MAXPHYS * 2) <= VM_PHYS_SIZE);
 
 /*
  * Map a user I/O request into kernel virtual address space.

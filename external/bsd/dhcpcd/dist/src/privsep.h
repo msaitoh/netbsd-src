@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Privilege Separation for dhcpcd
- * Copyright (c) 2006-2023 Roy Marples <roy@marples.name>
+ * Copyright (c) 2006-2025 Roy Marples <roy@marples.name>
  * All rights reserved
 
  * Redistribution and use in source and binary forms, with or without
@@ -110,8 +110,15 @@
 
 #define	PS_PROCESS_TIMEOUT	5	/* seconds to stop all processes */
 
-#if defined(PRIVSEP) && defined(HAVE_CAPSICUM)
-#define PRIVSEP_RIGHTS
+#ifdef PRIVSEP
+# ifdef HAVE_CAPSICUM
+#  define PRIVSEP_RIGHTS
+# endif
+/* Pledge and Capsicum deny nearly all sysctls.
+ * Linux needs directory access to sysctls. */
+# if defined(HAVE_CAPSICUM) ||defined(HAVE_PLEDGE) || defined(__linux__)
+#  define PRIVSEP_SYSCTL
+# endif
 #endif
 
 #define PS_ROOT_FD(ctx) ((ctx)->ps_root ? (ctx)->ps_root->psp_fd : -1)
@@ -215,6 +222,8 @@ ssize_t ps_sendmsg(struct dhcpcd_ctx *, int, uint16_t, unsigned long,
     const struct msghdr *);
 ssize_t ps_sendcmd(struct dhcpcd_ctx *, int, uint16_t, unsigned long,
     const void *data, size_t len);
+ssize_t ps_sendcmdmsg(struct dhcpcd_ctx *, int fd, uint16_t cmd,
+    unsigned long flags, const struct msghdr *msg);
 ssize_t ps_recvmsg(int, unsigned short, uint16_t, int);
 ssize_t ps_recvpsmsg(struct dhcpcd_ctx *, int, unsigned short,
     ssize_t (*callback)(void *, struct ps_msghdr *, struct msghdr *), void *);
@@ -238,7 +247,7 @@ int ps_seccomp_enter(void);
 pid_t ps_startprocess(struct ps_process *,
     void (*recv_msg)(void *, unsigned short),
     void (*recv_unpriv_msg)(void *, unsigned short),
-    int (*callback)(struct ps_process *), void (*)(int, void *),
+    int (*callback)(struct ps_process *),
     unsigned int);
 int ps_stopprocess(struct ps_process *);
 struct ps_process *ps_findprocess(struct dhcpcd_ctx *, struct ps_id *);

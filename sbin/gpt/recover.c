@@ -33,10 +33,13 @@
 __FBSDID("$FreeBSD: src/sbin/gpt/recover.c,v 1.8 2005/08/31 01:47:19 marcel Exp $");
 #endif
 #ifdef __RCSID
-__RCSID("$NetBSD: recover.c,v 1.19 2020/12/13 21:55:25 jnemeth Exp $");
+__RCSID("$NetBSD: recover.c,v 1.23 2025/12/17 16:18:11 nia Exp $");
 #endif
 
 #include <sys/types.h>
+#if defined(HAVE_SYS_ENDIAN_H) || ! defined(HAVE_NBTOOL_CONFIG_H)
+#include <sys/endian.h>
+#endif
 
 #include <err.h>
 #include <stddef.h>
@@ -55,7 +58,7 @@ static const char *recoverhelp[] = {
 	"",
 };
 
-struct gpt_cmd c_recover = {
+const struct gpt_cmd c_recover = {
 	"recover",
 	cmd_recover,
 	recoverhelp, __arraycount(recoverhelp),
@@ -232,16 +235,7 @@ recover(gpt_t gpt)
 static int
 cmd_recover(gpt_t gpt, int argc, char *argv[])
 {
-	int ch;
-
-	while ((ch = getopt(argc, argv, "r")) != -1) {
-		switch(ch) {
-		default:
-			return usage();
-		}
-	}
-
-	if (argc != optind)
+	if (argc != 2)
 		return usage();
 
 	return recover(gpt);

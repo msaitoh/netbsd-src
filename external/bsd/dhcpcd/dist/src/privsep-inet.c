@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Privilege Separation for dhcpcd, network proxy
- * Copyright (c) 2006-2023 Roy Marples <roy@marples.name>
+ * Copyright (c) 2006-2025 Roy Marples <roy@marples.name>
  * All rights reserved
 
  * Redistribution and use in source and binary forms, with or without
@@ -215,6 +215,7 @@ ps_inet_startcb(struct ps_process *psp)
 	return ret;
 }
 
+#if defined(INET) || defined(DHCP6)
 static bool
 ps_inet_validudp(struct msghdr *msg, uint16_t sport, uint16_t dport)
 {
@@ -233,6 +234,7 @@ ps_inet_validudp(struct msghdr *msg, uint16_t sport, uint16_t dport)
 	}
 	return true;
 }
+#endif
 
 #ifdef INET6
 static bool
@@ -368,7 +370,7 @@ ps_inet_start(struct dhcpcd_ctx *ctx)
 
 	strlcpy(psp->psp_name, "network proxy", sizeof(psp->psp_name));
 	pid = ps_startprocess(psp, ps_inet_recvmsg, ps_inet_dodispatch,
-	    ps_inet_startcb, NULL, PSF_DROPPRIVS);
+	    ps_inet_startcb, PSF_DROPPRIVS);
 
 	if (pid == 0)
 		ps_entersandbox("stdio", NULL);
@@ -592,7 +594,7 @@ ps_inet_cmd(struct dhcpcd_ctx *ctx, struct ps_msghdr *psm, struct msghdr *msg)
 	    "%s proxy %s", psp->psp_protostr,
 	    inet_ntop(psa->psa_family, ia, buf, sizeof(buf)));
 	start = ps_startprocess(psp, ps_inet_recvmsgpsp, NULL,
-	    start_func, NULL, PSF_DROPPRIVS);
+	    start_func, PSF_DROPPRIVS);
 	switch (start) {
 	case -1:
 		ps_freeprocess(psp);

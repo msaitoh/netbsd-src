@@ -1,4 +1,4 @@
-/*	$NetBSD: postlog.c,v 1.5 2023/12/23 20:30:44 christos Exp $	*/
+/*	$NetBSD: postlog.c,v 1.7 2026/05/09 18:49:19 christos Exp $	*/
 
 /*++
 /* NAME
@@ -19,15 +19,16 @@
 /*	line, \fBpostlog\fR(1) reads from standard input and logs each input
 /*	line as one record.
 /*
-/*	By default, logging is sent to \fBsyslogd\fR(8) or
-/*	\fBpostlogd\fR(8); when the
-/*	standard error stream is connected to a terminal, logging
-/*	is sent there as well.
+/*	Logging is sent to \fBsyslogd\fR(8) or \fBpostlogd\fR(8), and
+/*	to the standard error stream (with Postfix < 3.8, \fBpostlog\fR(1)
+/*	writes to the standard error stream only if that stream is
+/*	connected to a terminal).
 /*
 /*	The following options are implemented:
 /* .IP "\fB-c \fIconfig_dir\fR"
-/*	Read the \fBmain.cf\fR configuration file in the named directory
-/*	instead of the default configuration directory.
+/*	The \fBmain.cf\fR configuration file is in the named directory
+/*	instead of the default configuration directory. See also the
+/*	MAIL_CONFIG environment setting below.
 /* .IP "\fB-i\fR (obsolete)"
 /*	Include the process ID in the logging tag. This flag is ignored as
 /*	of Postfix 3.4, where the PID is always included.
@@ -56,7 +57,17 @@
 /* .ad
 /* .fi
 /* .IP MAIL_CONFIG
-/*	Directory with the \fBmain.cf\fR file.
+/*	Directory with the \fBmain.cf\fR file. In order to avoid exploitation
+/*	of set-group ID privileges, a non-default directory is allowed only
+/*	if:
+/* .RS
+/* .IP \(bu
+/*	The name is listed in the default \fBmain.cf\fR file with the
+/*	\fBalternate_config_directories\fR or
+/*	\fBmulti_instance_directories\fR configuration parameter.
+/* .IP \(bu
+/*	The command is invoked by the super-user.
+/* .RE
 /* CONFIGURATION PARAMETERS
 /* .ad
 /* .fi
@@ -84,6 +95,12 @@
 /*	\fBpostlogd\fR(8) service.
 /* .IP "\fBpostlog_service_name (postlog)\fR"
 /*	The name of the \fBpostlogd\fR(8) service entry in master.cf.
+/* .PP
+/*	Available in Postfix 3.9 and later:
+/* .IP "\fBmaillog_file_permissions (0600)\fR"
+/*	The file access permissions that will be set when the file
+/*	$maillog_file is created for the first time, or when the file is
+/*	created after an existing file is rotated.
 /* SEE ALSO
 /*	postconf(5), configuration parameters
 /*	postlogd(8), Postfix logging

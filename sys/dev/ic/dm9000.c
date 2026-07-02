@@ -1,4 +1,4 @@
-/*	$NetBSD: dm9000.c,v 1.37 2024/09/07 06:17:37 andvar Exp $	*/
+/*	$NetBSD: dm9000.c,v 1.44 2026/06/14 16:00:25 gutteridge Exp $	*/
 
 /*
  * Copyright (c) 2009 Paul Fleischer
@@ -87,6 +87,7 @@
  */
 
 #include <sys/cdefs.h>
+__KERNEL_RCSID(0, "$NetBSD: dm9000.c,v 1.44 2026/06/14 16:00:25 gutteridge Exp $");
 
 #include <sys/param.h>
 #include <sys/bus.h>
@@ -193,8 +194,6 @@ dme_attach(struct dme_softc *sc, const uint8_t *notusedanymore)
 	uint8_t b[2];
 	uint16_t io_mode;
 	uint8_t enaddr[ETHER_ADDR_LEN];
-	prop_dictionary_t dict;
-	prop_data_t ea;
 
 	dme_read_c(sc, DM9000_VID0, b, 2);
 	sc->sc_vendor_id = le16toh((uint16_t)b[1] << 8 | b[0]);
@@ -214,20 +213,9 @@ dme_attach(struct dme_softc *sc, const uint8_t *notusedanymore)
 		    ether_sprintf(enaddr));
 	}
 #endif
-	dict = device_properties(sc->sc_dev);
-	ea = (dict) ? prop_dictionary_get(dict, "mac-address") : NULL;
-	if (ea != NULL) {
-	       /*
-		 * If the MAC address is overridden by a device property,
-		 * use that.
-		 */
-		KASSERT(prop_object_type(ea) == PROP_TYPE_DATA);
-		KASSERT(prop_data_size(ea) == ETHER_ADDR_LEN);
-		memcpy(enaddr, prop_data_value(ea), ETHER_ADDR_LEN);
-		aprint_debug_dev(sc->sc_dev, "got MAC address!\n");
-	} else {
+	if (! ether_getaddr(sc->sc_dev, enaddr)) {
 		/*
-		 * If we did not get an externally configure address,
+		 * If we did not get an externally configured address,
 		 * try to read one from the current setup, before
 		 * resetting the chip.
 		 */
@@ -239,12 +227,12 @@ dme_attach(struct dme_softc *sc, const uint8_t *notusedanymore)
 			enaddr[0] = maclo;
 			enaddr[1] = maclo >> 8;
 			enaddr[2] = maclo >> 16;
-			enaddr[3] = maclo >> 26;
+			enaddr[3] = maclo >> 24;
 			enaddr[4] = machi;
 			enaddr[5] = machi >> 8;
 		}
 	}
-	/* TODO: perform explicit EEPROM read op if it's availble */
+	/* TODO: perform explicit EEPROM read op if it's available */
 
 	dme_reset(sc);
 
@@ -366,7 +354,7 @@ dme_reset(struct dme_softc *sc)
 		dme_write(sc, DM9000_NCR, 0x0);
 	}
 
-	/* Select internal PHY, no wakeup event, no collosion mode,
+	/* Select internal PHY, no wakeup event, no collision mode,
 	 * normal loopback mode.
 	 */
 	dme_write(sc, DM9000_NCR, DM9000_NCR_LBK_NORMAL);
@@ -444,7 +432,7 @@ dme_set_rcvfilt(struct dme_softc *sc)
 			ec->ec_flags |= ETHER_F_ALLMULTI;
 			ETHER_UNLOCK(ec);
 			memset(mchash, 0xff, sizeof(mchash)); /* necessary? */
-			/* accept all mulicast frame */
+			/* accept all multicast frame */
 			rcr |= DM9000_RCR_ALL;
 			goto update;
 		}

@@ -1,4 +1,4 @@
-# $NetBSD: cond-func-exists.mk,v 1.7 2023/11/19 21:47:52 rillig Exp $
+# $NetBSD: cond-func-exists.mk,v 1.9 2026/03/02 21:49:37 rillig Exp $
 #
 # Tests for the exists() function in .if conditions.
 
@@ -38,6 +38,11 @@
 .  error
 .endif
 
+# Expressions in the argument of a function call don't have to be defined.
+.if exists(${UNDEF})
+.  error
+.endif
+
 # The exists function does not really look up the file in the file system,
 # instead it uses a cache that is preloaded very early, before parsing the
 # first makefile.  At that time, the file did not exist yet.
@@ -47,5 +52,17 @@ _!=	> cond-func-exists.just-created
 .endif
 _!=	rm cond-func-exists.just-created
 
+
+# The exists function aims at source and target files, but not at makefiles.
+# In particular, the file is not searched in ${.PARSEDIR}.
+_!=	mkdir -p cond-func-exists && \
+	printf '%s\n' \
+	    '.if exists(file.inc)' \
+	    '.  error' \
+	    '.endif' \
+	> cond-func-exists/file.inc
+.include "cond-func-exists/file.inc"
+_!=	rm -f cond-func-exists/file.inc
+
+
 all:
-	@:;

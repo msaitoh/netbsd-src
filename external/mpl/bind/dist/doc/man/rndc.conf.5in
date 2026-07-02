@@ -1,4 +1,5 @@
-.\" Man page generated from reStructuredText.
+.\" Man page generated from reStructuredText
+.\" by the Docutils 0.22.4 manpage writer.
 .
 .
 .nr rst2man-indent-level 0
@@ -35,9 +36,9 @@ rndc.conf \- rndc configuration file
 \fBrndc.conf\fP
 .SH DESCRIPTION
 .sp
-\fBrndc.conf\fP is the configuration file for \X'tty: link #std-iscman-rndc'\fI\%rndc\fP\X'tty: link', the BIND 9 name
+\fBrndc.conf\fP is the configuration file for \fBrndc\fP \%<#\:std-iscman-rndc>, the BIND 9 name
 server control utility. This file has a similar structure and syntax to
-\X'tty: link #std-iscman-named.conf'\fI\%named.conf\fP\X'tty: link'\&. Statements are enclosed in braces and terminated with a
+\fBnamed.conf\fP \%<#\:std-iscman-named\:.conf>\&. Statements are enclosed in braces and terminated with a
 semi\-colon. Clauses in the statements are also semi\-colon terminated.
 The usual comment styles are supported:
 .sp
@@ -47,13 +48,13 @@ C++ style: // to end of line
 .sp
 Unix style: # to end of line
 .sp
-\fBrndc.conf\fP is much simpler than \X'tty: link #std-iscman-named.conf'\fI\%named.conf\fP\X'tty: link'\&. The file uses three
+\fBrndc.conf\fP is much simpler than \fBnamed.conf\fP \%<#\:std-iscman-named\:.conf>\&. The file uses three
 statements: an options statement, a server statement, and a key
 statement.
 .sp
 The \fBoptions\fP statement contains five clauses. The \fBdefault\-server\fP
 clause is followed by the name or address of a name server. This host
-is used when no name server is given as an argument to \X'tty: link #std-iscman-rndc'\fI\%rndc\fP\X'tty: link'\&.
+is used when no name server is given as an argument to \fBrndc\fP \%<#\:std-iscman-rndc>\&.
 The \fBdefault\-key\fP clause is followed by the name of a key, which is
 identified by a \fBkey\fP statement. If no \fBkeyid\fP is provided on the
 rndc command line, and no \fBkey\fP clause is found in a matching
@@ -78,14 +79,14 @@ IPv4 and IPv6 source address, respectively.
 .sp
 The \fBkey\fP statement begins with an identifying string, the name of the
 key. The statement has two clauses. \fBalgorithm\fP identifies the
-authentication algorithm for \X'tty: link #std-iscman-rndc'\fI\%rndc\fP\X'tty: link' to use; currently only HMAC\-MD5
+authentication algorithm for \fBrndc\fP \%<#\:std-iscman-rndc> to use; currently only HMAC\-MD5
 (for compatibility), HMAC\-SHA1, HMAC\-SHA224, HMAC\-SHA256 (default),
 HMAC\-SHA384, and HMAC\-SHA512 are supported. This is followed by a secret
 clause which contains the base\-64 encoding of the algorithm\(aqs
 authentication key. The base\-64 string is enclosed in double quotes.
 .sp
 There are two common ways to generate the base\-64 string for the secret.
-The BIND 9 program \X'tty: link #std-iscman-rndc-confgen'\fI\%rndc\-confgen\fP\X'tty: link' can be used to generate a random
+The BIND 9 program \fBrndc\-confgen\fP \%<#\:std-iscman-rndc-confgen> can be used to generate a random
 key, or the \fBmmencode\fP program, also known as \fBmimencode\fP, can be
 used to generate a base\-64 string from known input. \fBmmencode\fP does
 not ship with BIND 9 but is available on many systems. See the Example
@@ -94,69 +95,59 @@ section for sample command lines for each.
 .INDENT 0.0
 .INDENT 3.5
 .sp
-.nf
-.ft C
+.EX
 options {
   default\-server  localhost;
   default\-key     samplekey;
 };
-.ft P
-.fi
+.EE
 .UNINDENT
 .UNINDENT
 .INDENT 0.0
 .INDENT 3.5
 .sp
-.nf
-.ft C
+.EX
 server localhost {
   key             samplekey;
 };
-.ft P
-.fi
+.EE
 .UNINDENT
 .UNINDENT
 .INDENT 0.0
 .INDENT 3.5
 .sp
-.nf
-.ft C
+.EX
 server testserver {
   key     testkey;
   addresses   { localhost port 5353; };
 };
-.ft P
-.fi
+.EE
 .UNINDENT
 .UNINDENT
 .INDENT 0.0
 .INDENT 3.5
 .sp
-.nf
-.ft C
+.EX
 key samplekey {
   algorithm       hmac\-sha256;
   secret          \(dq6FMfj43Osz4lyb24OIe2iGEz9lf1llJO+lz\(dq;
 };
-.ft P
-.fi
+.EE
 .UNINDENT
 .UNINDENT
 .INDENT 0.0
 .INDENT 3.5
 .sp
-.nf
-.ft C
+.EX
 key testkey {
   algorithm   hmac\-sha256;
   secret      \(dqR3HI8P6BKw9ZwXwN3VZKuQ==\(dq;
 };
-.ft P
-.fi
+.EE
 .UNINDENT
 .UNINDENT
 .sp
-In the above example, \X'tty: link #std-iscman-rndc'\fI\%rndc\fP\X'tty: link' by default uses the server at
+In the above example, \fBrndc\fP \%<#\:std-iscman-rndc> by default uses the server at
 localhost (127.0.0.1) and the key called \(dqsamplekey\(dq. Commands to the
 localhost server use the \(dqsamplekey\(dq key, which must also be defined
 in the server\(aqs configuration file with the same name and secret. The
@@ -164,16 +155,16 @@ key statement indicates that \(dqsamplekey\(dq uses the HMAC\-SHA256 algorithm
 and its secret clause contains the base\-64 encoding of the HMAC\-SHA256
 secret enclosed in double quotes.
 .sp
-If \X'tty: link #cmdoption-rndc-s'\fI\%rndc \-s testserver\fP\X'tty: link' is used, then \X'tty: link #std-iscman-rndc'\fI\%rndc\fP\X'tty: link' connects to the server
+If \fBrndc \-s testserver\fP \%<#\:cmdoption-rndc-s> is used, then \fBrndc\fP \%<#\:std-iscman-rndc> connects to the server
 on localhost port 5353 using the key \(dqtestkey\(dq.
 .sp
-To generate a random secret with \X'tty: link #std-iscman-rndc-confgen'\fI\%rndc\-confgen\fP\X'tty: link':
+To generate a random secret with \fBrndc\-confgen\fP \%<#\:std-iscman-rndc-confgen>:
 .sp
-\X'tty: link #std-iscman-rndc-confgen'\fI\%rndc\-confgen\fP\X'tty: link'
+\fBrndc\-confgen\fP \%<#\:std-iscman-rndc-confgen>
 .sp
 A complete \fBrndc.conf\fP file, including the randomly generated key,
 is written to the standard output. Commented\-out \fBkey\fP and
-\fBcontrols\fP statements for \X'tty: link #std-iscman-named.conf'\fI\%named.conf\fP\X'tty: link' are also printed.
+\fBcontrols\fP statements for \fBnamed.conf\fP \%<#\:std-iscman-named\:.conf> are also printed.
 .sp
 To generate a base\-64 secret with \fBmmencode\fP:
 .sp
@@ -182,15 +173,14 @@ To generate a base\-64 secret with \fBmmencode\fP:
 .sp
 The name server must be configured to accept rndc connections and to
 recognize the key specified in the \fBrndc.conf\fP file, using the
-controls statement in \X'tty: link #std-iscman-named.conf'\fI\%named.conf\fP\X'tty: link'\&. See the sections on the
+controls statement in \fBnamed.conf\fP \%<#\:std-iscman-named\:.conf>\&. See the sections on the
 \fBcontrols\fP statement in the BIND 9 Administrator Reference Manual for
 details.
 .SH SEE ALSO
 .sp
-\X'tty: link #std-iscman-rndc'\fI\%rndc(8)\fP\X'tty: link', \X'tty: link #std-iscman-rndc-confgen'\fI\%rndc\-confgen(8)\fP\X'tty: link', \fBmmencode(1)\fP, BIND 9 Administrator Reference Manual.
-.SH AUTHOR
+\fBrndc(8)\fP \%<#\:std-iscman-rndc>, \fBrndc\-confgen(8)\fP \%<#\:std-iscman-rndc-confgen>, \fBmmencode(1)\fP, BIND 9 Administrator Reference Manual.
+.SH Author
 Internet Systems Consortium
-.SH COPYRIGHT
-2024, Internet Systems Consortium
-.\" Generated by docutils manpage writer.
-.
+.SH Copyright
+2026, Internet Systems Consortium
+.\" End of generated man page.

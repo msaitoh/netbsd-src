@@ -1407,7 +1407,7 @@ n=$((n + 1))
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
-copy_setports ns1/named.conf2.in ns1/named.conf
+cp ns1/named2.conf ns1/named.conf
 rndc_reload ns1 10.53.0.1
 
 echo_i "checking 'dig +dns64prefix' with multiple prefixes ($n)"
@@ -1419,7 +1419,7 @@ n=$((n + 1))
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
-copy_setports ns1/named.conf3.in ns1/named.conf
+cp ns1/named3.conf ns1/named.conf
 rndc_reload ns1 10.53.0.1
 
 echo_i "checking 'dig +dns64prefix' with no prefixes ($n)"
@@ -1447,6 +1447,19 @@ grep "ip6\.arpa\..*PTR.*ipv4only\.arpa\." dig.out.171.ns2.test$n >/dev/null || r
 n=$((n + 1))
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
+
+if $PERL ../testsock6.pl fd92:7065:b8e:fffe::10.53.0.4 2>/dev/null; then
+  echo_i "checking resolver-use-dns64 ($n)"
+  ret=0
+  $DIG $DIGOPTS @10.53.0.3 no-aaaa aaaa >dig.out.ns3.test$n || ret=1
+  grep "status: NOERROR" dig.out.ns3.test$n >/dev/null || ret=1
+  grep "fd92:7065:b8e:fffe::102:304" dig.out.ns3.test$n >/dev/null || ret=1
+  n=$((n + 1))
+  if [ $ret != 0 ]; then echo_i "failed"; fi
+  status=$((status + ret))
+else
+  echo_i "skipped use-dns64 test - fd92:7065:b8e:fffe::10.53.0.4 not configured ($n)"
+fi
 
 echo_i "exit status: $status"
 [ $status -eq 0 ] || exit 1

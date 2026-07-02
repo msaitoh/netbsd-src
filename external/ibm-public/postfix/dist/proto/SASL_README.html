@@ -1,5 +1,5 @@
 <!doctype html public "-//W3C//DTD HTML 4.01 Transitional//EN"
-        "http://www.w3.org/TR/html4/loose.dtd">
+        "https://www.w3.org/TR/html4/loose.dtd">
 
 <head>
 
@@ -178,7 +178,7 @@ later. </p>
 <p> Dovecot is a POP/IMAP server that has its own configuration to
 authenticate POP/IMAP clients. When the Postfix SMTP server uses
 Dovecot SASL, it reuses parts of this configuration.  Consult the
-<a href="http://wiki.dovecot.org">Dovecot documentation</a> for how
+<a href="https://doc.dovecot.org">Dovecot documentation</a> for how
 to configure and operate the Dovecot authentication server.  </p>
 
 <h4><a name="server_dovecot_comm">Postfix to Dovecot SASL communication</a></h4>
@@ -281,13 +281,9 @@ configuration file in <code>/etc/postfix/sasl/</code>,
 cyrus_sasl_config_path</code> and/or the distribution-specific
 documentation to determine the expected location. </p> </li>
 
-<li> <p> Some Debian-based Postfix distributions patch Postfix to
-hardcode a non-default search path, making it impossible to set an
-alternate search path via the "cyrus_sasl_config_path" parameter.  This
-is likely to be the case when the distribution documents a
-Postfix-specific path (e.g. <code>/etc/postfix/sasl/</code>) that is
-different from the default value of "cyrus_sasl_config_path" (which
-then is likely to be empty). </p> </li>
+<li> <p> Some Debian-based Postfix distributions ignore the
+"cyrus_sasl_config_path" parameter setting, and force Postfix to
+open the file <code>/etc/postfix/sasl/smtpd.conf</code>. </p> </li>
 
 </ul>
 
@@ -909,7 +905,7 @@ stored as plaintext. </p>
 auxprop plugin. Instead, you can use "<code>saslauthd -a ldap</code>"
 to query the LDAP database directly, with appropriate configuration
 in <code>saslauthd.conf</code>, <a
-href="http://git.cyrusimap.org/cyrus-sasl/tree/saslauthd/LDAP_SASLAUTHD">as
+href="https://github.com/cyrusimap/cyrus-sasl/blob/master/saslauthd/LDAP_SASLAUTHD">as
 described here</a>.  You will not be able to use any of the
 methods that require access to plaintext passwords, such as the
 shared-secret methods CRAM-MD5 and DIGEST-MD5.  </p>
@@ -1089,7 +1085,7 @@ to add the above attribute. </p>
 <strong>Note</strong>
 
 <p> Read the chapter "Using SASL" in the <a
-href="http://www.openldap.org/doc/admin">OpenLDAP Admin Guide</a>
+href="https://www.openldap.org/doc/admin">OpenLDAP Admin Guide</a>
 for more detailed instructions to set up SASL authentication in
 OpenLDAP. </p>
 
@@ -1381,7 +1377,8 @@ use a particular envelope sender address: </p>
 <blockquote>
 <pre>
 /etc/postfix/main.cf:
-    <strong>smtpd_sender_login_maps = hash:/etc/postfix/controlled_envelope_senders</strong>
+    <strong>smtpd_sender_login_maps = 
+        lmdb:/etc/postfix/controlled_envelope_senders</strong>
 
     smtpd_recipient_restrictions =
         ...
@@ -1405,6 +1402,19 @@ names that own that address: </p>
     @example.net                barney, fred, john@example.com, mary@example.com
 </pre>
 </blockquote>
+
+<p> Instead of lmdb:, some systems use cdb:, hash:, or dbm:. </p>
+
+<p> Execute the command "<b>postmap
+/etc/postfix/controlled_envelope_senders</b>" after you change the
+controlled_envelope_senders file, to (re)build a default-type indexed
+file. Execute "<b>postmap
+<i>type</i>:/etc/postfix/controlled_envelope_senders</b>" to specify
+an explicit type.</p>
+
+<p> The default indexed file type is configured with the
+default_database_type parameter. To list available explicit types, 
+execute the command "<b>postconf -m</b>".</p>
 
 <p> With this, the <code>reject_sender_login_mismatch</code>
 restriction above will reject the sender address in the MAIL FROM
@@ -1434,7 +1444,7 @@ REJECT mail from accounts whose credentials have been compromised.
 /etc/postfix/main.cf:
     smtpd_recipient_restrictions = 
 	permit_mynetworks 
-	check_sasl_access hash:/etc/postfix/sasl_access
+	check_sasl_access lmdb:/etc/postfix/sasl_access
 	permit_sasl_authenticated
 	...
 
@@ -1445,6 +1455,17 @@ REJECT mail from accounts whose credentials have been compromised.
      username@example.com HOLD
 </pre>
 </blockquote>
+
+<p> Instead of lmdb:, some systems use cdb:, hash:, or dbm:. </p>
+
+<p> Execute the command "<b>postmap /etc/postfix/sasl_access</b>"
+after you change the sasl_access file, to (re)build a default-type
+indexed file. Execute "<b>postmap <i>type</i>:/etc/postfix/sasl_access</b>"
+to specify an explicit type.</p>
+
+<p> The default indexed file type is configured with the
+default_database_type parameter. To list available explicit types, 
+execute the command "<b>postconf -m</b>".</p>
 
 <h4><a name="id397172">Default  authentication domain</a></h4>
 
@@ -1579,7 +1600,7 @@ encoded authentication information: </p>
 <p> The <strong>mmencode</strong> command is part of the metamail
 software. </p>
 
-<li> <p> Using Perl <b>MIME::Base64</b> (from http://www.cpan.org/): </p>
+<li> <p> Using Perl <b>MIME::Base64</b> (from https://www.cpan.org/): </p>
 
 <blockquote>
 <pre>
@@ -1601,7 +1622,7 @@ password:
 </blockquote>
 
 <p> The <strong>gen-auth</strong> Perl script was written by John
-Jetmore and can be found at http://jetmore.org/john/code/gen-auth. </p>
+Jetmore and can be found at https://jetmore.org/john/code/gen-auth. </p>
 
 </ul>
 
@@ -1679,7 +1700,7 @@ second part sets up the username/password information.  </p>
     relayhost = [mail.isp.example]
     # Alternative form:
     # relayhost = [mail.isp.example]:submission
-    smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
+    smtp_sasl_password_maps = lmdb:/etc/postfix/sasl_passwd
 </pre>
 </blockquote>
 
@@ -1753,8 +1774,16 @@ and before entering an optional chroot jail. </p>
 
 <ul>
 
-<li> <p> Use the <code>postmap</code> command whenever you
-change the <code>/etc/postfix/sasl_passwd</code> file. </p> </li>
+<p> Instead of lmdb:, some systems use cdb:, hash:, or dbm:. </p>
+
+<li> <p> Execute the command "<b>postmap /etc/postfix/sasl_passwd</b>"
+after changing the sasl_passwd file, to (re)build a default-type
+indexed file. Execute "<b>postmap <i>type</i>:/etc/postfix/sasl_passwd</b>"
+to specify an explicit type.</p>
+
+<p> The default indexed file type is configured with the
+default_database_type parameter. To list available explicit types, 
+execute the command "<b>postconf -m</b>".</p> </li>
 
 <li> <p> If you specify the "<code>[</code>" and "<code>]</code>"
 in the <code>relayhost</code> destination, then you must use the
@@ -1789,9 +1818,10 @@ resort.  </p>
 <pre>
 /etc/postfix/main.cf:
     smtp_sender_dependent_authentication = yes
-    sender_dependent_relayhost_maps = hash:/etc/postfix/sender_relay
+    sender_dependent_relayhost_maps = 
+        lmdb:/etc/postfix/sender_relay
     smtp_sasl_auth_enable = yes
-    smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
+    smtp_sasl_password_maps = lmdb:/etc/postfix/sasl_passwd
     relayhost = [mail.isp.example]
     # Alternative form:
     # relayhost = [mail.isp.example]:submission
@@ -1822,19 +1852,25 @@ resort.  </p>
 
 <ul>
 
+<p> Instead of lmdb:, some systems use cdb:, hash:, or dbm:. </p>
+
 <li> <p> If you are creative, then you can try to combine the two
 tables into one single MySQL database, and configure different
 Postfix queries to extract the appropriate information. </p>
 
-<li> <p> Specify <b>dbm</b> instead of <b>hash</b> if your system uses
-<b>dbm</b> files instead of <b>db</b> files. To find out what lookup
-tables Postfix supports, use the command "<b>postconf -m</b>". </p>
-
 <li> <p> Execute the command "<b>postmap /etc/postfix/sasl_passwd</b>"
-whenever you change the sasl_passwd table. </p>
+after you change the sasl_passwd file, to (re)build a default-type
+indexed file. Execute "<b>postmap <i>type</i>:/etc/postfix/sasl_passwd</b>"
+to specify an explicit type.</p>
+
+<p> The default indexed file type is configured with the
+default_database_type parameter. To list available explicit types, 
+execute the command "<b>postconf -m</b>".</p>
 
 <li> <p> Execute the command "<b>postmap /etc/postfix/sender_relay</b>"
-whenever you change the sender_relay table. </p>
+after you change the sender_relay file, to (re)build a default-type
+indexed file. Execute "<b>postmap <i>type</i>:/etc/postfix/sender_relay</b>"
+to specify an explicit type.</p>
 
 </ul>
 
@@ -2205,7 +2241,7 @@ it unless you are forced to. The makers of Cyrus SASL write: </p>
 
 <blockquote> <i> This library is being deprecated and applications
 should transition to using the SASLv2 library</i> (source: <a
-href="http://www.cyrusimap.org/download.html">Project Cyrus:
+href="https://www.cyrusimap.org/download.html">Project Cyrus:
 Downloads</a>). </blockquote>
 
 <p> If you still need to set it up, here's a quick rundown: </p>

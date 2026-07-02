@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile.inc,v 1.103 2024/09/23 15:49:42 christos Exp $
+#	$NetBSD: Makefile.inc,v 1.105 2025/07/20 23:09:09 dholland Exp $
 #	from: @(#)Makefile.inc	8.3 (Berkeley) 2/4/95
 
 # stdlib sources
@@ -87,8 +87,11 @@ MLINKS+=jemalloc.3 malloc.conf.5
 MLINKS+=lsearch.3 lfind.3
 MLINKS+=malloc.3 calloc.3 malloc.3 realloc.3 malloc.3 free.3
 MLINKS+=posix_memalign.3 aligned_alloc.3
-MLINKS+=qsort.3 heapsort.3 qsort.3 mergesort.3
 MLINKS+=ptsname.3 ptsname_r.3
+MLINKS+=qsort.3 heapsort.3 qsort.3 mergesort.3
+MLINKS+=qsort.3 heapsort_r.3
+MLINKS+=qsort.3 mergesort_r.3
+MLINKS+=qsort.3 qsort_r.3
 MLINKS+=rand.3 rand_r.3
 MLINKS+=rand.3 srand.3
 MLINKS+=rand48.3 drand48.3 rand48.3 erand48.3 rand48.3 lrand48.3

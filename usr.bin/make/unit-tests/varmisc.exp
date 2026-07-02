@@ -45,28 +45,37 @@ parse-dynamic: parse-dynamic parse-dynamic after
 parse-dynamic: parse-dynamic parse-dynamic after
 varerror-unclosed-1:begin
 make: Unclosed variable ""
-	in target "varerror-unclosed-2"
+	in command "@echo $("
+	in target "varerror-unclosed-2" from varmisc.mk:195
 make: Unclosed variable "UNCLOSED"
-	in target "varerror-unclosed-3"
+	in command "@echo $(UNCLOSED"
+	in target "varerror-unclosed-3" from varmisc.mk:198
 make: Unclosed variable "UNCLOSED"
-	in target "varerror-unclosed-4"
+	in command "@echo ${UNCLOSED"
+	in target "varerror-unclosed-4" from varmisc.mk:201
 make: Unclosed variable "PATTERN"
 	while evaluating variable "UNCLOSED" with value ""
-	in target "varerror-unclosed-5"
-make: Unclosed expression, expecting '}' for modifier "M${PATTERN"
+	in command "@echo ${UNCLOSED:M${PATTERN"
+	in target "varerror-unclosed-5" from varmisc.mk:204
+make: Unclosed expression, expecting "}" for modifier "M${PATTERN"
 	while evaluating variable "UNCLOSED" with value ""
-	in target "varerror-unclosed-5"
+	in command "@echo ${UNCLOSED:M${PATTERN"
+	in target "varerror-unclosed-5" from varmisc.mk:204
 make: Unclosed variable "param"
-	in target "varerror-unclosed-6"
+	in command "@echo ${UNCLOSED.${param"
+	in target "varerror-unclosed-6" from varmisc.mk:208
 make: Unclosed variable "UNCLOSED."
-	in target "varerror-unclosed-6"
+	in command "@echo ${UNCLOSED.${param"
+	in target "varerror-unclosed-6" from varmisc.mk:208
 
 make: Unclosed variable "UNCLOSED.1"
-	in target "varerror-unclosed-7"
+	in command "@echo ${UNCLOSED.${:U1}"
+	in target "varerror-unclosed-7" from varmisc.mk:213
 make: Unclosed variable "UNCLOSED_ORIG"
 	while evaluating variable "UNCLOSED_INDIR_1" with value "${UNCLOSED_ORIG"
 	while evaluating variable "UNCLOSED_INDIR_2" with value "${UNCLOSED_INDIR_1}"
-	in target "varerror-unclosed-8"
+	in command "@echo ${UNCLOSED_INDIR_2}"
+	in target "varerror-unclosed-8" from varmisc.mk:217
 target1-flags: we have: one two
 target2-flags: we have: one two three four
 exit status 2

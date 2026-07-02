@@ -9,10 +9,19 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
-import isctest.mark
+import pytest
+
+pytestmark = pytest.mark.extra_artifacts(
+    [
+        "*mdig.out*",
+        "dig.out.*",
+        "ns*/log-*",
+        "ns2/named.stats",
+    ]
+)
 
 
 # The rrl is known to be quite unstable. GL #172
-@isctest.mark.flaky(max_runs=2)
+@pytest.mark.flaky(max_runs=2)
 def test_rrl(run_tests_sh):
     run_tests_sh()

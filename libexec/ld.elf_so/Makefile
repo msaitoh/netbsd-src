@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.149 2024/01/19 19:21:34 christos Exp $
+#	$NetBSD: Makefile,v 1.155 2026/01/18 19:19:09 jmcneill Exp $
 #
 # NOTE: when changing ld.so, ensure that ldd still compiles.
 #
@@ -98,6 +98,10 @@ SRCS+=		stack_protector.c
 .PATH.c: ${NETBSDSRCDIR}/lib/libc/stdlib
 SRCS+=		exit.c
 
+.PATH.c: ${NETBSDSRCDIR}/lib/libc/gen
+SRCS+=		ctype_.c	# ctype(3) tables without useless guard page
+CPPFLAGS.ctype_.c+=	-I${NETBSDSRCDIR}/lib/libc/locale
+
 errlist_concat.h: ${NETBSDSRCDIR}/lib/libc/gen/errlist.awk ${NETBSDSRCDIR}/sys/sys/errno.h
 	${TOOL_AWK} -v concat=1 -f ${.ALLSRC} > ${.TARGET}.tmp && \
 	mv -f ${.TARGET}.tmp ${.TARGET}
@@ -115,9 +119,13 @@ CPPFLAGS+=	-DRTLD_LOADER -D_LIBC_INTERNAL
 CPPFLAGS+=	-DGNU_RELRO
 CPPFLAGS+=	-D_RTLD_SOURCE
 CPPFLAGS+=	-DHAVE_INITFINI_ARRAY
+.if ${LDELFSO_MACHINE_ARCH} == "powerpc"
+CPPFLAGS+=	-DRTLD_MAP_OBJECT_FIXUP
+.endif
 #CPPFLAGS+=	-DDEBUG
 #CPPFLAGS+=	-DRTLD_DEBUG
 #CPPFLAGS+=	-DRTLD_DEBUG_RELOC
+#CPPFLAGS+=	-DMALLOC_DEBUG
 .if !empty(LDELFSO_MACHINE_ARCH:Mearm*)
 CPPFLAGS+=	-I${NETBSDSRCDIR}/lib/libexecinfo
 .endif
@@ -136,10 +144,6 @@ COPTS+=		-mno-3dnow -mno-mmx -mno-sse -mno-sse2 -mno-sse3
 .if ${SHLIBDIR} != ${LIBDIR}
 CPPFLAGS+=	-DRTLD_DEFAULT_LIBRARY_PATH=\"${SHLIBDIR}:${LIBDIR}\"
 .endif
-
-# rtld.c and symbol.c use alloca, so disable SSP warnings.
-COPTS.rtld.c+=	-Wno-stack-protector
-COPTS.symbol.c+=-Wno-stack-protector
 
 LDADD+=		-Wl,--version-script=${.CURDIR}/symbols.map
 LDADD+=		-L${CLIBOBJ} -L${DESTDIR}${LIBDIR}
@@ -164,19 +168,13 @@ STRIPFLAG=
 
 .PATH: $M
 
-
-${PROG}: ${OBJS} ${DPADD}
-	${_MKMSG_LINK} ${PROG}
-	${CC} ${LDFLAGS} -o ${PROG} ${OBJS} ${LDADD}
 .if ${MKDEBUG} != "no"
-	(  ${OBJCOPY} --only-keep-debug ${.TARGET} ${.TARGET}.debug \
-	   && ${OBJCOPY} --strip-debug -p -R .gnu_debuglink \
-	   --add-gnu-debuglink=${.TARGET}.debug ${.TARGET} \
-	) || (rm -f ${.TARGET}.debug; false)
-
-_PROGDEBUG.${PROG} := ${PROG}.debug
+${PROG}.link:
+.else
+${PROG}:
 .endif
-
+	${_MKTARGET_LINK}
+	${CC} ${LDFLAGS} -o ${.TARGET} ${OBJS} ${LDADD}
 
 .if ${SHLINKINSTALLDIR} != "/usr/libexec"
 SYMLINKS+=	${SHLINKINSTALLDIR}/${PROG} /usr/libexec/${PROG}

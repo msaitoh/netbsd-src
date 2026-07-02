@@ -1,4 +1,4 @@
-/*	$NetBSD: tls_dane.c,v 1.5 2023/12/23 20:30:45 christos Exp $	*/
+/*	$NetBSD: tls_dane.c,v 1.7 2026/05/09 18:49:21 christos Exp $	*/
 
 /*++
 /* NAME
@@ -24,8 +24,9 @@
 /*	void	tls_dane_free(dane)
 /*	TLS_DANE *dane;
 /*
-/*	void	tls_dane_add_fpt_digests(dane, digest, delim, smtp_mode)
+/*	void	tls_dane_add_fpt_digests(dane, pkey_only, digest, delim, smtp_mode)
 /*	TLS_DANE *dane;
+/*	int     pkey_only;
 /*	const char *digest;
 /*	const char *delim;
 /*	int     smtp_mode;
@@ -132,6 +133,9 @@
 /*	SSL context to be configured with the chosen digest algorithms.
 /* .IP  fpt_alg
 /*	The OpenSSL EVP digest algorithm handle for the fingerprint digest.
+/* .IP  pkey_only
+/*	When true, generate "fingerprint" TLSA records for just the public
+/*	keys.  Otherwise, for both certificates and public keys.
 /* .IP  tlsa
 /*	TLSA record linked list head, initially NULL.
 /* .IP  usage
@@ -417,8 +421,9 @@ static void dane_free(void *dane, void *unused_context)
 
 /* tls_dane_add_fpt_digests - map fingerprint list to DANE TLSA RRset */
 
-void    tls_dane_add_fpt_digests(TLS_DANE *dane, const char *digest,
-				         const char *delim, int smtp_mode)
+void    tls_dane_add_fpt_digests(TLS_DANE *dane, int pkey_only,
+			              const char *digest, const char *delim,
+				         int smtp_mode)
 {
     ARGV   *values = argv_split(digest, delim);
     ssize_t i;
@@ -456,32 +461,40 @@ void    tls_dane_add_fpt_digests(TLS_DANE *dane, const char *digest,
 	    msg_warn("malformed fingerprint value: %.384s", values->argv[i]);
 	    continue;
 	}
+#define USTR_LEN(raw) (unsigned char *) STR(raw), VSTRING_LEN(raw)
 
 	/*
 	 * At the "fingerprint" security level certificate digests and public
-	 * key digests are interchangeable.  Each leaf certificate is matched
-	 * via either the public key digest or full certificate digest.  The
-	 * DER encoding of a certificate is not a valid public key, and
-	 * conversely, the DER encoding of a public key is not a valid
-	 * certificate.  An attacker would need a 2nd-preimage that is
+	 * key digests are by default interchangeable.  Each leaf certificate
+	 * is matched via either the public key digest or full certificate
+	 * digest.  The DER encoding of a certificate is not a valid public
+	 * key, and conversely, the DER encoding of a public key is not a
+	 * valid certificate.  An attacker would need a 2nd-preimage that is
 	 * feasible across types (given cert digest == some pkey digest) and
 	 * yet presumably difficult within a type (e.g. given cert digest ==
 	 * some other cert digest).  No such attacks are known at this time,
 	 * and it is expected that if any are found they would work within as
 	 * well as across the cert/pkey data types.
 	 * 
+	 * That said, when `pkey_only` is true, we match only public keys.
+	 * 
 	 * The private-use matching type "255" is mapped to the configured
 	 * fingerprint digest, which may (harmlessly) coincide with one of
 	 * the standard DANE digest algorithms.  The private code point is
 	 * however unconditionally enabled.
 	 */
+	if (!pkey_only) {
+	    dane->tlsa = tlsa_prepend(dane->tlsa, 3, 0, 255, USTR_LEN(raw));
+	    if (log_mask & (TLS_LOG_VERBOSE | TLS_LOG_DANE))
+		tlsa_info("fingerprint", "digest as private-use TLSA record",
+			  3, 0, 255, USTR_LEN(raw));
+	}
+	/* The public key match is unconditional */
+	dane->tlsa = tlsa_prepend(dane->tlsa, 3, 1, 255, USTR_LEN(raw));
 	if (log_mask & (TLS_LOG_VERBOSE | TLS_LOG_DANE))
 	    tlsa_info("fingerprint", "digest as private-use TLSA record",
-		   3, 0, 255, (unsigned char *) STR(raw), VSTRING_LEN(raw));
-	dane->tlsa = tlsa_prepend(dane->tlsa, 3, 0, 255,
-			      (unsigned char *) STR(raw), VSTRING_LEN(raw));
-	dane->tlsa = tlsa_prepend(dane->tlsa, 3, 1, 255,
-			      (unsigned char *) STR(raw), VSTRING_LEN(raw));
+		      3, 1, 255, USTR_LEN(raw));
+
 	vstring_free(raw);
     }
     argv_free(values);
@@ -800,12 +813,22 @@ int     tls_dane_enable(TLS_SESS_STATE *TLScontext)
     SSL    *ssl = TLScontext->con;
     int     usable = 0;
     int     ret;
+    int     rpk_compat = 1;
 
     for (tp = dane->tlsa; tp != 0; tp = tp->next) {
 	ret = SSL_dane_tlsa_add(ssl, tp->usage, tp->selector,
 				tp->mtype, tp->data, tp->length);
 	if (ret > 0) {
 	    ++usable;
+
+	    /*
+	     * Disable use of RFC7250 raw public keys if any TLSA record
+	     * depends on X.509 certificates.  Only DANE-EE(3) SPKI(1)
+	     * records can get by with just a public key.
+	     */
+	    if (tp->usage != DNS_TLSA_USAGE_DOMAIN_ISSUED_CERTIFICATE
+		|| tp->selector != DNS_TLSA_SELECTOR_SUBJECTPUBLICKEYINFO)
+		rpk_compat = 0;
 	    continue;
 	}
 	if (ret == 0) {
@@ -820,6 +843,9 @@ int     tls_dane_enable(TLS_SESS_STATE *TLScontext)
 	tls_print_errors();
 	return (-1);
     }
+    if (rpk_compat)
+	tls_enable_server_rpk(NULL, ssl);
+
     return (usable);
 }
 
@@ -966,8 +992,9 @@ void    tls_dane_log(TLS_SESS_STATE *TLScontext)
 {
     static VSTRING *top;
     static VSTRING *bot;
+    X509   *mcert = 0;
     EVP_PKEY *mspki = 0;
-    int     depth = SSL_get0_dane_authority(TLScontext->con, NULL, &mspki);
+    int     depth = SSL_get0_dane_authority(TLScontext->con, &mcert, &mspki);
     uint8_t u, s, m;
     unsigned const char *data;
     size_t  dlen;
@@ -996,22 +1023,27 @@ void    tls_dane_log(TLS_SESS_STATE *TLScontext)
 	hex_encode(top, (char *) data, dlen);
     }
 
-    switch (TLScontext->level) {
-    case TLS_LEV_FPRINT:
+    if (TLScontext->level == TLS_LEV_FPRINT) {
 	msg_info("%s: Matched fingerprint: %s%s%s", TLScontext->namaddr,
 		 STR(top), dlen > MAX_DUMP_BYTES ? "..." : "",
 		 dlen > MAX_DUMP_BYTES ? STR(bot) : "");
 	return;
-
-    default:
-	msg_info("%s: Matched DANE %s at depth %d: %u %u %u %s%s%s",
-		 TLScontext->namaddr, mspki ?
-		 "TA public key verified certificate" : depth ?
-		 "TA certificate" : "EE certificate", depth, u, s, m,
+    }
+#if OPENSSL_VERSION_PREREQ(3,2)
+    if (SSL_get0_peer_rpk(TLScontext->con) != NULL) {
+	msg_info("%s: Matched DANE raw public key: %u %u %u %s%s%s",
+		 TLScontext->namaddr, u, s, m,
 		 STR(top), dlen > MAX_DUMP_BYTES ? "..." : "",
 		 dlen > MAX_DUMP_BYTES ? STR(bot) : "");
 	return;
     }
+#endif
+    msg_info("%s: Matched DANE %s at depth %d: %u %u %u %s%s%s",
+	     TLScontext->namaddr, mspki ?
+	     "TA public key verified certificate" : depth ?
+	     "TA certificate" : "EE certificate", depth, u, s, m,
+	     STR(top), dlen > MAX_DUMP_BYTES ? "..." : "",
+	     dlen > MAX_DUMP_BYTES ? STR(bot) : "");
 }
 
 #ifdef TEST
@@ -1262,9 +1294,6 @@ static SSL_CTX *ctx_init(const char *CAfile)
     tls_param_init();
     tls_check_version();
 
-    if (!tls_validate_digest(LN_sha1))
-	msg_fatal("%s digest algorithm not available", LN_sha1);
-
     if (TLScontext_index < 0)
 	if ((TLScontext_index = SSL_get_ex_new_index(0, 0, 0, 0, 0)) < 0)
 	    msg_fatal("Cannot allocate SSL application data index");
@@ -1309,7 +1338,7 @@ int     main(int argc, char *argv[])
 
     tctx = tls_alloc_sess_context(TLS_LOG_NONE, argv[7]);
     tctx->namaddr = argv[7];
-    tctx->mdalg = LN_sha256;
+    tctx->mdalg = atoi(argv[3]) == 2 ? LN_sha512 : LN_sha256;
     tctx->dane = tls_dane_alloc();
 
     if ((fpt_alg = tls_validate_digest(tctx->mdalg)) == 0)
@@ -1346,9 +1375,10 @@ int     main(int argc, char *argv[])
 	    peername = argv[7];
 	msg_info("Verified %s", peername);
     } else {
-	i = SSL_get_verify_result(tctx->con);
+	int     r = SSL_get_verify_result(tctx->con);
+
 	msg_info("certificate verification failed for %s:%s: num=%d:%s",
-		 argv[6], argv[7], i, X509_verify_cert_error_string(i));
+		 argv[6], argv[7], r, X509_verify_cert_error_string(r));
     }
 
     return (i <= 0);

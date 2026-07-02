@@ -1,11 +1,12 @@
-#	$NetBSD: Makefile,v 1.10 2023/02/20 02:12:02 mrg Exp $
+#	$NetBSD: Makefile,v 1.12 2025/11/14 00:01:09 mrg Exp $
 
 .include <bsd.own.mk>
 
 SUBDIR+=	libgcc
 
 .if ${MKPIC} != "no"
-SUBDIR+=	libgcc_eh libgcc_s
+# libgcc_s depends upon libgcc.a
+SUBDIR+=	libgcc_eh .WAIT libgcc_s
 .endif
 
 SUBDIR+=	libgcov

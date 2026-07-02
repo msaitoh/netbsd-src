@@ -1,4 +1,4 @@
-/*	$NetBSD: shell.h,v 1.33 2024/10/09 13:43:33 kre Exp $	*/
+/*	$NetBSD: shell.h,v 1.35 2026/03/22 20:27:42 kre Exp $	*/
 
 /*-
  * Copyright (c) 1991, 1993
@@ -103,7 +103,7 @@ extern	int		ShNest;
 #define	DBG_EXTRAS(n)	((DBG_VBOSE_SHIFT * 2) + (n))
 
 /*
- * Macros to enable tracing, so the mainainer can control
+ * Macros to enable tracing, so the maintainer can control
  * just how much debug output is dumped to the trace file
  *
  * In the X forms, "xtra" can be any legal C statement(s) without (bare) commas
@@ -157,11 +157,16 @@ extern	int		ShNest;
 				    }					\
 				} while (0)
 
+/* These allow the tracing code to indentify the subshell depth, if requested */
 #define SHELL_FORKED()	ShNest++
 #define VFORK_BLOCK	{ const int _ShNest = ShNest;
 #define VFORK_END	}
 #define VFORK_UNDO()	ShNest = _ShNest
 
+/* This one allows anything extra needed in DEBUG mode -- often var decls */
+#define DEBUG_ONLY(anything) anything
+
+/* The debug flags (set/clr using the "debug" built in command, DEBUG only */
 #define	DBG_ALWAYS	(1LL << 0)
 #define	DBG_PARSE	(1LL << 1)		/* r (read commands) */
 #define	DBG_EVAL	(1LL << 2)		/* e */
@@ -184,7 +189,7 @@ extern	int		ShNest;
 #define	DBG_LEXER	(1LL << 19)		/* l */
 
 /*
- * reserved extras: b=builtins y=alias
+ * reserved extras: b=builtins y=alias  (not currently implemented)
  * still free:  d k n q u
  */
 
@@ -215,6 +220,8 @@ extern void set_debug(const char *, int);
 #define CVTRACE(when, cond, param)	/* more conditional verbose trace */
 #define VTRACEV(when, param)		/* conditional verbose varargs trace */
 #define VXTRACE(when, param, extra)	/* cond verbose trace, plus more */
+
+#define DEBUG_ONLY(anything) do { /* nothing */ } while(0)
 
 #define SHELL_FORKED()
 #define VFORK_BLOCK

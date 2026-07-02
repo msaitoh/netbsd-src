@@ -1,4 +1,4 @@
-/*	$NetBSD: xhci.c,v 1.184 2024/05/20 11:36:20 riastradh Exp $	*/
+/*	$NetBSD: xhci.c,v 1.193 2026/06/17 09:57:24 msaitoh Exp $	*/
 
 /*
  * Copyright (c) 2013 Jonathan A. Kollasch
@@ -34,7 +34,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: xhci.c,v 1.184 2024/05/20 11:36:20 riastradh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: xhci.c,v 1.193 2026/06/17 09:57:24 msaitoh Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_usb.h"
@@ -129,9 +129,10 @@ fail:
 struct xhci_pipe {
 	struct usbd_pipe xp_pipe;
 	struct usb_task xp_async_task;
-	int16_t xp_isoc_next; /* next frame */
+	int16_t xp_isoc_next; /* next micro frame */
 	uint8_t xp_maxb; /* max burst */
 	uint8_t xp_mult;
+	uint8_t xp_ival;
 };
 
 #define XHCI_COMMAND_RING_TRBS 256
@@ -287,13 +288,25 @@ static const struct usbd_pipe_methods xhci_device_intr_methods = {
 static inline uint32_t
 xhci_read_1(const struct xhci_softc * const sc, bus_size_t offset)
 {
-	return bus_space_read_1(sc->sc_iot, sc->sc_ioh, offset);
+	if (ISSET(sc->sc_quirks, XHCI_32BIT_ACCESS)) {
+		uint32_t val;
+		val = bus_space_read_4(sc->sc_iot, sc->sc_ioh, offset & ~3);
+		return (val >> ((offset & 3) * NBBY)) & 0xff;
+	} else {
+		return bus_space_read_1(sc->sc_iot, sc->sc_ioh, offset);
+	}
 }
 
 static inline uint32_t
 xhci_read_2(const struct xhci_softc * const sc, bus_size_t offset)
 {
-	return bus_space_read_2(sc->sc_iot, sc->sc_ioh, offset);
+	if (ISSET(sc->sc_quirks, XHCI_32BIT_ACCESS)) {
+		uint32_t val;
+		val = bus_space_read_4(sc->sc_iot, sc->sc_ioh, offset & ~3);
+		return (val >> ((offset & 3) * NBBY)) & 0xffff;
+	} else {
+		return bus_space_read_2(sc->sc_iot, sc->sc_ioh, offset);
+	}
 }
 
 static inline uint32_t
@@ -306,7 +319,16 @@ static inline void
 xhci_write_1(const struct xhci_softc * const sc, bus_size_t offset,
     uint32_t value)
 {
-	bus_space_write_1(sc->sc_iot, sc->sc_ioh, offset, value);
+	if (ISSET(sc->sc_quirks, XHCI_32BIT_ACCESS)) {
+		const uint32_t mask = 0xffU << ((offset & 3) * NBBY);
+		uint32_t val;
+		val = bus_space_read_4(sc->sc_iot, sc->sc_ioh, offset & ~3);
+		val &= ~mask;
+		val |= __SHIFTIN(value, mask);
+		bus_space_write_4(sc->sc_iot, sc->sc_ioh, offset & ~3, val);
+	} else {
+		bus_space_write_1(sc->sc_iot, sc->sc_ioh, offset, value);
+	}
 }
 
 #if 0 /* unused */
@@ -1515,8 +1537,7 @@ xhci_init(struct xhci_softc *sc)
 	if (sc->sc_maxspbuf != 0) {
 		err = usb_allocmem(sc->sc_bus.ub_dmatag,
 		    sizeof(uint64_t) * sc->sc_maxspbuf, sizeof(uint64_t),
-		    USBMALLOC_COHERENT | USBMALLOC_ZERO,
-		    &sc->sc_spbufarray_dma);
+		    USBMALLOC_ZERO, &sc->sc_spbufarray_dma);
 		if (err) {
 			aprint_error_dev(sc->sc_dev,
 			    "spbufarray init fail, err %d\n", err);
@@ -1530,8 +1551,7 @@ xhci_init(struct xhci_softc *sc)
 			usb_dma_t * const dma = &sc->sc_spbuf_dma[i];
 			/* allocate contexts */
 			err = usb_allocmem(sc->sc_bus.ub_dmatag, sc->sc_pgsz,
-			    sc->sc_pgsz, USBMALLOC_COHERENT | USBMALLOC_ZERO,
-			    dma);
+			    sc->sc_pgsz, USBMALLOC_ZERO, dma);
 			if (err) {
 				aprint_error_dev(sc->sc_dev,
 				    "spbufarray_dma init fail, err %d\n", err);
@@ -1545,6 +1565,19 @@ xhci_init(struct xhci_softc *sc)
 
 		usb_syncmem(&sc->sc_spbufarray_dma, 0,
 		    sizeof(uint64_t) * sc->sc_maxspbuf, BUS_DMASYNC_PREWRITE);
+	}
+
+	sc->sc_isthresh = XHCI_HCS2_IST(hcs2);
+	aprint_debug_dev(sc->sc_dev, "sc_isthresh %d\n", sc->sc_isthresh);
+
+	/*
+	 * xHI 5.3.4
+	 * If bit[3] is 0, IST is number of microframes in bit[2:0]
+	 * If bit[3] is 1, IST is number of frames in bit[2:0]
+	 */
+	if (sc->sc_isthresh & 0x8) {
+		sc->sc_isthresh = (sc->sc_isthresh & 0x7) *
+		    USB_UFRAMES_PER_FRAME;
 	}
 
 	config = xhci_op_read_4(sc, XHCI_CONFIG);
@@ -1580,7 +1613,7 @@ xhci_init(struct xhci_softc *sc)
 	KASSERTMSG(size <= (512 * 1024), "eventst size %zu too large", size);
 	align = XHCI_EVENT_RING_SEGMENT_TABLE_ALIGN;
 	err = usb_allocmem(sc->sc_bus.ub_dmatag, size, align,
-	    USBMALLOC_COHERENT | USBMALLOC_ZERO, dma);
+	    USBMALLOC_ZERO, dma);
 	if (err) {
 		aprint_error_dev(sc->sc_dev, "eventst init fail, err %d\n",
 		    err);
@@ -1598,7 +1631,7 @@ xhci_init(struct xhci_softc *sc)
 	KASSERTMSG(size <= 2048, "dcbaa size %zu too large", size);
 	align = XHCI_DEVICE_CONTEXT_BASE_ADDRESS_ARRAY_ALIGN;
 	err = usb_allocmem(sc->sc_bus.ub_dmatag, size, align,
-	    USBMALLOC_COHERENT | USBMALLOC_ZERO, dma);
+	    USBMALLOC_ZERO, dma);
 	if (err) {
 		aprint_error_dev(sc->sc_dev, "dcbaa init fail, err %d\n", err);
 		rv = ENOMEM;
@@ -2311,7 +2344,8 @@ xhci_pipe_restart_async_task(void *cookie)
 		 */
 		KASSERT(xfer->ux_status != USBD_NOT_STARTED);
 		if (xfer->ux_status == USBD_IN_PROGRESS) {
-			(*pipe->up_methods->upm_start)(xfer);
+			if (pipe->up_methods->upm_start != NULL)
+				(*pipe->up_methods->upm_start)(xfer);
 		} else {
 			DPRINTF("pipe restart race xfer=%#jx status=%jd",
 			    (uintptr_t)xfer, xfer->ux_status, 0, 0);
@@ -2542,6 +2576,20 @@ xhci_event_transfer(struct xhci_softc * const sc,
 			return;
 	}
 
+	/*
+	 * If next event will be from zero-length packet,
+	 * suppress notification of first event.
+	 */
+	if (xfertype == UE_BULK &&
+	    err == USBD_NORMAL_COMPLETION &&
+	    (xfer->ux_flags & USBD_FORCE_SHORT_XFER) &&
+	    XHCI_TRB_2_REM_GET(le32toh(xr->xr_trb[idx].trb_2)) != 0) {
+		DPRINTFN(100, "short xfer %#jx: suppress notification status "
+		    "%ju pipe %#jx", (uintptr_t)xfer, xfer->ux_status,
+		    (uintptr_t)xfer->ux_pipe, 0);
+		return;
+	}
+
 	if ((trb_3 & XHCI_TRB_3_ED_BIT) == 0 ||
 	    (trb_0 & 0x3) == 0x0) {
 		/*
@@ -2567,7 +2615,7 @@ xhci_event_cmd(struct xhci_softc * const sc, const struct xhci_trb * const trb)
 
 	XHCIHIST_FUNC(); XHCIHIST_CALLED();
 
-	KASSERT(mutex_owned(&sc->sc_lock));
+	KASSERT(xhci_polling_p(sc) || mutex_owned(&sc->sc_lock));
 
 	trb_0 = le64toh(trb->trb_0);
 	trb_2 = le32toh(trb->trb_2);
@@ -2827,6 +2875,8 @@ xhci_new_device(device_t parent, struct usbd_bus *bus, int depth,
 	dev->ud_quirks = &usbd_no_quirk;
 	dev->ud_addr = 0;
 	dev->ud_ddesc.bMaxPacketSize = 0;
+	dev->ud_config = USB_UNCONFIG_NO;
+	dev->ud_configidx = USB_UNCONFIG_INDEX;
 	dev->ud_depth = depth;
 	dev->ud_powersrc = up;
 	dev->ud_myhub = up->up_parent;
@@ -3033,7 +3083,7 @@ xhci_ring_init(struct xhci_softc * const sc, struct xhci_ring **xrp,
 	DPRINTFN(1, "ring %#jx", (uintptr_t)xr, 0, 0, 0);
 
 	int err = usb_allocmem(sc->sc_bus.ub_dmatag, size, align,
-	    USBMALLOC_COHERENT | USBMALLOC_ZERO, &xr->xr_dma);
+	    USBMALLOC_ZERO, &xr->xr_dma);
 	if (err) {
 		kmem_free(xr, sizeof(struct xhci_ring));
 		DPRINTFN(1, "alloc xr_dma failed %jd", err, 0, 0, 0);
@@ -3427,7 +3477,8 @@ xhci_update_ep0_mps(struct xhci_softc * const sc,
 	cp[1] = htole32(XHCI_INCTX_1_ADD_MASK(XHCI_DCI_EP_CONTROL));
 
 	cp = xhci_slot_get_icv(sc, xs, xhci_dci_to_ici(XHCI_DCI_EP_CONTROL));
-	cp[1] = htole32(XHCI_EPCTX_1_MAXP_SIZE_SET(mps));
+	cp[1] &= ~htole32(XHCI_EPCTX_1_MAXP_SIZE_MASK);
+	cp[1] |= htole32(XHCI_EPCTX_1_MAXP_SIZE_SET(mps));
 
 	/* sync input contexts before they are read from memory */
 	usb_syncmem(&xs->xs_ic_dma, 0, sc->sc_pgsz, BUS_DMASYNC_PREWRITE);
@@ -3474,7 +3525,7 @@ xhci_init_slot(struct usbd_device *dev, uint32_t slot)
 
 	/* allocate contexts */
 	int err = usb_allocmem(sc->sc_bus.ub_dmatag, sc->sc_pgsz, sc->sc_pgsz,
-	    USBMALLOC_COHERENT | USBMALLOC_ZERO, &xs->xs_dc_dma);
+	    USBMALLOC_ZERO, &xs->xs_dc_dma);
 	if (err) {
 		DPRINTFN(1, "failed to allocmem output device context %jd",
 		    err, 0, 0, 0);
@@ -3482,7 +3533,7 @@ xhci_init_slot(struct usbd_device *dev, uint32_t slot)
 	}
 
 	err = usb_allocmem(sc->sc_bus.ub_dmatag, sc->sc_pgsz, sc->sc_pgsz,
-	    USBMALLOC_COHERENT | USBMALLOC_ZERO, &xs->xs_ic_dma);
+	    USBMALLOC_ZERO, &xs->xs_ic_dma);
 	if (err) {
 		DPRINTFN(1, "failed to allocmem input device context %jd",
 		    err, 0, 0, 0);
@@ -3963,6 +4014,7 @@ xhci_setup_maxburst(struct usbd_pipe *pipe, uint32_t *cp)
 		break;
 	}
 
+	xpipe->xp_ival = ival;
 	xpipe->xp_maxb = maxb + 1;
 	xpipe->xp_mult = mult + 1;
 
@@ -4102,6 +4154,7 @@ xhci_roothub_ctrl_locked(struct usbd_bus *bus, usb_device_request_t *req,
 		case UHF_PORT_SUSPEND:
 			return -1;
 		case UHF_PORT_POWER:
+			xhci_op_write_4(sc, port, v & ~XHCI_PS_PP);
 			break;
 		case UHF_PORT_TEST:
 		case UHF_PORT_INDICATOR:
@@ -4252,7 +4305,7 @@ xhci_roothub_ctrl_locked(struct usbd_bus *bus, usb_device_request_t *req,
 			}
 			break;
 		case UHF_PORT_POWER:
-			/* XXX power control */
+			xhci_op_write_4(sc, port, v | XHCI_PS_PP);
 			break;
 		/* XXX more */
 		case UHF_C_PORT_RESET:
@@ -4584,20 +4637,23 @@ xhci_device_isoc_enter(struct usbd_xfer *xfer)
 		usb_syncmem(dma, 0, xfer->ux_length,
 		    isread ? BUS_DMASYNC_PREREAD : BUS_DMASYNC_PREWRITE);
 
-	ival = xfer->ux_pipe->up_endpoint->ue_edesc->bInterval;
-	if (ival >= 1 && ival <= 16)
-		ival = 1 << (ival - 1);
+	ival = xpipe->xp_ival;
+	if (ival >= 0 && ival <= 15)
+		ival = 1 << ival;
 	else
 		ival = 1; /* fake something up */
+
+	const unsigned mfmask = XHCI_MFINDEX_GET(~(uint32_t)0);
 
 	if (xpipe->xp_isoc_next == -1) {
 		uint32_t mfindex = xhci_rt_read_4(sc, XHCI_MFINDEX);
 
 		DPRINTF("mfindex %jx", (uintmax_t)mfindex, 0, 0, 0);
-		mfindex = XHCI_MFINDEX_GET(mfindex + 1);
-		mfindex /= USB_UFRAMES_PER_FRAME;
-		mfindex += 7; /* 7 frames is max possible IST */
-		xpipe->xp_isoc_next = roundup2(mfindex, ival);
+		mfindex = XHCI_MFINDEX_GET(mfindex);
+
+		/* Start Frame = MFINDEX + IST + 1 */
+		mfindex += sc->sc_isthresh + 1;
+		xpipe->xp_isoc_next = roundup2(mfindex, ival) & mfmask;
 	}
 
 	offs = 0;
@@ -4607,6 +4663,8 @@ xhci_device_isoc_enter(struct usbd_xfer *xfer)
 		const unsigned tbc = howmany(tdpc, maxb) - 1;
 		const unsigned tlbpc1 = tdpc % maxb;
 		const unsigned tlbpc = tlbpc1 ? tlbpc1 - 1 : maxb - 1;
+		const unsigned frid = xpipe->xp_isoc_next /
+		    USB_UFRAMES_PER_FRAME;
 
 		KASSERTMSG(len <= 0x10000, "len %d", len);
 		parameter = DMAADDR(dma, offs);
@@ -4619,10 +4677,10 @@ xhci_device_isoc_enter(struct usbd_xfer *xfer)
 		    XHCI_TRB_3_TLBPC_SET(tlbpc) |
 		    XHCI_TRB_3_IOC_BIT;
 		if (XHCI_HCC_CFC(sc->sc_hcc)) {
-			control |= XHCI_TRB_3_FRID_SET(xpipe->xp_isoc_next);
+			control |= XHCI_TRB_3_FRID_SET(frid);
 #if 0
 		} else if (xpipe->xp_isoc_next == -1) {
-			control |= XHCI_TRB_3_FRID_SET(xpipe->xp_isoc_next);
+			control |= XHCI_TRB_3_FRID_SET(frid);
 #endif
 		} else {
 			control |= XHCI_TRB_3_ISO_SIA_BIT;
@@ -4633,7 +4691,7 @@ xhci_device_isoc_enter(struct usbd_xfer *xfer)
 #endif
 		xhci_xfer_put_trb(xx, i, parameter, status, control);
 
-		xpipe->xp_isoc_next += ival;
+		xpipe->xp_isoc_next = (xpipe->xp_isoc_next + ival) & mfmask;
 		offs += len;
 	}
 
@@ -4752,6 +4810,13 @@ xhci_device_bulk_start(struct usbd_xfer *xfer)
 	    (isread ? XHCI_TRB_3_ISP_BIT : 0) |
 	    XHCI_TRB_3_IOC_BIT;
 	xhci_xfer_put_trb(xx, i++, parameter, status, control);
+
+	if (!isread && (xfer->ux_flags & USBD_FORCE_SHORT_XFER)) {
+		status = XHCI_TRB_2_IRQ_SET(0) |
+		    XHCI_TRB_2_TDSZ_SET(0) |
+		    XHCI_TRB_2_BYTES_SET(0);
+		xhci_xfer_put_trb(xx, i++, parameter, status, control);
+	}
 
 	if (!polling)
 		mutex_enter(&tr->xr_lock);

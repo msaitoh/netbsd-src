@@ -1,4 +1,4 @@
-/*	$NetBSD: mips_param.h,v 1.52 2021/10/04 21:02:40 andvar Exp $	*/
+/*	$NetBSD: mips_param.h,v 1.57 2026/05/10 16:07:56 thorpej Exp $	*/
 
 /*-
  * Copyright (c) 2013 The NetBSD Foundation, Inc.
@@ -26,7 +26,11 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifndef	_MIPS_MIPS_PARAM_H_
+#define	_MIPS_MIPS_PARAM_H_
+
 #ifdef _KERNEL_OPT
+#include "opt_cputype.h"
 #include "opt_param.h"
 #endif
 
@@ -76,6 +80,14 @@
 #define	MACHINE "mips"
 #endif
 
+#if defined(__mips_n64) || defined(__mips_n32)
+#define	STACK_ALIGNBYTES	(16 - 1)
+#else
+#define	STACK_ALIGNBYTES	(8 - 1)
+#endif
+
+#define	STACK_ALIGNBYTES_O32	(8 - 1)
+
 #define	ALIGNBYTES32		(sizeof(double) - 1)
 #define	ALIGN32(p)		(((uintptr_t)(p) + ALIGNBYTES32) &~ALIGNBYTES32)
 
@@ -83,9 +95,6 @@
  * On mips, UPAGES is fixed by sys/arch/mips/mips/locore code
  * to be the number of per-process-wired kernel-stack pages/PTES.
  */
-
-#define	SSIZE		1		/* initial stack size/NBPG */
-#define	SINCR		1		/* increment of stack/NBPG */
 
 #if (ENABLE_MIPS_16KB_PAGE + ENABLE_MIPS_8KB_PAGE + ENABLE_MIPS_4KB_PAGE) > 1
 #error only one of ENABLE_MIPS_{4,8,16}KB_PAGE can be defined.
@@ -190,3 +199,5 @@
 #define	MCLBYTES	(1 << MCLSHIFT)	/* size of a m_buf cluster */
 
 #endif
+
+#endif	/* _MIPS_MIPS_PARAM_H_ */

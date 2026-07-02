@@ -1,4 +1,4 @@
-#	$NetBSD: t_cxxruntime.sh,v 1.7 2022/06/12 15:08:38 skrll Exp $
+#	$NetBSD: t_cxxruntime.sh,v 1.9 2026/03/09 20:29:25 skrll Exp $
 #
 # Copyright (c) 2017 The NetBSD Foundation, Inc.
 # All rights reserved.

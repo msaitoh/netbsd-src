@@ -1,4 +1,4 @@
-/*	$NetBSD: proc.h,v 1.16 2024/05/17 22:21:17 thorpej Exp $	*/
+/*	$NetBSD: proc.h,v 1.18 2026/03/30 03:22:42 thorpej Exp $	*/
 
 /*
  * Copyright (c) 1991 Regents of the University of California.

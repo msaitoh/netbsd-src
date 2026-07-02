@@ -1,4 +1,4 @@
-/*	$NetBSD: libelf_data.c,v 1.5 2024/03/03 17:37:34 christos Exp $	*/
+/*	$NetBSD: libelf_data.c,v 1.7 2026/05/17 21:40:51 jkoshy Exp $	*/
 
 /*-
  * Copyright (c) 2006,2008 Joseph Koshy
@@ -32,8 +32,9 @@
 
 #include "_libelf.h"
 
-__RCSID("$NetBSD: libelf_data.c,v 1.5 2024/03/03 17:37:34 christos Exp $");
 ELFTC_VCSID("Id: libelf_data.c 3977 2022-05-01 06:45:34Z jkoshy");
+
+__RCSID("$NetBSD: libelf_data.c,v 1.7 2026/05/17 21:40:51 jkoshy Exp $");
 
 int
 _libelf_xlate_shtype(uint32_t sht)

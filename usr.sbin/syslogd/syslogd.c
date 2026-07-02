@@ -1,4 +1,4 @@
-/*	$NetBSD: syslogd.c,v 1.144 2024/08/21 17:13:24 gutteridge Exp $	*/
+/*	$NetBSD: syslogd.c,v 1.148 2026/04/07 22:22:13 andvar Exp $	*/
 
 /*
  * Copyright (c) 1983, 1988, 1993, 1994
@@ -39,7 +39,7 @@ __COPYRIGHT("@(#) Copyright (c) 1983, 1988, 1993, 1994\
 #if 0
 static char sccsid[] = "@(#)syslogd.c	8.3 (Berkeley) 4/4/94";
 #else
-__RCSID("$NetBSD: syslogd.c,v 1.144 2024/08/21 17:13:24 gutteridge Exp $");
+__RCSID("$NetBSD: syslogd.c,v 1.148 2026/04/07 22:22:13 andvar Exp $");
 #endif
 #endif /* not lint */
 
@@ -316,6 +316,7 @@ main(int argc, char *argv[])
 	struct group   *gr;
 	struct passwd  *pw;
 	unsigned long l;
+	char pfpath[PATH_MAX];
 
 	/* should we set LC_TIME="C" to ensure correct timestamps&parsing? */
 	(void)setlocale(LC_ALL, "");
@@ -564,8 +565,35 @@ getgroup:
 	    LOG_NFACILITIES, IETF_NUM_PRIVALUES>>3);
 #endif
 
+#ifdef __NetBSD_Version__
+	if ((uid != 0) || (gid != 0)) {
+		/* Create the pidfile here so we can chown it to the target
+		 * user/group and possibly report any error before daemonizing.
+		 * We then call pidfile(3) again to write the actual
+		 * daemon pid below.
+		 *
+		 * Note: this will likely leave the truncated pidfile in
+		 * place upon exit, since the effective user is unlikely
+		 * to have write permissions to _PATH_VARRUN. */
+		if (pidfile(NULL)) {
+			logerror("Failed to create pidfile");
+			die(0, 0, NULL);
+		}
+		j = sizeof(pfpath);
+		if (snprintf(pfpath, j, "%s%s.pid",
+					_PATH_VARRUN, getprogname()) >= j) {
+			logerror("Pidfile path `%s' too long.", pfpath);
+			die(0, 0, NULL);
+		}
+		if (chown(pfpath, uid, gid) < 0) {
+			logerror("Failed to chown pidfile `%s` to `%d:%d`", pfpath, uid, gid);
+			die(0, 0, NULL);
+		}
+	}
+#endif /* __NetBSD_Version__ */
+
 	/*
-	 * All files are open, we can drop privileges and chroot
+	 * All files are open, we can drop privileges and chroot.
 	 */
 	DPRINTF(D_MISC, "Attempt to chroot to `%s'\n", root);
 	if (chroot(root) == -1) {
@@ -586,12 +614,12 @@ getgroup:
 	 * We cannot detach from the terminal before we are sure we won't
 	 * have a fatal error, because error message would not go to the
 	 * terminal and would not be logged because syslogd dies.
-	 * All die() calls are behind us, we can call daemon()
+	 * All die() calls are behind us, we can call daemon().
 	 */
 	if (!Debug) {
 		(void)daemon(0, 0);
 		daemonized = 1;
-		/* tuck my process id away, if i'm not in debug mode */
+		/* Tuck my process id away, if I'm not in debug mode. */
 #ifdef __NetBSD_Version__
 		pidfile(NULL);
 #endif /* __NetBSD_Version__ */
@@ -4424,7 +4452,7 @@ send_queue(int fd, short event, void *arg)
  * finds the next queue element to delete
  *
  * has stateful behaviour, before using it call once with reset = true
- * after that every call will return one next queue elemen to delete,
+ * after that every call will return one next queue element to delete,
  * depending on strategy either the oldest or the one with the lowest priority
  */
 static struct buf_queue *

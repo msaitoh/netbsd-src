@@ -9,19 +9,19 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
-import logging
 from pathlib import Path
-from typing import Dict, Optional
 
+import logging
+import textwrap
 
-CONFTEST_LOGGER = logging.getLogger("conftest")
 LOG_FORMAT = "%(asctime)s %(levelname)7s:%(name)s  %(message)s"
+LOG_INDENT = 4
 
-LOGGERS = {
+LOGGERS: dict[str, logging.Logger | None] = {
     "conftest": None,
     "module": None,
     "test": None,
-}  # type: Dict[str, Optional[logging.Logger]]
+}
 
 
 def init_conftest_logger():
@@ -53,10 +53,6 @@ def avoid_duplicated_logs():
         logging.root.handlers.remove(handler)
 
 
-init_conftest_logger()
-avoid_duplicated_logs()
-
-
 def init_module_logger(system_test_name: str, testdir: Path):
     logger = logging.getLogger(system_test_name)
     logger.handlers.clear()
@@ -82,6 +78,13 @@ def deinit_test_logger():
     LOGGERS["test"] = None
 
 
+def indent_message(msg):
+    lines = msg.splitlines()
+    first = lines[0] + "\n"
+    to_indent = "\n".join(lines[1:])
+    return first + textwrap.indent(to_indent, " " * LOG_INDENT)
+
+
 def log(lvl: int, msg: str, *args, **kwargs):
     """Log message with the most-specific logger currently available."""
     logger = LOGGERS["test"]
@@ -90,6 +93,8 @@ def log(lvl: int, msg: str, *args, **kwargs):
     if logger is None:
         logger = LOGGERS["conftest"]
     assert logger is not None
+    if "\n" in msg:
+        msg = indent_message(msg)
     logger.log(lvl, msg, *args, **kwargs)
 
 

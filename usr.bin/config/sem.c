@@ -1,4 +1,4 @@
-/*	$NetBSD: sem.c,v 1.86 2021/08/25 23:07:34 rillig Exp $	*/
+/*	$NetBSD: sem.c,v 1.88 2026/01/17 02:01:39 thorpej Exp $	*/
 
 /*
  * Copyright (c) 1992, 1993
@@ -45,7 +45,7 @@
 #endif
 
 #include <sys/cdefs.h>
-__RCSID("$NetBSD: sem.c,v 1.86 2021/08/25 23:07:34 rillig Exp $");
+__RCSID("$NetBSD: sem.c,v 1.88 2026/01/17 02:01:39 thorpej Exp $");
 
 #include <sys/param.h>
 #include <ctype.h>
@@ -656,6 +656,7 @@ defdevattach(struct deva *deva, struct devbase *dev, struct nvlist *atlist,
 	struct nvlist *nv;
 	struct attrlist *al;
 	struct attr *a;
+	int has_iattrs = 0;
 
 	if (dev == &errdev)
 		goto bad;
@@ -684,11 +685,14 @@ defdevattach(struct deva *deva, struct devbase *dev, struct nvlist *atlist,
 		a = al->al_this;
 		if (a == &errattr)
 			continue;		/* already complained */
-		if (a->a_iattr || a->a_devclass != NULL)
-			cfgerror("`%s' is not a plain attribute", a->a_name);
+		if (a->a_iattr)
+			has_iattrs = 1;
+		if (a->a_devclass != NULL)
+			cfgerror("`%s' is a devclass attribute", a->a_name);
 	}
 
 	/* Committed!  Set up fields. */
+	deva->d_has_iattrs = has_iattrs;
 	deva->d_attrs = attrs;
 	deva->d_atlist = atlist;
 	deva->d_devbase = dev;
@@ -773,6 +777,7 @@ getdevattach(const char *name)
 		deva->d_name = name;
 		deva->d_bsame = NULL;
 		deva->d_isdef = 0;
+		deva->d_has_iattrs = 0;
 		deva->d_devbase = NULL;
 		deva->d_atlist = NULL;
 		deva->d_attrs = NULL;
@@ -1211,7 +1216,7 @@ finddevattr(const char *name, const char *at, struct devbase *ib,
 	 *
 	 * (1) If we're attached to an attribute, then we don't need
 	 *     look at the parent base device to see what attributes
-	 *     it has, and make sure that we can attach to them.    
+	 *     it has, and make sure that we can attach to them.
 	 *
 	 * (2) If we're attached to a real device (i.e. named in
 	 *     the config file), we want to remember that so that
@@ -1575,7 +1580,7 @@ deldeva(const char *at, int nowarn)
 		CFGDBG(5, "deselecting deva `%s'", at);
 		if (at[0] == '\0')
 			goto out;
-			
+
 		l = strlen(at) - 1;
 		if (at[l] == '?' || isdigit((unsigned char)at[l])) {
 			char base[NAMESIZE];
@@ -1740,7 +1745,7 @@ addpseudoroot(const char *name)
 		 * and, it works, since the pseudoroot device is not included
 		 * in ioconf, just used by config to make sure we start from
 		 * the right place.
-		 */ 
+		 */
 		snprintf(fakename, sizeof(fakename), "%s_devattrs", buf);
 		fakedev = getdevbase(intern(fakename));
 		fakedev->d_isdef = 1;
@@ -1946,7 +1951,7 @@ getpspec(struct attr *attr, struct devbase *ab, int atunit, int first)
 				inst = p->p_inst;
 				ref = p->p_ref;
 			}
-				
+
 		}
 	}
 
@@ -2186,7 +2191,7 @@ selectbase(struct devbase *d, struct deva *da)
 	struct attr *devattr;
 	devattr = refattr(d->d_name);
 	expandattr(devattr, selectattr);
-	
+
 	if (da != NULL) {
 		(void)ht_insert(selecttab, da->d_name, __UNCONST(da->d_name));
 		CFGDBG(3, "devattr selected `%s'", da->d_name);

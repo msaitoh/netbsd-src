@@ -1,5 +1,5 @@
-/*	$NetBSD: cipher.c,v 1.23 2024/09/24 21:32:18 christos Exp $	*/
-/* $OpenBSD: cipher.c,v 1.123 2024/08/23 04:51:00 deraadt Exp $ */
+/*	$NetBSD: cipher.c,v 1.27 2026/04/08 18:58:40 christos Exp $	*/
+/* $OpenBSD: cipher.c,v 1.126 2026/02/14 00:18:34 jsg Exp $ */
 
 /*
  * Author: Tatu Ylonen <ylo@cs.hut.fi>
@@ -38,7 +38,7 @@
  */
 
 #include "includes.h"
-__RCSID("$NetBSD: cipher.c,v 1.23 2024/09/24 21:32:18 christos Exp $");
+__RCSID("$NetBSD: cipher.c,v 1.27 2026/04/08 18:58:40 christos Exp $");
 #include <sys/types.h>
 
 #include <string.h>
@@ -49,13 +49,13 @@ __RCSID("$NetBSD: cipher.c,v 1.23 2024/09/24 21:32:18 christos Exp $");
 #include "misc.h"
 #include "sshbuf.h"
 #include "ssherr.h"
-#include "digest.h"
 
 #ifndef WITH_OPENSSL
 #define EVP_CIPHER_CTX void
 #endif
 
 // XXX: from libressl
+#ifdef WITH_OPENSSL
 #define HAVE_EVP_CIPHER_CTX_IV
 
 static int
@@ -84,6 +84,7 @@ EVP_CIPHER_CTX_get_iv(const EVP_CIPHER_CTX *ctx, unsigned char *iv, size_t len)
 	}
 	return 1;
 }
+#endif
 // XXX: end
 
 struct sshcipher_ctx {
@@ -145,25 +146,16 @@ static const struct sshcipher ciphers[] = {
 char *
 cipher_alg_list(char sep, int auth_only)
 {
-	char *tmp, *ret = NULL;
-	size_t nlen, rlen = 0;
+	char *ret = NULL;
 	const struct sshcipher *c;
+	char sep_str[2] = {sep, '\0'};
 
 	for (c = ciphers; c->name != NULL; c++) {
 		if ((c->flags & CFLAG_INTERNAL) != 0)
 			continue;
 		if (auth_only && c->auth_len == 0)
 			continue;
-		if (ret != NULL)
-			ret[rlen++] = sep;
-		nlen = strlen(c->name);
-		if ((tmp = realloc(ret, rlen + nlen + 2)) == NULL) {
-			free(ret);
-			return NULL;
-		}
-		ret = tmp;
-		memcpy(ret + rlen, c->name, nlen + 1);
-		rlen += nlen;
+		xextendf(&ret, sep_str, "%s", c->name);
 	}
 	return ret;
 }
@@ -327,8 +319,8 @@ cipher_init(struct sshcipher_ctx **ccp, const struct sshcipher *cipher,
 		goto out;
 	}
 	if (cipher_authlen(cipher) &&
-	    !EVP_CIPHER_CTX_ctrl(cc->evp, EVP_CTRL_GCM_SET_IV_FIXED,
-	    -1, __UNCONST(iv))) {
+	    EVP_CIPHER_CTX_ctrl(cc->evp, EVP_CTRL_GCM_SET_IV_FIXED,
+	    -1, __UNCONST(iv)) <= 0) {
 		ret = SSH_ERR_LIBCRYPTO_ERROR;
 		goto out;
 	}
@@ -400,13 +392,13 @@ cipher_crypt(struct sshcipher_ctx *cc, u_int seqnr, u_char *dest,
 		if (authlen != cipher_authlen(cc->cipher))
 			return SSH_ERR_INVALID_ARGUMENT;
 		/* increment IV */
-		if (!EVP_CIPHER_CTX_ctrl(cc->evp, EVP_CTRL_GCM_IV_GEN,
-		    1, lastiv))
+		if (EVP_CIPHER_CTX_ctrl(cc->evp, EVP_CTRL_GCM_IV_GEN,
+		    1, lastiv) <= 0)
 			return SSH_ERR_LIBCRYPTO_ERROR;
 		/* set tag on decryption */
 		if (!cc->encrypt &&
-		    !EVP_CIPHER_CTX_ctrl(cc->evp, EVP_CTRL_GCM_SET_TAG,
-		    authlen, __UNCONST(src + aadlen + len)))
+		    EVP_CIPHER_CTX_ctrl(cc->evp, EVP_CTRL_GCM_SET_TAG,
+		    authlen, __UNCONST(src + aadlen + len)) <= 0)
 			return SSH_ERR_LIBCRYPTO_ERROR;
 	}
 	if (aadlen) {
@@ -426,8 +418,8 @@ cipher_crypt(struct sshcipher_ctx *cc, u_int seqnr, u_char *dest,
 			return cc->encrypt ?
 			    SSH_ERR_LIBCRYPTO_ERROR : SSH_ERR_MAC_INVALID;
 		if (cc->encrypt &&
-		    !EVP_CIPHER_CTX_ctrl(cc->evp, EVP_CTRL_GCM_GET_TAG,
-		    authlen, dest + aadlen + len))
+		    EVP_CIPHER_CTX_ctrl(cc->evp, EVP_CTRL_GCM_GET_TAG,
+		    authlen, dest + aadlen + len) <= 0)
 			return SSH_ERR_LIBCRYPTO_ERROR;
 	}
 	return 0;
@@ -496,9 +488,10 @@ cipher_get_keyiv(struct sshcipher_ctx *cc, u_char *iv, size_t len)
 	if ((size_t)evplen != len)
 		return SSH_ERR_INVALID_ARGUMENT;
 	if (cipher_authlen(c)) {
-		if (!EVP_CIPHER_CTX_ctrl(cc->evp, EVP_CTRL_GCM_IV_GEN, len, iv))
+		if (EVP_CIPHER_CTX_ctrl(cc->evp, EVP_CTRL_GCM_IV_GEN, len,
+		    iv) <= 0)
 			return SSH_ERR_LIBCRYPTO_ERROR;
-	} else if (!EVP_CIPHER_CTX_get_iv(cc->evp, iv, len))
+	} else if (EVP_CIPHER_CTX_get_iv(cc->evp, iv, len) <= 0)
 		return SSH_ERR_LIBCRYPTO_ERROR;
 #endif
 	return 0;
@@ -525,12 +518,11 @@ cipher_set_keyiv(struct sshcipher_ctx *cc, const u_char *iv, size_t len)
 		return SSH_ERR_INVALID_ARGUMENT;
 	if (cipher_authlen(c)) {
 		/* XXX iv arg is const, but EVP_CIPHER_CTX_ctrl isn't */
-		if (!EVP_CIPHER_CTX_ctrl(cc->evp,
-		    EVP_CTRL_GCM_SET_IV_FIXED, -1, __UNCONST(iv)))
+		if (EVP_CIPHER_CTX_ctrl(cc->evp,
+		    EVP_CTRL_GCM_SET_IV_FIXED, -1, __UNCONST(iv)) <= 0)
 			return SSH_ERR_LIBCRYPTO_ERROR;
 	} else
 		memcpy(EVP_CIPHER_CTX_iv_noconst(cc->evp), iv, evplen);
 #endif
 	return 0;
 }
-

@@ -1,5 +1,6 @@
-# $NetBSD: md.hppa,v 1.18 2024/07/11 20:41:07 riastradh Exp $
+# $NetBSD: md.hppa,v 1.24 2026/02/12 04:26:11 kre Exp $
 #
+./usr/include/gcc-10/tgmath.h			comp-obsolete		obsolete
 ./usr/include/gcc-4.5/tgmath.h			comp-obsolete		obsolete
 ./usr/include/gcc-4.8/tgmath.h			comp-obsolete		obsolete
 ./usr/include/gcc-5/tgmath.h			comp-obsolete		obsolete
@@ -7,8 +8,6 @@
 ./usr/include/gcc-7/tgmath.h			comp-obsolete		obsolete
 ./usr/include/gcc-8/tgmath.h			comp-obsolete		obsolete
 ./usr/include/gcc-9/tgmath.h			comp-obsolete		obsolete
-./usr/include/gcc-10/tgmath.h			comp-c-include		gcc=10
-./usr/include/gcc-10/tgmath.h			comp-obsolete		obsolete,gcc=12
 ./usr/include/hp700				comp-obsolete		obsolete
 ./usr/include/hp700/ansi.h			comp-obsolete		obsolete
 ./usr/include/hp700/aout_machdep.h		comp-obsolete		obsolete
@@ -44,6 +43,7 @@
 ./usr/include/hp700/limits.h			comp-obsolete		obsolete
 ./usr/include/hp700/loadfile_machdep.h		comp-obsolete		obsolete
 ./usr/include/hp700/lock.h			comp-obsolete		obsolete
+./usr/include/hp700/lwp_private.h		comp-obsolete		obsolete
 ./usr/include/hp700/math.h			comp-obsolete		obsolete
 ./usr/include/hp700/mcontext.h			comp-obsolete		obsolete
 ./usr/include/hp700/mutex.h			comp-obsolete		obsolete
@@ -105,6 +105,7 @@
 ./usr/include/hppa/limits.h			comp-c-include
 ./usr/include/hppa/loadfile_machdep.h		comp-c-include
 ./usr/include/hppa/lock.h			comp-c-include
+./usr/include/hppa/lwp_private.h		comp-c-include
 ./usr/include/hppa/math.h			comp-c-include
 ./usr/include/hppa/mcontext.h			comp-c-include
 ./usr/include/hppa/mutex.h			comp-c-include

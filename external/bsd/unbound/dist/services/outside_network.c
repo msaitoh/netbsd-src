@@ -160,6 +160,19 @@ reuse_cmp_addrportssl(const void* key1, const void* key2)
 		return 1;
 	if(!r1->is_ssl && r2->is_ssl)
 		return -1;
+
+	/* compare tls_auth_name if SSL-enabled */
+	if(r1->is_ssl) {
+		if(r1->tls_auth_name && !r2->tls_auth_name)
+			return 1;
+		if(!r1->tls_auth_name && r2->tls_auth_name)
+			return -1;
+		if(r1->tls_auth_name && r2->tls_auth_name) {
+			r = strcmp(r1->tls_auth_name, r2->tls_auth_name);
+			if(r != 0)
+				return r;
+		}
+	}
 	return 0;
 }
 
@@ -262,12 +275,14 @@ pick_outgoing_tcp(struct pending_tcp* pend, struct waiting_tcp* w, int s)
 /** get TCP file descriptor for address, returns -1 on failure,
  * tcp_mss is 0 or maxseg size to set for TCP packets. */
 int
-outnet_get_tcp_fd(struct sockaddr_storage* addr, socklen_t addrlen, int tcp_mss, int dscp)
+outnet_get_tcp_fd(struct sockaddr_storage* addr, socklen_t addrlen,
+	int tcp_mss, int dscp, int nodelay)
 {
 	int s;
 	int af;
 	char* err;
-#if defined(SO_REUSEADDR) || defined(IP_BIND_ADDRESS_NO_PORT)
+#if defined(SO_REUSEADDR) || defined(IP_BIND_ADDRESS_NO_PORT)	\
+	|| defined(TCP_NODELAY)
 	int on = 1;
 #endif
 #ifdef INET6
@@ -320,6 +335,18 @@ outnet_get_tcp_fd(struct sockaddr_storage* addr, socklen_t addrlen, int tcp_mss,
 			" setsockopt(.. IP_BIND_ADDRESS_NO_PORT ..) failed");
 	}
 #endif /* IP_BIND_ADDRESS_NO_PORT */
+	if(nodelay) {
+#if defined(IPPROTO_TCP) && defined(TCP_NODELAY)
+		if(setsockopt(s, IPPROTO_TCP, TCP_NODELAY, (void*)&on,
+			(socklen_t)sizeof(on)) < 0) {
+			verbose(VERB_ALGO, "outgoing tcp:"
+				" setsockopt(.. TCP_NODELAY ..) failed");
+		}
+#else
+		verbose(VERB_ALGO, "outgoing tcp:"
+			" setsockopt(.. TCP_NODELAY ..) unsupported");
+#endif /* defined(IPPROTO_TCP) && defined(TCP_NODELAY) */
+	}
 	return s;
 }
 
@@ -517,7 +544,7 @@ reuse_tcp_insert(struct outside_network* outnet, struct pending_tcp* pend_tcp)
 /** find reuse tcp stream to destination for query, or NULL if none */
 static struct reuse_tcp*
 reuse_tcp_find(struct outside_network* outnet, struct sockaddr_storage* addr,
-	socklen_t addrlen, int use_ssl)
+	socklen_t addrlen, int use_ssl, char* tls_auth_name)
 {
 	struct waiting_tcp key_w;
 	struct pending_tcp key_p;
@@ -531,8 +558,10 @@ reuse_tcp_find(struct outside_network* outnet, struct sockaddr_storage* addr,
 	key_p.c = &c;
 	key_p.reuse.pending = &key_p;
 	key_p.reuse.node.key = &key_p.reuse;
-	if(use_ssl)
+	if(use_ssl) {
 		key_p.reuse.is_ssl = 1;
+		key_p.reuse.tls_auth_name = tls_auth_name;
+	}
 	if(addrlen > (socklen_t)sizeof(key_p.reuse.addr))
 		return NULL;
 	memmove(&key_p.reuse.addr, addr, addrlen);
@@ -632,6 +661,7 @@ static int
 outnet_tcp_take_into_use(struct waiting_tcp* w)
 {
 	struct pending_tcp* pend = w->outnet->tcp_free;
+	char* tls_auth_name = NULL;
 	int s;
 	log_assert(pend);
 	log_assert(w->pkt);
@@ -649,7 +679,8 @@ outnet_tcp_take_into_use(struct waiting_tcp* w)
 	}
 
 	/* open socket */
-	s = outnet_get_tcp_fd(&w->addr, w->addrlen, w->outnet->tcp_mss, w->outnet->ip_dscp);
+	s = outnet_get_tcp_fd(&w->addr, w->addrlen, w->outnet->tcp_mss,
+		w->outnet->ip_dscp, w->ssl_upstream);
 
 	if(s == -1)
 		return 0;
@@ -731,7 +762,22 @@ outnet_tcp_take_into_use(struct waiting_tcp* w)
 		comm_point_tcp_win_bio_cb(pend->c, pend->c->ssl);
 #endif
 		pend->c->ssl_shake_state = comm_ssl_shake_write;
-		if(!set_auth_name_on_ssl(pend->c->ssl, w->tls_auth_name,
+		if(w->tls_auth_name) {
+			/* strdup the auth name, while not linked the list yet,
+			 * in case of failure, easy cleanup. */
+			tls_auth_name = strdup(w->tls_auth_name);
+			if(!tls_auth_name) {
+				log_err("out of memory: alloc tls auth name");
+				pend->c->fd = s;
+#ifdef HAVE_SSL
+				SSL_free(pend->c->ssl);
+#endif
+				pend->c->ssl = NULL;
+				comm_point_close(pend->c);
+				return 0;
+			}
+		}
+		if(!set_auth_name_on_ssl(pend->c->ssl, tls_auth_name,
 			w->outnet->tls_use_sni)) {
 			pend->c->fd = s;
 #ifdef HAVE_SSL
@@ -739,6 +785,7 @@ outnet_tcp_take_into_use(struct waiting_tcp* w)
 #endif
 			pend->c->ssl = NULL;
 			comm_point_close(pend->c);
+			free(tls_auth_name);
 			return 0;
 		}
 	}
@@ -763,9 +810,20 @@ outnet_tcp_take_into_use(struct waiting_tcp* w)
 	if(pend->reuse.node.key)
 		reuse_tcp_remove_tree_list(w->outnet, &pend->reuse);
 
-	if(pend->c->ssl)
+	if(pend->c->ssl) {
 		pend->reuse.is_ssl = 1;
-	else	pend->reuse.is_ssl = 0;
+		if(pend->reuse.tls_auth_name)
+			free(pend->reuse.tls_auth_name);
+		pend->reuse.tls_auth_name = tls_auth_name;
+		tls_auth_name = NULL;
+	} else {
+		pend->reuse.is_ssl = 0;
+		if(pend->reuse.tls_auth_name)
+			free(pend->reuse.tls_auth_name);
+		pend->reuse.tls_auth_name = NULL;
+	}
+	/* free tls auth name if nonNULL */
+	free(tls_auth_name);
 	/* insert in reuse by address tree if not already inserted there */
 	(void)reuse_tcp_insert(w->outnet, pend);
 	reuse_tree_by_id_insert(&pend->reuse, w);
@@ -954,7 +1012,7 @@ use_free_buffer(struct outside_network* outnet)
 			(!outnet->tcp_reuse_first && !outnet->tcp_reuse_last) ||
 			(outnet->tcp_reuse_first && outnet->tcp_reuse_last));
 		reuse = reuse_tcp_find(outnet, &w->addr, w->addrlen,
-			w->ssl_upstream);
+			w->ssl_upstream, w->tls_auth_name);
 		/* re-select an ID when moving to a new TCP buffer */
 		w->id = tcp_select_id(outnet, reuse);
 		LDNS_ID_SET(w->pkt, w->id);
@@ -1009,7 +1067,7 @@ use_free_buffer(struct outside_network* outnet)
 			sldns_buffer tmp;
 			sldns_buffer_init_frm_data(&tmp, w->pkt, w->pkt_len);
 			dt_msg_send_outside_query(outnet->dtenv, &w->sq->addr,
-				&pend_tcp->pi->addr, comm_tcp, w->sq->zone,
+				&pend_tcp->pi->addr, comm_tcp, NULL, w->sq->zone,
 				w->sq->zonelen, &tmp);
 		}
 #endif
@@ -1054,7 +1112,7 @@ reuse_move_writewait_away(struct outside_network* outnet,
 		if(verbosity >= VERB_CLIENT && pend->query->pkt_len > 12+2+2 &&
 			LDNS_QDCOUNT(pend->query->pkt) > 0 &&
 			dname_valid(pend->query->pkt+12, pend->query->pkt_len-12)) {
-			char buf[LDNS_MAX_DOMAINLEN+1];
+			char buf[LDNS_MAX_DOMAINLEN];
 			dname_str(pend->query->pkt+12, buf);
 			verbose(VERB_CLIENT, "reuse_move_writewait_away current %s %d bytes were written",
 				buf, (int)pend->c->tcp_write_byte_count);
@@ -1079,7 +1137,7 @@ reuse_move_writewait_away(struct outside_network* outnet,
 		if(verbosity >= VERB_CLIENT && w->pkt_len > 12+2+2 &&
 			LDNS_QDCOUNT(w->pkt) > 0 &&
 			dname_valid(w->pkt+12, w->pkt_len-12)) {
-			char buf[LDNS_MAX_DOMAINLEN+1];
+			char buf[LDNS_MAX_DOMAINLEN];
 			dname_str(w->pkt+12, buf);
 			verbose(VERB_CLIENT, "reuse_move_writewait_away item %s", buf);
 		}
@@ -1182,6 +1240,10 @@ decommission_pending_tcp(struct outside_network* outnet,
 	if(pend->reuse.node.key) {
 		/* needs unlink from the reuse tree to get deleted */
 		reuse_tcp_remove_tree_list(outnet, &pend->reuse);
+	}
+	if(pend->reuse.tls_auth_name) {
+		free(pend->reuse.tls_auth_name);
+		pend->reuse.tls_auth_name = NULL;
 	}
 	/* free SSL structure after remove from outnet tcp reuse tree,
 	 * because the c->ssl null or not is used for sorting in the tree */
@@ -1907,6 +1969,10 @@ outside_network_delete(struct outside_network* outnet)
 					 * the tcp conn is working on */
 					decommission_pending_tcp(outnet, pend);
 				}
+				if(pend->reuse.tls_auth_name) {
+					free(pend->reuse.tls_auth_name);
+					pend->reuse.tls_auth_name = NULL;
+				}
 				comm_point_delete(outnet->tcp_conns[i]->c);
 				free(outnet->tcp_conns[i]);
 				outnet->tcp_conns[i] = NULL;
@@ -2051,7 +2117,8 @@ select_id(struct outside_network* outnet, struct pending* pend,
 }
 
 /** return true is UDP connect error needs to be logged */
-static int udp_connect_needs_log(int err)
+static int udp_connect_needs_log(int err, struct sockaddr_storage* addr,
+	socklen_t addrlen)
 {
 	switch(err) {
 	case ECONNREFUSED:
@@ -2075,6 +2142,15 @@ static int udp_connect_needs_log(int err)
 		if(verbosity >= VERB_ALGO)
 			return 1;
 		return 0;
+	case EINVAL:
+		/* Stop 'Invalid argument for fe80::/10' addresses appearing
+		 * in the logs, at low verbosity. They cannot be sent to. */
+		if(addr_is_ip6linklocal(addr, addrlen)) {
+			if(verbosity >= VERB_ALGO)
+				return 1;
+			return 0;
+		}
+		break;
 	default:
 		break;
 	}
@@ -2141,7 +2217,8 @@ select_ifport(struct outside_network* outnet, struct pending* pend,
 				/* connect() to the destination */
 				if(connect(fd, (struct sockaddr*)&pend->addr,
 					pend->addrlen) < 0) {
-					if(udp_connect_needs_log(errno)) {
+					if(udp_connect_needs_log(errno,
+						&pend->addr, pend->addrlen)) {
 						log_err_addr("udp connect failed",
 							strerror(errno), &pend->addr,
 							pend->addrlen);
@@ -2237,7 +2314,7 @@ randomize_and_send_udp(struct pending* pend, sldns_buffer* packet, int timeout)
 		outnet->dtenv->log_forwarder_query_messages)) {
 			log_addr(VERB_ALGO, "from local addr", &pend->pc->pif->addr, pend->pc->pif->addrlen);
 			log_addr(VERB_ALGO, "request to upstream", &pend->addr, pend->addrlen);
-			dt_msg_send_outside_query(outnet->dtenv, &pend->addr, &pend->pc->pif->addr, comm_udp,
+			dt_msg_send_outside_query(outnet->dtenv, &pend->addr, &pend->pc->pif->addr, comm_udp, NULL,
 				pend->sq->zone, pend->sq->zonelen, packet);
 	}
 #endif
@@ -2421,7 +2498,7 @@ pending_tcp_query(struct serviced_query* sq, sldns_buffer* packet,
 	/* find out if a reused stream to the target exists */
 	/* if so, take it into use */
 	reuse = reuse_tcp_find(sq->outnet, &sq->addr, sq->addrlen,
-		sq->ssl_upstream);
+		sq->ssl_upstream, sq->tls_auth_name);
 	if(reuse) {
 		log_reuse_tcp(VERB_CLIENT, "pending_tcp_query: found reuse", reuse);
 		log_assert(reuse->pending);
@@ -2517,7 +2594,7 @@ pending_tcp_query(struct serviced_query* sq, sldns_buffer* packet,
 			sldns_buffer tmp;
 			sldns_buffer_init_frm_data(&tmp, w->pkt, w->pkt_len);
 			dt_msg_send_outside_query(sq->outnet->dtenv, &sq->addr,
-				&pend->pi->addr, comm_tcp, sq->zone,
+				&pend->pi->addr, comm_tcp, NULL, sq->zone,
 				sq->zonelen, &tmp);
 		}
 #endif
@@ -2801,7 +2878,7 @@ serviced_perturb_qname(struct ub_randstate* rnd, uint8_t* qbuf, size_t len)
 					random = ub_random(rnd);
 					bits = 30;
 				}
-				if(random & 0x1) {
+				if((random & 0x1)) {
 					*d = (uint8_t)toupper((unsigned char)*d);
 				} else {
 					*d = (uint8_t)tolower((unsigned char)*d);
@@ -2814,10 +2891,29 @@ serviced_perturb_qname(struct ub_randstate* rnd, uint8_t* qbuf, size_t len)
 		lablen = *d++;
 	}
 	if(verbosity >= VERB_ALGO) {
-		char buf[LDNS_MAX_DOMAINLEN+1];
+		char buf[LDNS_MAX_DOMAINLEN];
 		dname_str(qbuf+10, buf);
 		verbose(VERB_ALGO, "qname perturbed to %s", buf);
 	}
+}
+
+static uint16_t
+serviced_query_udp_size(struct serviced_query* sq, enum serviced_query_status status) {
+	uint16_t udp_size;
+	if(status == serviced_query_UDP_EDNS_FRAG) {
+		if(addr_is_ip6(&sq->addr, sq->addrlen)) {
+			if(EDNS_FRAG_SIZE_IP6 < EDNS_ADVERTISED_SIZE)
+				udp_size = EDNS_FRAG_SIZE_IP6;
+			else	udp_size = EDNS_ADVERTISED_SIZE;
+		} else {
+			if(EDNS_FRAG_SIZE_IP4 < EDNS_ADVERTISED_SIZE)
+				udp_size = EDNS_FRAG_SIZE_IP4;
+			else	udp_size = EDNS_ADVERTISED_SIZE;
+		}
+	} else {
+		udp_size = EDNS_ADVERTISED_SIZE;
+	}
+	return udp_size;
 }
 
 /** put serviced query into a buffer */
@@ -2843,23 +2939,11 @@ serviced_encode(struct serviced_query* sq, sldns_buffer* buff, int with_edns)
 		edns.opt_list_in = NULL;
 		edns.opt_list_out = sq->opt_list;
 		edns.opt_list_inplace_cb_out = NULL;
-		if(sq->status == serviced_query_UDP_EDNS_FRAG) {
-			if(addr_is_ip6(&sq->addr, sq->addrlen)) {
-				if(EDNS_FRAG_SIZE_IP6 < EDNS_ADVERTISED_SIZE)
-					edns.udp_size = EDNS_FRAG_SIZE_IP6;
-				else	edns.udp_size = EDNS_ADVERTISED_SIZE;
-			} else {
-				if(EDNS_FRAG_SIZE_IP4 < EDNS_ADVERTISED_SIZE)
-					edns.udp_size = EDNS_FRAG_SIZE_IP4;
-				else	edns.udp_size = EDNS_ADVERTISED_SIZE;
-			}
-		} else {
-			edns.udp_size = EDNS_ADVERTISED_SIZE;
-		}
+		edns.udp_size = serviced_query_udp_size(sq, sq->status);
 		edns.bits = 0;
-		if(sq->dnssec & EDNS_DO)
+		if((sq->dnssec & EDNS_DO))
 			edns.bits = EDNS_DO;
-		if(sq->dnssec & BIT_CD)
+		if((sq->dnssec & BIT_CD))
 			LDNS_CD_SET(sldns_buffer_begin(buff));
 		if (sq->ssl_upstream && sq->padding_block_size) {
 			padding_option.opt_code = LDNS_EDNS_PADDING;
@@ -3083,7 +3167,7 @@ serviced_tcp_callback(struct comm_point* c, void* arg, int error,
 		log_addr(VERB_ALGO, "response from upstream", &sq->addr, sq->addrlen);
 		log_addr(VERB_ALGO, "to local addr", &pi->addr, pi->addrlen);
 		dt_msg_send_outside_response(sq->outnet->dtenv, &sq->addr,
-			&pi->addr, c->type, sq->zone, sq->zonelen, sq->qbuf,
+			&pi->addr, c->type, c->ssl, sq->zone, sq->zonelen, sq->qbuf,
 			sq->qbuflen, &sq->last_sent_time, sq->outnet->now_tv,
 			c->buffer);
 	}
@@ -3252,7 +3336,8 @@ serviced_udp_callback(struct comm_point* c, void* arg, int error,
 
 	sq->pending = NULL; /* removed after callback */
 	if(error == NETEVENT_TIMEOUT) {
-		if(sq->status == serviced_query_UDP_EDNS && sq->last_rtt < 5000) {
+		if(sq->status == serviced_query_UDP_EDNS && sq->last_rtt < 5000 &&
+		   (serviced_query_udp_size(sq, serviced_query_UDP_EDNS_FRAG) < serviced_query_udp_size(sq, serviced_query_UDP_EDNS))) {
 			/* fallback to 1480/1280 */
 			sq->status = serviced_query_UDP_EDNS_FRAG;
 			log_name_addr(VERB_ALGO, "try edns1xx0", sq->qbuf+10,
@@ -3296,7 +3381,7 @@ serviced_udp_callback(struct comm_point* c, void* arg, int error,
 		log_addr(VERB_ALGO, "to local addr", &p->pc->pif->addr,
 			p->pc->pif->addrlen);
 		dt_msg_send_outside_response(outnet->dtenv, &sq->addr,
-			&p->pc->pif->addr, c->type, sq->zone, sq->zonelen,
+			&p->pc->pif->addr, c->type, c->ssl, sq->zone, sq->zonelen,
 			sq->qbuf, sq->qbuflen, &sq->last_sent_time,
 			sq->outnet->now_tv, c->buffer);
 	}
@@ -3447,7 +3532,10 @@ outnet_serviced_query(struct outside_network* outnet,
 			timenow = *env->now;
 			if(!infra_ratelimit_inc(env->infra_cache, zone,
 				zonelen, timenow, env->cfg->ratelimit_backoff,
-				&qstate->qinfo, qstate->reply)) {
+				&qstate->qinfo,
+				qstate->mesh_info->reply_list
+					?&qstate->mesh_info->reply_list->query_reply
+					:NULL)) {
 				/* Can we pass through with slip factor? */
 				if(env->cfg->ratelimit_factor == 0 ||
 					ub_random_max(env->rnd,
@@ -3696,7 +3784,8 @@ outnet_comm_point_for_tcp(struct outside_network* outnet,
 	sldns_buffer* query, int timeout, int ssl, char* host)
 {
 	struct comm_point* cp;
-	int fd = outnet_get_tcp_fd(to_addr, to_addrlen, outnet->tcp_mss, outnet->ip_dscp);
+	int fd = outnet_get_tcp_fd(to_addr, to_addrlen, outnet->tcp_mss,
+		outnet->ip_dscp, ssl);
 	if(fd == -1) {
 		return 0;
 	}
@@ -3771,7 +3860,8 @@ outnet_comm_point_for_http(struct outside_network* outnet,
 {
 	/* cp calls cb with err=NETEVENT_DONE when transfer is done */
 	struct comm_point* cp;
-	int fd = outnet_get_tcp_fd(to_addr, to_addrlen, outnet->tcp_mss, outnet->ip_dscp);
+	int fd = outnet_get_tcp_fd(to_addr, to_addrlen, outnet->tcp_mss,
+		outnet->ip_dscp, ssl);
 	if(fd == -1) {
 		return 0;
 	}

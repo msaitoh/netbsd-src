@@ -1,4 +1,4 @@
-/*	$NetBSD: pmap3x.h,v 1.31 2020/03/14 14:05:44 ad Exp $	*/
+/*	$NetBSD: pmap3x.h,v 1.35 2026/05/05 13:07:54 thorpej Exp $	*/
 
 /*-
  * Copyright (c) 1997 The NetBSD Foundation, Inc.
@@ -29,7 +29,13 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifdef _KERNEL
+#ifndef _SUN3_PMAP3X_H_
+#define _SUN3_PMAP3X_H_ 
+
+#if defined(_KERNEL)
+
+#if !defined(_MODULE)
+
 /*
  * Physical map structures exported to the VM code.
  */
@@ -50,9 +56,6 @@ segsz_t pmap_count(pmap_t, int);
 /* This needs to be a macro for vm_mmap.c */
 #define	pmap_wired_count(pmap)  	(pmap_count((pmap), 1))
 
-/* We use the PA plus some low bits for device mmap. */
-#define pmap_phys_address(addr) 	(addr)
-
 /* Map a given physical region to a virtual region */
 vaddr_t pmap_map(vaddr_t, paddr_t, paddr_t, int);
 
@@ -62,6 +65,12 @@ pmap_remove_all(struct pmap *pmap)
 	/* Nothing. */
 	return false;
 }
+
+/*
+ * pmap hook for trap()'s page fault handler.  We don't need to
+ * do anything special, so it just goes to uvm_fault().
+ */
+#define	pmap_fault(m, v, t)	uvm_fault((m), (v), (t))
 
 /*
  * Flags to tell pmap_enter `this is not to be cached', etc.
@@ -74,9 +83,12 @@ pmap_remove_all(struct pmap *pmap)
 #define	PMAP_VME32	0x20	/* etc. */
 #define	PMAP_NC		0x40	/* tells pmap_enter to set PTE_CI */
 #define	PMAP_SPEC	0xFF	/* mask to get all above. */
- 
-#endif	/* _KERNEL */
 
+#endif /* ! _MODULE */
+
+#endif /* _KERNEL */
+
+#if (defined(_KERNEL) && !defined(_MODULE)) || defined(_STANDALONE)
 /* MMU specific segment size */
 #define	SEGSHIFT	19	        /* LOG2(NBSG) */
 #define	NBSG		(1 << SEGSHIFT)	/* bytes/segment */
@@ -85,3 +97,6 @@ pmap_remove_all(struct pmap *pmap)
 #define	sun3x_round_seg(x)	((((vaddr_t)(x)) + SEGOFSET) & ~SEGOFSET)
 #define	sun3x_trunc_seg(x)	((vaddr_t)(x) & ~SEGOFSET)
 #define	sun3x_seg_offset(x)	((vaddr_t)(x) & SEGOFSET)
+#endif /* (_KERNEL && !_MODULE) || _STANDALONE */
+
+#endif /* _SUN3_PMAP3X_H_ */

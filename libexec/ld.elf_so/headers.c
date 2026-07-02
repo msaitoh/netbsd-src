@@ -1,4 +1,4 @@
-/*	$NetBSD: headers.c,v 1.72 2024/08/03 21:59:57 riastradh Exp $	 */
+/*	$NetBSD: headers.c,v 1.79 2026/02/10 18:35:59 skrll Exp $	 */
 
 /*
  * Copyright 1996 John D. Polstra.
@@ -40,7 +40,7 @@
 
 #include <sys/cdefs.h>
 #ifndef lint
-__RCSID("$NetBSD: headers.c,v 1.72 2024/08/03 21:59:57 riastradh Exp $");
+__RCSID("$NetBSD: headers.c,v 1.79 2026/02/10 18:35:59 skrll Exp $");
 #endif /* not lint */
 
 #include <err.h>
@@ -72,7 +72,7 @@ _rtld_digest_dynamic(const char *execname, Obj_Entry *obj)
 	const Elf_Dyn  *dyn_rpath = NULL;
 	bool		use_pltrel = false;
 	bool		use_pltrela = false;
-	Elf_Addr        relsz = 0, relasz = 0;
+	Elf_Addr        relsz = 0, relasz = 0, relrsz = 0;
 	Elf_Addr	pltrel = 0, pltrelsz = 0;
 #ifdef RTLD_LOADER
 	Elf_Addr	init = 0, fini = 0;
@@ -115,6 +115,19 @@ _rtld_digest_dynamic(const char *execname, Obj_Entry *obj)
 
 		case DT_RELAENT:
 			assert(dynp->d_un.d_val == sizeof(Elf_Rela));
+			break;
+
+		case DT_RELR:
+			obj->relr = (const Elf_Relr *)(obj->relocbase +
+			    dynp->d_un.d_ptr);
+			break;
+
+		case DT_RELRSZ:
+			relrsz = dynp->d_un.d_val;
+			break;
+
+		case DT_RELRENT:
+			assert(dynp->d_un.d_val == sizeof(Elf_Relr));
 			break;
 
 		case DT_PLTREL:
@@ -306,7 +319,7 @@ _rtld_digest_dynamic(const char *execname, Obj_Entry *obj)
 
 		case DT_INIT_ARRAYSZ:
 			obj->init_arraysz = dynp->d_un.d_val / sizeof(fptr_t);
-			dbg(("headers: DT_INIT_ARRAYZ %zu",
+			dbg(("headers: DT_INIT_ARRAYSZ %zu",
 			    obj->init_arraysz));
 			break;
 #endif
@@ -327,14 +340,31 @@ _rtld_digest_dynamic(const char *execname, Obj_Entry *obj)
 
 		case DT_FINI_ARRAYSZ:
 			obj->fini_arraysz = dynp->d_un.d_val / sizeof(fptr_t);
-			dbg(("headers: DT_FINI_ARRAYZ %zu",
+			dbg(("headers: DT_FINI_ARRAYSZ %zu",
 			    obj->fini_arraysz));
 			break;
 #endif
 
+#ifdef HAVE_INITFINI_ARRAY
+		case DT_PREINIT_ARRAY:
+			obj->preinit_array =
+			    (fptr_t *)(obj->relocbase + dynp->d_un.d_ptr);
+			dbg(("headers: DT_PREINIT_ARRAY at %p",
+			    obj->preinit_array));
+			break;
+
+		case DT_PREINIT_ARRAYSZ:
+			obj->preinit_arraysz = dynp->d_un.d_val / sizeof(fptr_t);
+			dbg(("headers: DT_PREINIT_ARRAYSZ %zu",
+			    obj->preinit_arraysz));
+			break;
+#endif
+
 		/*
-		 * Don't process DT_DEBUG on MIPS as the dynamic section
-		 * is mapped read-only. DT_MIPS_RLD_MAP is used instead.
+		 * Don't process DT_DEBUG on MIPS as the dynamic
+		 * section is mapped read-only.  DT_MIPS_RLD_MAP or
+		 * DT_MIPS_RLD_MAP_REL is used instead.
+		 *
 		 * XXX: n32/n64 may use DT_DEBUG, not sure yet.
 		 */
 #ifndef __mips__
@@ -345,6 +375,11 @@ _rtld_digest_dynamic(const char *execname, Obj_Entry *obj)
 			break;
 #endif
 
+#ifdef __alpha__
+		case DT_ALPHA_PLTRO:
+			obj->secureplt = (dynp->d_un.d_val != 0);
+			break;
+#endif
 #ifdef __mips__
 		case DT_MIPS_LOCAL_GOTNO:
 			obj->local_gotno = dynp->d_un.d_val;
@@ -358,10 +393,38 @@ _rtld_digest_dynamic(const char *execname, Obj_Entry *obj)
 			obj->gotsym = dynp->d_un.d_val;
 			break;
 
+		/*
+		 * The .dynamic section is read-only, so the loader
+		 * can't write to it; instead, the linker reserves
+		 * space in a read/write .rld_map section for the
+		 * loader write to, and leaves a pointer to that space
+		 * in a DT_MIPS_RLD_MAP entry.
+		 *
+		 * Except pointers like that don't work for
+		 * position-independent executables, which use
+		 * DT_MIPS_RLD_MAP_REL instead.
+		 */
 		case DT_MIPS_RLD_MAP:
 #ifdef RTLD_LOADER
-			*((Elf_Addr *)(dynp->d_un.d_ptr)) = (Elf_Addr)
-			    &_rtld_debug;
+			*((Elf_Addr *)dynp->d_un.d_ptr) =
+			    (Elf_Addr)&_rtld_debug;
+#endif
+			break;
+
+		/*
+		 * The .dynamic section is read-only, so the loader
+		 * can't write to it; instead, the linker reserves
+		 * space in a read/write .rld_map section for the
+		 * loader write to, which might be mapped anywhere in
+		 * virtual address space for position-independent
+		 * executables, so the linker leaves its offset
+		 * relative to the .dynamic entry itself in the dynamic
+		 * entry.
+		 */
+		case DT_MIPS_RLD_MAP_REL:
+#ifdef RTLD_LOADER
+			*(Elf_Addr *)((Elf_Addr)dynp + dynp->d_un.d_val) =
+			    (Elf_Addr)&_rtld_debug;
 #endif
 			break;
 #endif
@@ -391,6 +454,7 @@ _rtld_digest_dynamic(const char *execname, Obj_Entry *obj)
 
 	obj->rellim = (const Elf_Rel *)((const uint8_t *)obj->rel + relsz);
 	obj->relalim = (const Elf_Rela *)((const uint8_t *)obj->rela + relasz);
+	obj->relrlim = (const Elf_Relr *)((const uint8_t *)obj->relr + relrsz);
 	if (use_pltrel) {
 		obj->pltrel = (const Elf_Rel *)(obj->relocbase + pltrel);
 		obj->pltrellim = (const Elf_Rel *)(obj->relocbase + pltrel + pltrelsz);
@@ -502,14 +566,18 @@ _rtld_digest_phdr(const Elf_Phdr *phdr, int phnum, caddr_t entry)
 			break;
 
 		case PT_LOAD:
-			size = round_up(vaddr + ph->p_memsz) - obj->vaddrbase;
 			if (first_seg) {	/* First load segment */
 				obj->vaddrbase = round_down(vaddr);
-				obj->mapbase = (caddr_t)(uintptr_t)obj->vaddrbase;
+				obj->mapbase =
+				    (caddr_t)(uintptr_t)obj->vaddrbase;
+				size = round_up(vaddr + ph->p_memsz) -
+				    obj->vaddrbase;
 				obj->textsize = size;
 				obj->mapsize = size;
 				first_seg = false;
 			} else {		/* Last load segment */
+				size = round_up(vaddr + ph->p_memsz) -
+				    obj->vaddrbase;
 				obj->mapsize = MAX(obj->mapsize, size);
 			}
 			dbg(("headers: %s %p phsize %" PRImemsz,

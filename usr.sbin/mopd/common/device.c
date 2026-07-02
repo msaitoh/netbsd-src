@@ -1,4 +1,4 @@
-/*	$NetBSD: device.c,v 1.13 2016/06/08 01:11:49 christos Exp $	*/
+/*	$NetBSD: device.c,v 1.15 2026/04/08 16:51:27 htodd Exp $	*/
 
 /*
  * Copyright (c) 1993-95 Mats O Jansson.  All rights reserved.
@@ -26,7 +26,7 @@
 
 #include "port.h"
 #ifndef lint
-__RCSID("$NetBSD: device.c,v 1.13 2016/06/08 01:11:49 christos Exp $");
+__RCSID("$NetBSD: device.c,v 1.15 2026/04/08 16:51:27 htodd Exp $");
 #endif
 
 #include "os.h"
@@ -41,7 +41,7 @@ struct	if_info *iflist;		/* Interface List		*/
 void	deviceOpen(const char *, u_short, int);
 
 /*
- * Return ethernet address for interface
+ * Return Ethernet address for interface
  */
 
 void
@@ -91,6 +91,7 @@ deviceOpen(const char *ifname, u_short proto, int trans)
 
 	strlcpy(tmp.if_name, ifname, sizeof(tmp.if_name));
 	tmp.iopen   = pfInit;
+	tmp.fd      = -1;
 	
 	switch (proto) {
 	case MOP_K_PROTO_RC:

@@ -1,4 +1,4 @@
-/*	$NetBSD: postscreen.c,v 1.5 2023/12/23 20:30:45 christos Exp $	*/
+/*	$NetBSD: postscreen.c,v 1.7 2026/05/09 18:49:19 christos Exp $	*/
 
 /*++
 /* NAME
@@ -293,25 +293,29 @@
 /*	The amount of time that \fBpostscreen\fR(8) will cache an expired
 /*	temporary allowlist entry before it is removed.
 /* .IP "\fBpostscreen_bare_newline_ttl (30d)\fR"
-/*	The amount of time that \fBpostscreen\fR(8) will use the result from
-/*	a successful "bare newline" SMTP protocol test.
+/*	The amount of time that \fBpostscreen\fR(8) remembers that a client
+/*	IP address passed a "bare newline" SMTP protocol test, before it
+/*	address is required to pass that test again.
 /* .IP "\fBpostscreen_dnsbl_max_ttl (${postscreen_dnsbl_ttl?{$postscreen_dnsbl_ttl}:{1}}h)\fR"
-/*	The maximum amount of time that \fBpostscreen\fR(8) will use the
-/*	result from a successful DNS-based reputation test before a
-/*	client IP address is required to pass that test again.
+/*	The maximum amount of time that \fBpostscreen\fR(8) remembers that a
+/*	client IP address passed a DNS-based reputation test, before it is
+/*	required to pass that test again.
 /* .IP "\fBpostscreen_dnsbl_min_ttl (60s)\fR"
-/*	The minimum amount of time that \fBpostscreen\fR(8) will use the
-/*	result from a successful DNS-based reputation test before a
-/*	client IP address is required to pass that test again.
+/*	The minimum amount of time that \fBpostscreen\fR(8) remembers that a
+/*	client IP address passed a DNS-based reputation test, before it
+/*	is required to pass that test again.
 /* .IP "\fBpostscreen_greet_ttl (1d)\fR"
-/*	The amount of time that \fBpostscreen\fR(8) will use the result from
-/*	a successful PREGREET test.
+/*	The amount of time that \fBpostscreen\fR(8) remembers that a client
+/*	IP address passed a PREGREET test, before it is required to pass
+/*	that test again.
 /* .IP "\fBpostscreen_non_smtp_command_ttl (30d)\fR"
-/*	The amount of time that \fBpostscreen\fR(8) will use the result from
-/*	a successful "non_smtp_command" SMTP protocol test.
+/*	The amount of time that \fBpostscreen\fR(8) remembers that a client
+/*	IP address passed a "non_smtp_command" SMTP protocol test, before
+/*	it is required to pass that test again.
 /* .IP "\fBpostscreen_pipelining_ttl (30d)\fR"
-/*	The amount of time that \fBpostscreen\fR(8) will use the result from
-/*	a successful "pipelining" SMTP protocol test.
+/*	The amount of time that \fBpostscreen\fR(8) remembers that a client
+/*	IP address passed a "pipelining" SMTP protocol test, before it is
+/*	required to pass that test again.
 /* RESOURCE CONTROLS
 /* .ad
 /* .fi
@@ -368,7 +372,7 @@
 /*	configuration files.
 /* .IP "\fBdelay_logging_resolution_limit (2)\fR"
 /*	The maximal number of digits after the decimal point when logging
-/*	sub-second delay values.
+/*	delay values.
 /* .IP "\fBcommand_directory (see 'postconf -d' output)\fR"
 /*	The location of all postfix administrative commands.
 /* .IP "\fBmax_idle (100s)\fR"
@@ -428,6 +432,9 @@
 /*	Google, Inc.
 /*	111 8th Avenue
 /*	New York, NY 10011, USA
+/*
+/*	Wietse Venema
+/*	porcupine.org
 /*--*/
 
 /* System library. */
@@ -994,10 +1001,31 @@ static void pre_accept(char *unused_name, char **unused_argv)
     if (new_event_time >= last_event_time + 1
 	&& (name = dict_changed_name()) != 0) {
 	msg_info("table %s has changed - finishing in the background", name);
-	event_server_drain();
+	psc_drain(unused_name, unused_argv);
     } else {
 	last_event_time = new_event_time;
     }
+}
+
+/* contains_only_parameter - string contains $parameter or ${parameter} */
+
+static int contains_only_parameter(const char *str)
+{
+    const char *last;
+    char   *tmp;
+    int     ret;
+
+    if (*str != '$')
+	return (0);
+    if (*++str != '{')
+	return (mail_conf_lookup(str) != 0);
+    if (*(last = str + strlen(str) - 1) == '}') {
+	tmp = mystrndup(str + 1, last - str - 1);
+	ret = (mail_conf_lookup(tmp) != 0);
+	myfree(tmp);
+	return (ret);
+    }
+    return (0);
 }
 
 /* post_jail_init - post-jail initialization */
@@ -1024,16 +1052,14 @@ static void post_jail_init(char *unused_name, char **unused_argv)
     /*
      * Workaround for parameters whose values may contain "$", and that have
      * a default of "$parametername". Not sure if it would be a good idea to
-     * always to this in the mail_conf_raw(3) module.
+     * always do this in the mail_conf_raw(3) module.
      */
-    if (*var_psc_rej_footer == '$'
-	&& mail_conf_lookup(var_psc_rej_footer + 1)) {
+    if (contains_only_parameter(var_psc_rej_footer)) {
 	tmp = mail_conf_eval_once(var_psc_rej_footer);
 	myfree(var_psc_rej_footer);
 	var_psc_rej_footer = mystrdup(tmp);
     }
-    if (*var_psc_exp_filter == '$'
-	&& mail_conf_lookup(var_psc_exp_filter + 1)) {
+    if (contains_only_parameter(var_psc_exp_filter)) {
 	tmp = mail_conf_eval_once(var_psc_exp_filter);
 	myfree(var_psc_exp_filter);
 	var_psc_exp_filter = mystrdup(tmp);

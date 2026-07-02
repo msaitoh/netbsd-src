@@ -1,9 +1,9 @@
-#	$NetBSD: Makefile,v 1.30 2016/01/23 21:22:46 christos Exp $
+#	$NetBSD: Makefile,v 1.32 2026/01/09 22:54:26 jmcneill Exp $
 
 .include <bsd.own.mk>
 
 # These should always be a MACHINE_CPU value
-ARCHDIRS= alpha arm i386 m68k sparc x86_64
+ARCHDIRS= alpha arm i386 m68k powerpc sparc x86_64
 
 .for arch in ${ARCHDIRS}
 .include "${.CURDIR}/${arch}/Makefile.inc"
@@ -25,6 +25,7 @@ LIB=	${MLIBDIR}
 LIB=	${LIBC_MACHINE_CPU}
 .endif
 SHLIB_VERSION_FILE= ${.CURDIR}/${LIB}/shlib_version
+LIB_EXPSYM=	${LIB}.expsym	# resolved in .PATH
 
 .include <bsd.lib.mk>
 .else

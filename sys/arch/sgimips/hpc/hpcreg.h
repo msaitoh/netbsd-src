@@ -1,4 +1,4 @@
-/*	$NetBSD: hpcreg.h,v 1.20 2011/01/25 12:21:04 tsutsui Exp $	*/
+/*	$NetBSD: hpcreg.h,v 1.23 2026/06/11 06:49:36 rumble Exp $	*/
 
 /*
  * Copyright (c) 2001 Rafal K. Boni
@@ -126,8 +126,8 @@ struct hpc_dma_desc {
 #define HPC3_SCSI0_CTL		0x00001004	/* DMA control flags */
 #define HPC3_SCSI0_GIO		0x00001008	/* GIO DMA FIFO pointer */
 #define HPC3_SCSI0_DEV		0x0000100c	/* Device DMA FIFO pointer */
-#define HPC3_SCSI0_DMACFG	0x00001010	/* DMA configururation */
-#define HPC3_SCSI0_PIOCFG	0x00001014	/* PIO configururation */
+#define HPC3_SCSI0_DMACFG	0x00001010	/* DMA configuration */
+#define HPC3_SCSI0_PIOCFG	0x00001014	/* PIO configuration */
 
 #define HPC3_SCSI1_REGS		0x00012000	/* SCSI channel 1 registers */
 #define HPC3_SCSI1_REGS_SIZE	0x00001fff
@@ -139,8 +139,8 @@ struct hpc_dma_desc {
 #define HPC3_SCSI1_CTL		0x00001004	/* DMA control flags */
 #define HPC3_SCSI1_GIO		0x00001008	/* GIO DMA FIFO pointer */
 #define HPC3_SCSI1_DEV		0x0000100c	/* Device DMA FIFO pointer */
-#define HPC3_SCSI1_DMACFG	0x00001010	/* DMA configururation */
-#define HPC3_SCSI1_PIOCFG	0x00001014	/* PIO configururation */
+#define HPC3_SCSI1_DMACFG	0x00001010	/* DMA configuration */
+#define HPC3_SCSI1_PIOCFG	0x00001014	/* PIO configuration */
 
 /* HPC3_SCSIx_CTL "SCSI control register" flags: */
 #define HPC3_SCSI_DMACTL_IRQ    0x01 /* IRQ asserted, dma done or parity */
@@ -193,7 +193,7 @@ struct hpc_dma_desc {
 #define HPC3_ENETR_RESET_LOOPBK	0x0004		/* External loopback enable */
 #define HPC3_ENETR_RESET_CLRRBO	0x0008		/* Clear RBO condition (??) */
 
-#define HPC3_ENETR_DMACFG	0x00001018	/* Recv: DMA configururation */
+#define HPC3_ENETR_DMACFG	0x00001018	/* Recv: DMA configuration */
 
 #define	HPC3_ENETR_DMACFG_D1(_x) (((_x) << 0) & 0x000f)	/* D1 gio_clk cycles */
 #define	HPC3_ENETR_DMACFG_D2(_x) (((_x) << 4) & 0x00f0)	/* D2 gio_clk cycles */
@@ -209,7 +209,7 @@ struct hpc_dma_desc {
 #define	HPC3_ENETR_DMACFG_FIX_INTR 0x08000	/* Enable EOP timeout */
 #define	HPC3_ENETR_DMACFG_TIMEOUT  0x30000	/* Timeout value for above two*/
 
-#define HPC3_ENETR_PIOCFG	0x0000101c	/* Recv: PIO configururation */
+#define HPC3_ENETR_PIOCFG	0x0000101c	/* Recv: PIO configuration */
 
 #define HPC3_ENETR_PIOCFG_P1(_x) (((_x) << 0) & 0x000f)	/* P1 gio_clk cycles */
 #define HPC3_ENETR_PIOCFG_P2(_x) (((_x) << 4) & 0x00f0)	/* P2 gio_clk cycles */
@@ -451,8 +451,21 @@ struct hpc_dma_desc {
 #define HPC1_LPT_DEVREGS	0x00000132	/* Ext. Parallel Registers */
 #define	HPC1_LPT_DEVREGS_SIZE	0x00000001	/* Size of External Registers */
 
+/* DSP regs on the primary HPC */
+#define HPC1_DSP_DEVREGS	0x00000180	/* Hollywood Audio DSP Regs */
+#define HPC1_DSP_DEVREGS_SIZE	0x00000038
+#define HPC1_DSP_SRAM		0x00060000	/* Hollywood Audio DSP Memory */
+#define HPC1_DSP_SRAM_SIZE	0x00020000	/* 24-bit words mapped as 32b */
+
 /* AUX regs on the primary HPC */
 #define HPC1_AUX_REGS		0x000001bf	/* EEPROM/LED Control (byte) */
 #define HPC1_AUX_CONSLED	0x01		/* Console LED */
+
+/* EEPROM bits are the same on HPC1 and HPC3 */
+#define HPC_AUX_EEPROM_PRE	0x01		/* CS56 PRE pin (same as LED) */
+#define HPC_AUX_EEPROM_CS	0x02		/* CS56 CS pin */
+#define HPC_AUX_EEPROM_SK	0x04		/* CS56 SK pin */
+#define HPC_AUX_EEPROM_DI	0x08		/* CS56 DI pin */
+#define HPC_AUX_EEPROM_DO	0x10		/* CS56 DO pin */
 
 #endif	/* _ARCH_SGIMIPS_HPC_HPCREG_H_ */

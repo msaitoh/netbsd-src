@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile.kern.inc,v 1.301 2024/05/06 08:43:36 mrg Exp $
+#	$NetBSD: Makefile.kern.inc,v 1.306 2026/05/10 14:19:11 tls Exp $
 #
 # This file contains common `MI' targets and definitions and it is included
 # at the bottom of each `MD' ${MACHINE}/conf/Makefile.${MACHINE}.
@@ -66,7 +66,7 @@ INCLUDES?=	-I. ${EXTRA_INCLUDES} -I${S}/../common/include -I$S/arch \
 		-I$S -nostdinc
 CPPFLAGS+=	${INCLUDES} ${IDENT} -D_KERNEL -D_KERNEL_OPT
 .if !defined(COVERITY_TOP_CONFIG)
-CPPFLAGS+=	-std=gnu99
+CPPFLAGS+=	-std=gnu11
 .endif
 .if ${KERNEL_DIR:Uno} == "yes"
 CPPFLAGS+=	-DKERNEL_DIR
@@ -283,7 +283,8 @@ TARGETSFX=	.gdb
 LINKFLAGS+=	${LINKFLAGS_NORMAL}
 .endif
 
-.if ${MKDEBUG:Uno} == "yes"
+
+.if ${MKDEBUGKERNEL:Uno} == "yes"
 # XXX: KERNEL_DIR?
 debuginstall: install-kernel-debug
 .for k in ${KERNELS}
@@ -361,9 +362,6 @@ ${_s:T:R}.o: ${_s}
 .include "${S}/conf/cscope.mk"
 .include "${S}/conf/gdbinit.mk"
 .include "${S}/conf/ssp.mk"
-.if "${_SKIP_DTS}" != "yes"
-.include "${S}/conf/dts.mk"
-.endif
 .include "${S}/conf/copts.mk"
 
 ##

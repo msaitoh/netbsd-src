@@ -9,10 +9,20 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
-import isctest.mark
+import pytest
+
+pytestmark = pytest.mark.extra_artifacts(
+    [
+        "dig.out.*",
+        "named.run.*",
+        "query*.log",
+        "ans*/ans.run",
+        "ans*/query.log*",
+    ]
+)
 
 
 # The qmin test is inherently unstable, see GL #904 for details.
-@isctest.mark.flaky(max_runs=3)
+@pytest.mark.flaky(max_runs=3)
 def test_qmin(run_tests_sh):
     run_tests_sh()

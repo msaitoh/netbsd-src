@@ -1,9 +1,11 @@
-#	$NetBSD: Makefile,v 1.23 2008/06/23 02:16:53 matt Exp $
+#	$NetBSD: Makefile,v 1.25 2025/09/23 20:12:05 rillig Exp $
 
 .include <bsd.own.mk>
 .include "${NETBSDSRCDIR}/distrib/common/Makefile.distrib"
 
 SUBDIR=		instkernel cdroms # floppy-GENERIC
+SUBDIR+=	.WAIT
+SUBDIR+=	liveimage
 TARGETS+=	release
 
 release: check_RELEASEDIR .WAIT README.files
@@ -12,7 +14,10 @@ release: check_RELEASEDIR .WAIT README.files
 	    ${RELEASEDIR}/${RELEASEMACHINEDIR}/installation/$i
 .endfor
 
-iso_image:
+iso_image: .MAKE
 	${MAKEDIRTARGET} cdroms iso_image
+
+live_image: .MAKE
+	${MAKEDIRTARGET} liveimage live_image
 
 .include <bsd.subdir.mk>

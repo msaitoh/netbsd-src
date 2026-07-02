@@ -1,4 +1,4 @@
-# $NetBSD: t_builtins.sh,v 1.6 2021/05/18 21:37:56 kre Exp $
+# $NetBSD: t_builtins.sh,v 1.8 2026/03/10 21:59:29 andvar Exp $
 #
 # Copyright (c) 2018 The NetBSD Foundation, Inc.
 # All rights reserved.
@@ -538,7 +538,7 @@ getopts_body() {
 
 atf_test_case jobs
 jobs_head() {
-	atf_set "descr" "Tests the shell builting 'jobs' command"
+	atf_set "descr" "Tests the shell builtin 'jobs' command"
 }
 jobs_body() {
 	have_builtin jobs || return 0
@@ -614,7 +614,7 @@ readonly_body() {
 			 unset VAR; eval "$V"; readonly -p;
 			 printf %s\\n "FOUND=${MYVAR-unset&}${MYVAR:-empty}"'
 
-	# don't test stderr, some shells inist on generating a message for an
+	# don't test stderr, some shells insist on generating a message for an
 	# unset of a readonly var (rather than simply having unset make $?=1)
 
 	atf_check -s not-exit:0 -e empty -o empty ${TEST_SH} -c \

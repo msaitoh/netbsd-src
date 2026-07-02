@@ -1,4 +1,4 @@
-/*	$NetBSD: param.h,v 1.62 2021/05/31 14:38:56 simonb Exp $ */
+/*	$NetBSD: param.h,v 1.65 2026/05/10 23:50:36 kre Exp $ */
 
 /*
  * Copyright (c) 1992, 1993
@@ -108,14 +108,10 @@ extern int nbpg, pgofset, pgshift;
 #ifdef SUN4V
 #define	MAXCPUS		256
 #endif
+#endif
 
 /* We get stack overflows w/8K stacks in 64-bit mode */
-#define	SSIZE		2		/* initial stack size in pages */
-#else
-#define	SSIZE		2
-#endif
-#define	USPACE		(SSIZE*8192)
-
+#define	USPACE		(2*8192)
 
 /*
  * Here are all the magic kernel virtual addresses and how they're allocated.
@@ -280,3 +276,9 @@ extern const int cputyp;
 #define	PGOFSET		(NBPG-1)	/* byte offset into page */
 
 #define PCI_MAGIC_IO_RANGE	0x100000000LL
+
+#ifdef __arch64__
+#define	STACK_ALIGNBYTES	ALIGNBYTES64
+#else
+#define	STACK_ALIGNBYTES	ALIGNBYTES32
+#endif

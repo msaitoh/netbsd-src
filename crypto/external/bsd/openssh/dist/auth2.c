@@ -1,5 +1,5 @@
-/*	$NetBSD: auth2.c,v 1.32 2024/10/09 01:49:20 rin Exp $	*/
-/* $OpenBSD: auth2.c,v 1.169 2024/05/17 00:30:23 djm Exp $ */
+/*	$NetBSD: auth2.c,v 1.35 2026/04/08 18:58:40 christos Exp $	*/
+/* $OpenBSD: auth2.c,v 1.173 2026/03/03 09:57:25 dtucker Exp $ */
 
 /*
  * Copyright (c) 2000 Markus Friedl.  All rights reserved.
@@ -26,7 +26,7 @@
  */
 
 #include "includes.h"
-__RCSID("$NetBSD: auth2.c,v 1.32 2024/10/09 01:49:20 rin Exp $");
+__RCSID("$NetBSD: auth2.c,v 1.35 2026/04/08 18:58:40 christos Exp $");
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -54,15 +54,13 @@ __RCSID("$NetBSD: auth2.c,v 1.32 2024/10/09 01:49:20 rin Exp $");
 #include "auth.h"
 #include "dispatch.h"
 #include "pathnames.h"
-#include "canohost.h"
-#include "pfilter.h"
 
+#include "ssherr.h"
 #ifdef GSSAPI
 #include "ssh-gss.h"
 #endif
 
 #include "monitor_wrap.h"
-#include "ssherr.h"
 #include "digest.h"
 #include "kex.h"
 
@@ -103,8 +101,8 @@ Authmethod *authmethods[] = {
 
 /* protocol */
 
-static int input_service_request(int, u_int32_t, struct ssh *);
-static int input_userauth_request(int, u_int32_t, struct ssh *);
+static int input_service_request(int, uint32_t, struct ssh *);
+static int input_userauth_request(int, uint32_t, struct ssh *);
 
 /* helper */
 static Authmethod *authmethod_byname(const char *);
@@ -196,7 +194,7 @@ do_authentication2(struct ssh *ssh)
 }
 
 static int
-input_service_request(int type, u_int32_t seq, struct ssh *ssh)
+input_service_request(int type, uint32_t seq, struct ssh *ssh)
 {
 	Authctxt *authctxt = ssh->authctxt;
 	char *service = NULL;
@@ -253,7 +251,7 @@ user_specific_delay(const char *user)
 	/* 0-4.2 ms of delay */
 	delay = (double)PEEK_U32(hash) / 1000 / 1000 / 1000 / 1000;
 	freezero(hash, len);
-	debug3_f("user specific delay %0.3lfms", delay/1000);
+	debug3_f("user specific delay %0.3lfms", delay*1000);
 	return MIN_FAIL_DELAY_SECONDS + delay;
 }
 
@@ -281,7 +279,7 @@ ensure_minimum_time_since(double start, double seconds)
 }
 
 static int
-input_userauth_request(int type, u_int32_t seq, struct ssh *ssh)
+input_userauth_request(int type, uint32_t seq, struct ssh *ssh)
 {
 	Authctxt *authctxt = ssh->authctxt;
 	Authmethod *m = NULL;
@@ -312,6 +310,9 @@ input_userauth_request(int type, u_int32_t seq, struct ssh *ssh)
 	if (authctxt->attempt++ == 0) {
 		/* setup auth context */
 		authctxt->pw = mm_getpwnamallow(ssh, user);
+		authctxt->user = xstrdup(user);
+		authctxt->service = xstrdup(service);
+		authctxt->style = style ? xstrdup(style) : NULL;
 		if (authctxt->pw && strcmp(service, "ssh-connection")==0) {
 			authctxt->valid = 1;
 			debug2_f("setting up authctxt for %s", user);
@@ -327,9 +328,6 @@ input_userauth_request(int type, u_int32_t seq, struct ssh *ssh)
 		ssh_packet_set_log_preamble(ssh, "%suser %s",
 		    authctxt->valid ? "authenticating " : "invalid ", user);
 		setproctitle("%s [net]", authctxt->valid ? user : "unknown");
-		authctxt->user = xstrdup(user);
-		authctxt->service = xstrdup(service);
-		authctxt->style = style ? xstrdup(style) : NULL;
 		mm_inform_authserv(service, style);
 		userauth_banner(ssh);
 		if ((r = kex_server_update_ext_info(ssh)) != 0)

@@ -1,5 +1,5 @@
 #!/bin/sh
-# $NetBSD: mkimage,v 1.84 2024/08/12 18:45:51 skrll Exp $
+# $NetBSD: mkimage,v 1.97 2026/05/22 14:44:16 riastradh Exp $
 #
 # Copyright (c) 2013, 2014 The NetBSD Foundation, Inc.
 # All rights reserved.
@@ -34,14 +34,14 @@
 
 #
 # Makes a bootable image for the host architecture given.
-# The host specific functions are pulled in from a /bin/sh script in the
-# "conf" directory, and is expected to provide the following shell
+# The host-specific functions are pulled in from a /bin/sh script in the
+# "conf" directory, which is expected to provide the following shell
 # functions, which are called in the following order:
 #
 #  - make_fstab: Creates the host's /etc/fstab with / on ${rootdev}.
 #    If -m is given, a number of directories are put on a tmpfs RAM disk
 #  - customize: After unpacking the sets, this gets the system to
-#    a working state, e. g. by setting up /etc/rc.conf and /dev
+#    a working state, e.g., by setting up /etc/rc.conf and /dev
 #  - populate: Add common goods like kernel and bootloader
 #  - make_label: Prints disklabel to stdout
 #
@@ -60,6 +60,11 @@ MTREE=${TOOL_MTREE:-mtree}
 INSTALLBOOT=${TOOL_INSTALLBOOT:-installboot}
 MKUBOOTIMAGE=${TOOL_MKUBOOTIMAGE:-mkubootimage}
 GZIP_CMD=${TOOL_GZIP:-gzip} # ${GZIP} is special to gzip(1)
+SED=${TOOL_SED:-sed}
+PWD_MKDB=${TOOL_PWD_MKDB:-pwd_mkdb}
+
+postfix=false
+[ "${MKPOSTFIX:-yes}" = no ] || postfix=true
 
 src="/usr/src"
 sets="base comp etc games gpufw man manhtml misc modules rescue tests text"
@@ -112,6 +117,76 @@ getsectors() {
 	echo $((m * v / 512))
 }
 
+minwrites_fstab_entries() {
+	$minwrites || return 0
+	cat << EOF
+tmpfs		/var/log		tmpfs	rw,union,-s32M
+tmpfs		/var/run		tmpfs	rw,union,-s1M
+tmpfs		/var/mail		tmpfs	rw,union,-s10M
+tmpfs		/var/chroot		tmpfs	rw,union,-s10M
+EOF
+	if $postfix; then
+	cat << EOF
+tmpfs		/var/spool/postfix	tmpfs	rw,union,-s20M
+tmpfs		/var/db/postfix		tmpfs	rw,union,-s1M
+EOF
+	fi
+}
+
+make_fstab_gpt() {
+	local boot=$1
+	local rootopts=
+	if $minwrites; then
+		rootopts=,log,nodevmtime
+	fi
+
+	cat > ${mnt}/etc/fstab << EOF
+# NetBSD /etc/fstab
+# See /usr/share/examples/fstab/ for more examples.
+NAME=${gpt_label_ffs:-netbsd-root}	/		ffs	rw,noatime${rootopts}	1 1
+NAME=${gpt_label_boot:-$boot}		/boot		msdos	rw	1 1
+ptyfs		/dev/pts	ptyfs	rw
+procfs		/proc		procfs	rw
+tmpfs		/var/shm	tmpfs	rw,-m1777,-sram%25
+EOF
+	minwrites_fstab_entries >> ${mnt}/etc/fstab
+}
+
+# From Richard Neswold's:
+# http://rich-tbp.blogspot.com/2013/03/netbsd-on-rpi-minimizing-disk-writes.html
+# Also for the postfix stuff below
+make_fstab_normal() {
+	local rootopts=
+	if $minwrites; then
+		rootopts=,nodevmtime
+	fi
+	cat > ${mnt}/etc/fstab << EOF
+# NetBSD /etc/fstab
+# See /usr/share/examples/fstab/ for more examples.
+ROOT.a		/			ffs	rw,noatime${rootopts}	1 1
+ROOT.e		/boot			msdos	rw				1 1
+ptyfs		/dev/pts		ptyfs	rw
+procfs		/proc			procfs	rw
+tmpfs		/tmp			tmpfs	rw,-s32M
+tmpfs		/var/shm		tmpfs	rw,-m1777,-sram%25
+EOF
+	minwrites_fstab_entries >> ${mnt}/etc/fstab
+}
+
+make_fstab_default() {
+	if $gpt; then
+		make_fstab_gpt "$@"
+	else
+		make_fstab_normal
+	fi
+	echo "./etc/fstab type=file uname=root gname=wheel mode=0644" \
+	    >> "$tmp/selected_sets"
+
+	# Missing mount points from fstab
+	echo "./proc type=dir uname=root gname=wheel mode=0755" \
+	    >> "$tmp/selected_sets"
+}
+
 usage() {
 	cat << EOF 1>&2
 Usage: $PROG -h <host-arch> [-bdmx] [-B <byte-order>] [-K <kerneldir>] [-S <srcdir>] [-D <destdir>] [-c <custom-files-dir>] [-s <Mb size>] [<image>]
@@ -119,17 +194,25 @@ Usage: $PROG -h <host-arch> [-bdmx] [-B <byte-order>] [-K <kerneldir>] [-S <srcd
 -b	Boot only, no sets loaded
 -r	root device kind (sd, wd, ld)
 -d	Add the debug sets
--m	Optimize the OS installation to mimimize disk writes for SSDs
+-m	Optimize the OS installation to minimize disk writes for SSDs
 -x	Load the X sets too, not just the base ones
 EOF
 	exit 1
 }
 
 # First pass for options to get the host and src directories
-OPTS="B:D:K:S:bc:dh:mr:s:x"
+OPTS="B:C:D:K:S:bc:dh:mr:s:x"
 while getopts "$OPTS" f
 do
 	case $f in
+	C)	conf="$OPTARG"
+		# Take -C relative to working directory; don't search
+		# in PATH.
+		case $conf in
+		/*)	;;
+		*)	conf=./"$conf";;
+		esac
+		;;
 	h)	h="$OPTARG";;
 	S)	src="$OPTARG";;
 	*)	;;
@@ -141,17 +224,21 @@ then
 	usage
 fi
 
-if [ ! -f "${DIR}/conf/${h}.conf" ]
+: ${conf:=${DIR}/conf/${h}.conf}
+if [ ! -f "$conf" ]
 then
-	echo $PROG: ${DIR}/conf/${h}.conf is not present 1>&2
+	echo $PROG: $conf is not present 1>&2
 	exit 1
 fi
 
 resize=false
 gpt=false
 gpt_hybrid=false
+fsize=8192
+bsize=65536
+ffsversion=1
 
-. "${DIR}/conf/${h}.conf"
+. "$conf"
 release="/usr/obj/${MACHINE}/release"
 
 selected_sets="$sets"
@@ -166,6 +253,7 @@ while getopts "$OPTS" f
 do
 	case $f in
 	B)	endian="-B $OPTARG";;
+	C)	;;
 	D)	release="$OPTARG";;
 	K)	kernel="$OPTARG";;
 	S)	;;
@@ -259,7 +347,7 @@ if [ -z "${bootonly}" ]; then
 	echo ${bar} Populating ffs filesystem ${bar}
 	${MAKEFS} -rx ${endian} -N ${release}/etc -t ffs \
 	    -O ${ffsoffset} ${timestamp_opt} \
-	    -o d=4096,f=8192,b=65536 -b $((${extra}))m \
+	    -o d=4096,f=${fsize},b=${bsize},v=${ffsversion} -b $((${extra}))m \
 	    -F "$tmp/selected_sets" ${image} "${release}" "${mnt}"
 fi
 
@@ -270,7 +358,7 @@ if [ "${size}" = 0 ]; then
 	alignsize=$((alignunit*((size + alignunit - 1)/alignunit)))
 	alignsize=$((alignsize + 1024*1024))
 	if [ "${size}" -lt "${alignsize}" ]; then
-		dd bs=1 count="$((alignsize - size))" if=/dev/zero \
+		dd bs="$((alignsize - size))" count=1 if=/dev/zero conv=sync \
 			>> "${image}" 2> /dev/null
 		size="${alignsize}"
 	fi
@@ -336,5 +424,9 @@ if $compress; then
 	${GZIP_CMD} -n -9 ${image}
 	image="${image}.gz"
 fi
+
+cd "${IMAGEDIR}"
+${CKSUM} -a MD5 "$(basename "${image}")" > MD5
+${CKSUM} -a SHA512 "$(basename "${image}")" > SHA512
 
 echo ${bar} Image is ${image} ${bar}

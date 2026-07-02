@@ -1,4 +1,4 @@
-/*	$NetBSD: mips_machdep.c,v 1.306 2024/01/06 07:27:35 simonb Exp $	*/
+/*	$NetBSD: mips_machdep.c,v 1.309 2026/04/08 04:06:41 thorpej Exp $	*/
 
 /*
  * Copyright 2002 Wasabi Systems, Inc.
@@ -111,7 +111,7 @@
  */
 
 #include <sys/cdefs.h>			/* RCS ID & Copyright macro defns */
-__KERNEL_RCSID(0, "$NetBSD: mips_machdep.c,v 1.306 2024/01/06 07:27:35 simonb Exp $");
+__KERNEL_RCSID(0, "$NetBSD: mips_machdep.c,v 1.309 2026/04/08 04:06:41 thorpej Exp $");
 
 #define __INTR_PRIVATE
 #include "opt_cputype.h"
@@ -1697,8 +1697,10 @@ setregs(struct lwp *l, struct exec_package *pack, vaddr_t stack)
 	struct trapframe * const tf = l->l_md.md_utf;
 	struct proc * const p = l->l_proc;
 
-	memset(tf, 0, sizeof(struct trapframe));
-	tf->tf_regs[_R_SP] = (intptr_t)stack;
+	KASSERTMSG((stack & STACK_ALIGNBYTES) == 0, "stack=%"PRIxVADDR, stack);
+
+	memset(tf, 0, sizeof(*tf));
+	tf->tf_regs[_R_SP] = (intptr_t)stack & ~STACK_ALIGNBYTES;
 	tf->tf_regs[_R_PC] = (intptr_t)pack->ep_entry & ~3;
 	tf->tf_regs[_R_T9] = (intptr_t)pack->ep_entry & ~3; /* abicall requirement */
 	tf->tf_regs[_R_SR] = PSL_USERSET;
@@ -2462,18 +2464,6 @@ std_splsw_test(void)
 }
 
 #endif /* PARANOIA */
-
-#ifdef MODULAR
-/*
- * Push any modules loaded by the boot loader.
- */
-void
-module_init_md(void)
-{
-
-	/* XXX Do something board/machine specific here one day... */
-}
-#endif /* MODULAR */
 
 bool
 mm_md_direct_mapped_phys(paddr_t pa, vaddr_t *vap)

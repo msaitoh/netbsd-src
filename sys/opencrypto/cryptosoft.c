@@ -1,4 +1,4 @@
-/*	$NetBSD: cryptosoft.c,v 1.64 2022/05/22 11:39:27 riastradh Exp $ */
+/*	$NetBSD: cryptosoft.c,v 1.67 2026/05/19 15:58:37 riastradh Exp $ */
 /*	$FreeBSD: src/sys/opencrypto/cryptosoft.c,v 1.2.2.1 2002/11/21 23:34:23 sam Exp $	*/
 /*	$OpenBSD: cryptosoft.c,v 1.35 2002/04/26 08:43:50 deraadt Exp $	*/
 
@@ -24,7 +24,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: cryptosoft.c,v 1.64 2022/05/22 11:39:27 riastradh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: cryptosoft.c,v 1.67 2026/05/19 15:58:37 riastradh Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -60,7 +60,7 @@ union authctx {
 };
 
 struct swcr_data **swcr_sessions = NULL;
-u_int32_t swcr_sesnum = 0;
+uint32_t swcr_sesnum = 0;
 int32_t swcr_id = -1;
 
 #define COPYBACK(x, a, b, c, d) \
@@ -74,11 +74,9 @@ static	int swcr_encdec(struct cryptodesc *, const struct swcr_data *, void *, in
 static	int swcr_compdec(struct cryptodesc *, const struct swcr_data *, void *, int, int *);
 static	int swcr_combined(struct cryptop *, int);
 static	int swcr_process(void *, struct cryptop *, int);
-static	int swcr_newsession(void *, u_int32_t *, struct cryptoini *);
-static void swcr_freesession(void *, u_int64_t);
+static	int swcr_newsession(void *, uint32_t *, struct cryptoini *);
+static void swcr_freesession(void *, uint64_t);
 static void swcr_freesession_internal(struct swcr_data *);
-
-static	int swcryptoattach_internal(void);
 
 /*
  * Apply a symmetric encryption/decryption algorithm.
@@ -700,10 +698,10 @@ static int
 swcr_compdec(struct cryptodesc *crd, const struct swcr_data *sw,
     void *buf, int outtype, int *res_size)
 {
-	u_int8_t *data, *out;
+	uint8_t *data, *out;
 	const struct swcr_comp_algo *cxf;
 	int adj;
-	u_int32_t result;
+	uint32_t result;
 
 	cxf = sw->sw_cxf;
 
@@ -756,14 +754,14 @@ swcr_compdec(struct cryptodesc *crd, const struct swcr_data *sw,
  * Generate a new software session.
  */
 static int
-swcr_newsession(void *arg, u_int32_t *sid, struct cryptoini *cri)
+swcr_newsession(void *arg, uint32_t *sid, struct cryptoini *cri)
 {
 	struct swcr_data **swd;
 	struct swcr_data *first, *tmp;
 	const struct swcr_auth_hash *axf;
 	const struct swcr_enc_xform *txf;
 	const struct swcr_comp_algo *cxf;
-	u_int32_t i;
+	uint32_t i;
 	int k, error;
 
 	if (swcr_sessions) {
@@ -774,14 +772,14 @@ swcr_newsession(void *arg, u_int32_t *sid, struct cryptoini *cri)
 		i = 1;		/* NB: to silence compiler warning */
 
 	if (swcr_sessions == NULL || i == swcr_sesnum) {
-		u_int32_t newnum;
+		uint32_t newnum;
 		struct swcr_data **newsessions;
 
 		if (swcr_sessions == NULL) {
 			i = 1; /* We leave swcr_sessions[0] empty */
 			newnum = CRYPTO_SW_SESSIONS;
 		} else
-			newnum = swcr_sesnum *= 2;
+			newnum = swcr_sesnum * 2;
 
 		newsessions = kmem_zalloc(newnum * sizeof(struct swcr_data *),
 		    KM_NOSLEEP);
@@ -1120,10 +1118,10 @@ swcr_freesession_internal(struct swcr_data *arg)
  * Free a session.
  */
 static void
-swcr_freesession(void *arg, u_int64_t tid)
+swcr_freesession(void *arg, uint64_t tid)
 {
 	struct swcr_data *swd;
-	u_int32_t sid = ((u_int32_t) tid) & 0xffffffff;
+	uint32_t sid = ((uint32_t) tid) & 0xffffffff;
 
 	KASSERTMSG(sid < swcr_sesnum, "sid=%"PRIu32" swcr_sesnum=%"PRIu32,
 	    sid, swcr_sesnum);
@@ -1142,7 +1140,7 @@ swcr_process(void *arg, struct cryptop *crp, int hint)
 {
 	struct cryptodesc *crd;
 	struct swcr_data *sw;
-	u_int32_t lid;
+	uint32_t lid;
 	int type;
 
 	/* Sanity check */
@@ -1257,14 +1255,13 @@ done:
 	return 0;
 }
 
-static void
+static int
 swcr_init(void)
 {
+
 	swcr_id = crypto_get_driverid(CRYPTOCAP_F_SOFTWARE);
-	if (swcr_id < 0) {
-		/* This should never happen */
-		panic("Software crypto device cannot initialize!");
-	}
+	if (swcr_id < 0)
+		return EBUSY;
 
 	crypto_register(swcr_id, CRYPTO_DES_CBC,
 	    0, 0, swcr_newsession, swcr_freesession, swcr_process, NULL);
@@ -1303,16 +1300,25 @@ swcr_init(void)
 	REGISTER(CRYPTO_DEFLATE_COMP_NOGROW);
 	REGISTER(CRYPTO_GZIP_COMP);
 #undef REGISTER
+
+	return 0;
 }
 
+static void
+swcr_fini(void)
+{
+
+	if (swcr_id >= 0)
+		crypto_unregister_all(swcr_id);
+}
 
 /*
  * Pseudo-device init routine for software crypto.
  */
-
 void
 swcryptoattach(int num)
 {
+#ifndef _MODULE
 	/*
 	 * swcrypto_attach() must be called after attached cpus, because
 	 * it calls softint_establish() through below call path.
@@ -1324,129 +1330,37 @@ swcryptoattach(int num)
 	 * So, swcrypto_attach() must be called from not module_init_class()
 	 * but config_finalize() when it is built as builtin module.
 	 */
-	swcryptoattach_internal();
-}
-
-void	swcrypto_attach(device_t, device_t, void *);
-
-void
-swcrypto_attach(device_t parent, device_t self, void *opaque)
-{
-
-	swcr_init();
-
-	if (!pmf_device_register(self, NULL, NULL))
-		aprint_error_dev(self, "couldn't establish power handler\n");
-}
-
-int	swcrypto_detach(device_t, int);
-
-int
-swcrypto_detach(device_t self, int flag)
-{
-	pmf_device_deregister(self);
-	if (swcr_id >= 0)
-		crypto_unregister_all(swcr_id);
-	return 0;
-}
-
-int	swcrypto_match(device_t, cfdata_t, void *);
-
-int
-swcrypto_match(device_t parent, cfdata_t data, void *opaque)
-{
-
-        return 1;
+	if (swcr_init() != 0) {
+		/* This should never happen */
+		panic("Software crypto device cannot initialize!");
+	}
+#endif
 }
 
 MODULE(MODULE_CLASS_DRIVER, swcrypto,
 	"opencrypto,zlib,blowfish,des,cast128,camellia,skipjack");
 
-CFDRIVER_DECL(swcrypto, DV_DULL, NULL);
-
-CFATTACH_DECL2_NEW(swcrypto, 0, swcrypto_match, swcrypto_attach,
-    swcrypto_detach, NULL, NULL, NULL);
-
-static int swcryptoloc[] = { -1, -1 };
-
-static struct cfdata swcrypto_cfdata[] = {
-	{
-		.cf_name = "swcrypto",
-		.cf_atname = "swcrypto",
-		.cf_unit = 0,
-		.cf_fstate = 0,
-		.cf_loc = swcryptoloc,
-		.cf_flags = 0,
-		.cf_pspec = NULL,
-	},
-	{ NULL, NULL, 0, 0, NULL, 0, NULL }
-};
-
-/*
- * Internal attach routine.
- * Don't call before attached cpus.
- */
-static int
-swcryptoattach_internal(void)
-{
-	int error;
-
-	error = config_cfdriver_attach(&swcrypto_cd);
-	if (error) {
-		return error;
-	}
-
-	error = config_cfattach_attach(swcrypto_cd.cd_name, &swcrypto_ca);
-	if (error) {
-		config_cfdriver_detach(&swcrypto_cd);
-		aprint_error("%s: unable to register cfattach\n",
-		    swcrypto_cd.cd_name);
-
-		return error;
-	}
-
-	error = config_cfdata_attach(swcrypto_cfdata, 1);
-	if (error) {
-		config_cfattach_detach(swcrypto_cd.cd_name,
-		    &swcrypto_ca);
-		config_cfdriver_detach(&swcrypto_cd);
-		aprint_error("%s: unable to register cfdata\n",
-		    swcrypto_cd.cd_name);
-
-		return error;
-	}
-
-	(void)config_attach_pseudo(swcrypto_cfdata);
-
-	return 0;
-}
-
 static int
 swcrypto_modcmd(modcmd_t cmd, void *arg)
 {
+#ifdef _MODULE
 	int error = 0;
+#endif
 
 	switch (cmd) {
 	case MODULE_CMD_INIT:
 #ifdef _MODULE
-		error = swcryptoattach_internal();
-#endif
-		return error;
-	case MODULE_CMD_FINI:
-#if 1
-		// XXX: Need to keep track if we are in use.
-		return ENOTTY;
-#else
-		error = config_cfdata_detach(swcrypto_cfdata);
-		if (error) {
+		error = swcr_init();
+		if (error)
 			return error;
-		}
-
-		config_cfattach_detach(swcrypto_cd.cd_name, &swcrypto_ca);
-		config_cfdriver_detach(&swcrypto_cd);
-
-		return 0;
 #endif
+		return 0;
+	case MODULE_CMD_FINI:
+		/* XXX: Need to keep track if we are in use. */
+		return ENOTTY;
+
+		swcr_fini();
+		return 0;
 	default:
 		return ENOTTY;
 	}

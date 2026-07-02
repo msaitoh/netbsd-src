@@ -1,4 +1,4 @@
-/* $NetBSD: i386.c,v 1.43 2021/12/05 04:47:18 msaitoh Exp $ */
+/* $NetBSD: i386.c,v 1.45 2025/12/24 20:37:03 andvar Exp $ */
 
 /*-
  * Copyright (c) 2003 The NetBSD Foundation, Inc.
@@ -35,7 +35,7 @@
 
 #include <sys/cdefs.h>
 #if !defined(__lint)
-__RCSID("$NetBSD: i386.c,v 1.43 2021/12/05 04:47:18 msaitoh Exp $");
+__RCSID("$NetBSD: i386.c,v 1.45 2025/12/24 20:37:03 andvar Exp $");
 #endif /* !__lint */
 
 #include <sys/param.h>
@@ -183,7 +183,7 @@ write_boot_area(ib_params *params, uint8_t *buf, size_t len)
 	/* Try again with label write-enabled */
 	rv = pwrite_validate(params->fsfd, buf, len, 0);
 
-	/* Reset write-protext */
+	/* Reset write-protect */
 	i = 0;
 	ioctl(params->fsfd, DIOCWLABEL, &i);
 	if (rv == (ssize_t)len)
@@ -409,7 +409,7 @@ i386_setboot(ib_params *params)
 	 * To avoid this we check the number of 'reserved' sectors to ensure
 	 * there there is enough space.
 	 * Unfortunately newfs(8) doesn't (yet) splat the BPB (which is
-	 * effectively the FAT superblock) when a filesystem is initailised
+	 * effectively the FAT superblock) when a filesystem is initialised
 	 * so this code tends to complain rather too often,
 	 * Specifying 'installboot -f' will delete the old BPB info.
 	 */

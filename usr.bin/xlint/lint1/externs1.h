@@ -1,4 +1,4 @@
-/*	$NetBSD: externs1.h,v 1.233 2024/09/28 15:51:40 rillig Exp $	*/
+/*	$NetBSD: externs1.h,v 1.246 2026/04/20 22:26:43 rillig Exp $	*/
 
 /*
  * Copyright (c) 1994, 1995 Jochen Pohl
@@ -32,6 +32,9 @@
  */
 
 #include <signal.h>
+
+/* tyname.c */
+const char *expr_type_name(const tnode_t *);
 
 /*
  * main1.c
@@ -220,7 +223,8 @@ void dcs_add_function_specifier(function_specifier);
 void dcs_add_storage_class(scl_t);
 void dcs_add_type(type_t *);
 void dcs_add_qualifiers(type_qualifiers);
-void dcs_add_alignas(tnode_t *);
+void dcs_add_type_attributes(type_attributes);
+void dcs_add_alignas(unsigned int);
 void dcs_add_packed(void);
 void dcs_set_used(void);
 void begin_declaration_level(decl_level_kind);
@@ -277,20 +281,18 @@ int to_int_constant(tnode_t *, bool);
  */
 const tnode_t *before_conversion(const tnode_t *);
 type_t *block_derive_type(type_t *, tspec_t);
-type_t *expr_derive_type(type_t *, tspec_t);
 bool is_compiler_builtin(const char *);
 tnode_t *build_constant(type_t *, val_t *);
 tnode_t *build_name(sym_t *, bool);
 tnode_t *build_string(buffer *);
-tnode_t *build_generic_selection(const tnode_t *,
-		    struct generic_association *);
 
 tnode_t *build_binary(tnode_t *, op_t, bool, tnode_t *);
 tnode_t *build_unary(op_t, bool, tnode_t *);
 tnode_t *build_member_access(tnode_t *, op_t, bool, sbuf_t *);
 tnode_t *cconv(tnode_t *);
 bool is_typeok_bool_compares_with_zero(const tnode_t *, bool);
-bool typeok(op_t, int, const tnode_t *, const tnode_t *);
+bool typeok(op_t, const function_call *, int,
+    const tnode_t *, const tnode_t *);
 tnode_t *promote(op_t, bool, tnode_t *);
 tnode_t *convert(op_t, int, type_t *, tnode_t *);
 void convert_constant(op_t, int, const type_t *, val_t *, val_t *);
@@ -301,7 +303,7 @@ tnode_t *cast(tnode_t *, bool, type_t *);
 void add_function_argument(function_call *, tnode_t *);
 tnode_t *build_function_call(tnode_t *, bool, function_call *);
 val_t *integer_constant(tnode_t *, bool);
-void expr(tnode_t *, bool, bool, bool, bool);
+void expr(tnode_t *, bool, bool, bool, bool, const char *);
 void check_expr_misc(const tnode_t *, bool, bool, bool, bool, bool, bool);
 bool constant_addr(const tnode_t *, const sym_t **, ptrdiff_t *);
 buffer *cat_strings(buffer *, buffer *);
@@ -314,6 +316,10 @@ void begin_statement_expr(void);
 void do_statement_expr(tnode_t *);
 tnode_t *end_statement_expr(void);
 bool in_statement_expr(void);
+
+void push_evaluation_mode(evaluation_mode);
+void pop_evaluation_mode(void);
+bool is_evaluation_mode(evaluation_mode);
 
 /*
  * func.c
@@ -330,7 +336,6 @@ extern int printflike_argnum;
 extern pos_t printflike_pos;
 extern int scanflike_argnum;
 extern pos_t scanflike_pos;
-extern bool suppress_constcond;
 extern bool llibflg;
 extern int lwarn;
 extern bool suppress_bitfieldtype;
@@ -339,7 +344,7 @@ extern bool suppress_longlong;
 
 void begin_control_statement(control_statement_kind);
 void end_control_statement(control_statement_kind);
-void check_statement_reachable(void);
+void check_statement_reachable(const char *);
 void begin_function(sym_t *);
 void end_function(void);
 void named_label(sym_t *);
@@ -360,6 +365,7 @@ void stmt_goto(sym_t *);
 void stmt_continue(void);
 void stmt_break(void);
 void stmt_return(bool, tnode_t *);
+void stmt_call_noreturn(void);
 void global_clean_up_decl(bool);
 void handle_lint_comment(lint_comment, int);
 
@@ -390,6 +396,15 @@ void outusg(const sym_t *);
 /*
  * lex.c
  */
+void lex_pp_begin(void);
+void lex_pp_identifier(const char *);
+void lex_pp_number(const char *);
+void lex_pp_character_constant(void);
+void lex_pp_string_literal(void);
+void lex_pp_punctuator(const char *);
+void lex_pp_comment(void);
+void lex_pp_whitespace(void);
+void lex_pp_end(void);
 int lex_name(const char *, size_t);
 int lex_integer_constant(const char *, size_t, int);
 int lex_floating_constant(const char *, size_t);
@@ -398,7 +413,6 @@ int lex_string(void);
 int lex_wide_string(void);
 int lex_character_constant(void);
 int lex_wide_character_constant(void);
-void lex_directive(const char *);
 void lex_next_line(void);
 void lex_comment(void);
 void lex_slash_slash_comment(void);

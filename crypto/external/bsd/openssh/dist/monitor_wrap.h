@@ -1,5 +1,5 @@
-/*	$NetBSD: monitor_wrap.h,v 1.24 2024/07/08 22:33:43 christos Exp $	*/
-/* $OpenBSD: monitor_wrap.h,v 1.51 2024/05/17 06:42:04 jsg Exp $ */
+/*	$NetBSD: monitor_wrap.h,v 1.27 2026/04/08 18:58:41 christos Exp $	*/
+/* $OpenBSD: monitor_wrap.h,v 1.54 2026/03/02 02:40:15 djm Exp $ */
 
 /*
  * Copyright 2002 Niels Provos <provos@citi.umich.edu>
@@ -29,6 +29,10 @@
 #ifndef _MM_WRAP_H_
 #define _MM_WRAP_H_
 
+#define MONITOR_MAX_MSGLEN		(4 * 1024 * 1024)
+/* The configuration has to fit in a monitor message along with other state */
+#define MONITOR_MAX_CFGLEN		(MONITOR_MAX_MSGLEN - (64 * 1024))
+
 enum mm_keytype { MM_NOKEY, MM_HOSTKEY, MM_USERKEY };
 
 struct ssh;
@@ -43,6 +47,7 @@ int mm_is_monitor(void);
 #ifdef WITH_OPENSSL
 DH *mm_choose_dh(int, int, int);
 #endif
+void mm_sshkey_setcompat(struct ssh *);
 int mm_sshkey_sign(struct ssh *, struct sshkey *, u_char **, size_t *,
     const u_char *, size_t, const char *, const char *,
     const char *, u_int compat);
@@ -62,6 +67,8 @@ int mm_sshkey_verify(const struct sshkey *, const u_char *, size_t,
 void mm_decode_activate_server_options(struct ssh *ssh, struct sshbuf *m);
 
 #ifdef GSSAPI
+#include "ssh-gss.h"
+
 OM_uint32 mm_ssh_gssapi_server_ctx(Gssctxt **, gss_OID);
 OM_uint32 mm_ssh_gssapi_accept_ctx(Gssctxt *,
    gss_buffer_desc *, gss_buffer_desc *, OM_uint32 *);
@@ -84,6 +91,12 @@ int mm_pty_allocate(int *, int *, char *, size_t);
 void mm_session_pty_cleanup2(struct Session *);
 
 void mm_send_keystate(struct ssh *, struct monitor*);
+
+/* state */
+struct include_list;
+void mm_get_state(struct ssh *, struct include_list *, struct sshbuf *,
+    struct sshbuf **, uint64_t *, struct sshbuf **, struct sshbuf **,
+    u_char **, struct sshbuf **, struct sshbuf **);
 
 /* bsdauth */
 int mm_bsdauth_query(void *, char **, char **, u_int *, char ***, u_int **);

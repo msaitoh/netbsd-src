@@ -1,4 +1,4 @@
-/*	$NetBSD: time.h,v 1.53 2024/09/16 21:48:14 kre Exp $	*/
+/*	$NetBSD: time.h,v 1.57 2026/05/01 07:19:45 kre Exp $	*/
 
 /*
  * Copyright (c) 1989, 1993
@@ -85,6 +85,17 @@ struct tm {
 	long	tm_gmtoff;	/* offset from UTC in seconds */
 	__aconst char *tm_zone;	/* timezone abbreviation */
 };
+
+/*
+ * This represents the minimum value for how long a timezone abbreviation
+ * name is allowed to be, it is also (if >= 254) the default for the max length
+ * we currently allow (that can be changed by compiling libc(localtime.c)
+ * with  -DTZNAME_MAXIMUM=N specifying a value at least this long, no less).
+ *
+ * This one should probably be made less, and localtime then use a longer value
+ * (it will use 254 at least), so this would never need to change in the future.
+ */
+#define	_TZNAME_MAXIMUM	254
 
 __BEGIN_DECLS
 char *asctime(const struct tm *);
@@ -199,14 +210,19 @@ size_t strftime_l(char * __restrict, size_t, const char * __restrict,
     __attribute__((__format__(__strftime__, 3, 0)));
 #endif
 
-#if defined(_NETBSD_SOURCE)
+#if (__STDC_VERSION__ - 0 >= 202311L) || defined(_ISOC23_SOURCE) || \
+    defined(_NETBSD_SOURCE)
+#ifndef __LIBC12_SOURCE__
+time_t timegm(struct tm *) __RENAME(__timegm50);
+#endif
+#endif
 
+#if defined(_NETBSD_SOURCE)
 typedef struct __state *timezone_t;
 
 #ifndef __LIBC12_SOURCE__
 time_t time2posix(time_t) __RENAME(__time2posix50);
 time_t posix2time(time_t) __RENAME(__posix2time50);
-time_t timegm(struct tm *) __RENAME(__timegm50);
 time_t timeoff(struct tm *, long) __RENAME(__timeoff50);
 time_t timelocal(struct tm *) __RENAME(__timelocal50);
 struct tm *offtime(const time_t *, long) __RENAME(__offtime50);
@@ -241,8 +257,22 @@ char *strptime_l(const char * __restrict, const char * __restrict,
 #endif /* _NETBSD_SOURCE */
 
 /* ISO/IEC 9899:2011 7.27.2.5 The timespec_get function */
+#if defined(_ISOC11_SOURCE) || (__STDC_VERSION__ - 0) >= 201101L || \
+    defined(_NETBSD_SOURCE) || (__cplusplus - 0) >= 201103L || \
+    (_POSIX_C_SOURCE - 0) >= 202405L
+
 #define TIME_UTC	1	/* time elapsed since epoch */
+#if (__STDC_VERSION__ - 0 >= 202311L) || defined(_ISOC23_SOURCE) || \
+    defined(_NETBSD_SOURCE)
+#define TIME_MONOTONIC	2
+#endif
+
 int timespec_get(struct timespec *ts, int base);
+#if (__STDC_VERSION__ - 0 >= 202311L) || defined(_ISOC23_SOURCE) || \
+    defined(_NETBSD_SOURCE)
+int timespec_getres(struct timespec *ts, int base);
+#endif
+#endif
 
 __END_DECLS
 

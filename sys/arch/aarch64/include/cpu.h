@@ -1,4 +1,4 @@
-/* $NetBSD: cpu.h,v 1.51 2024/08/10 15:20:59 riastradh Exp $ */
+/* $NetBSD: cpu.h,v 1.54 2026/06/13 12:12:47 skrll Exp $ */
 
 /*-
  * Copyright (c) 2014, 2020 The NetBSD Foundation, Inc.
@@ -99,6 +99,21 @@ struct aarch64_cache_info {
 	struct aarch64_cache_unit dcache;
 };
 
+struct aarch64_low_power_idle {
+	uint32_t min_res;		/* minimum residency */
+	uint32_t wakeup_latency;	/* worst case */
+	uint32_t save_restore_flags;
+#define LPI_SAVE_RESTORE_CORE	__BIT(0)
+#define LPI_SAVE_RESTORE_TRACE	__BIT(1)
+#define LPI_SAVE_RESTORE_GICR	__BIT(2)
+#define LPI_SAVE_RESTORE_GICD	__BIT(3)
+	uint32_t reg_addr;
+#define LPI_REG_ADDR_WFI	0xffffffff
+
+	char *name;
+	struct evcnt events;
+};
+
 struct cpu_info {
 	struct cpu_data ci_data;
 	device_t ci_dev;
@@ -138,12 +153,6 @@ struct cpu_info {
 
 	int ci_kfpu_spl;
 
-#if defined(PMAP_MI)
-        struct pmap_tlb_info *ci_tlb_info;
-        struct pmap *ci_pmap_lastuser;
-        struct pmap *ci_pmap_cur;
-#endif
-
 	/* ASID of current pmap */
 	tlb_asid_t ci_pmap_asid_cur;
 
@@ -166,12 +175,18 @@ struct cpu_info {
 	/* ACPI */
 	uint32_t ci_acpiid;	/* ACPI Processor Unique ID */
 
+	/* ACPI low power idle */
+	uint32_t ci_nlpi;
+	struct aarch64_low_power_idle *ci_lpi;
+	uint64_t ci_last_idle;
+
 	/* cached system registers */
 	uint64_t ci_sctlr_el1;
 	uint64_t ci_sctlr_el2;
 
 	/* sysctl(9) exposed system registers */
 	struct aarch64_sysctl_cpu_id ci_id;
+#define ci_midr		ci_id.ac_midr
 
 	/* cache information and function pointers */
 	struct aarch64_cache_info ci_cacheinfo[MAX_CACHE_LEVEL];

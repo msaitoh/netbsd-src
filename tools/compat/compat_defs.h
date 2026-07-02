@@ -1,4 +1,4 @@
-/*	$NetBSD: compat_defs.h,v 1.122 2023/07/21 22:05:04 lukem Exp $	*/
+/*	$NetBSD: compat_defs.h,v 1.133 2026/01/11 22:08:48 nia Exp $	*/
 
 #ifndef	__NETBSD_COMPAT_DEFS_H__
 #define	__NETBSD_COMPAT_DEFS_H__
@@ -41,6 +41,10 @@
 
 #if !HAVE_ID_T
 typedef unsigned int id_t;
+#endif
+
+#if !HAVE_DADDR_T
+typedef unsigned long long daddr_t;
 #endif
 
 #if !HAVE_SOCKLEN_T
@@ -448,6 +452,10 @@ int issetugid(void);
 int mkstemp(char *);
 #endif
 
+#if !HAVE_DECL_MKSTEMPS
+int mkstemps(char *, int);
+#endif
+
 #if !HAVE_DECL_MKDTEMP
 char *mkdtemp(char *);
 #endif
@@ -455,15 +463,19 @@ char *mkdtemp(char *);
 #if !HAVE_MKSTEMP || !HAVE_MKDTEMP
 /* This is a prototype for the internal function defined in
  * src/lib/libc/stdio/gettemp.c */
-int __nbcompat_gettemp(char *, int *, int);
+int __nbcompat_gettemp(char *, int *, int, int, int);
 #endif
 
 #if !HAVE_DECL_PREAD
 ssize_t pread(int, void *, size_t, off_t);
 #endif
 
-int __nbcompat_heapsort (void *, size_t, size_t, int (*)(const void *, const void *));
+int __nbcompat_heapsort(void *, size_t, size_t,
+    int (*)(const void *, const void *));
+int __nbcompat_heapsort_r(void *, size_t, size_t,
+    int (*)(const void *, const void *, void *), void *);
 #define heapsort __nbcompat_heapsort
+#define heapsort_r __nbcompat_heapsort_r
 
 #if !HAVE_DECL_HEAPSORT
 int heapsort (void *, size_t, size_t, int (*)(const void *, const void *));
@@ -518,6 +530,9 @@ int pwcache_groupdb(int (*)(int), void (*)(void),
     struct group * (*)(const char *), struct group * (*)(gid_t));
 #endif
 
+#if !HAVE_DECL_SHQUOTE
+size_t		shquote(const char *, char *, size_t);
+#endif
 #if !HAVE_DECL_STRLCAT
 size_t		strlcat(char *, const char *, size_t);
 #endif
@@ -535,6 +550,9 @@ int		strcasecmp(const char *, const char *);
 #endif
 #if !HAVE_DECL_STRNCASECMP
 int		strncasecmp(const char *, const char *, size_t);
+#endif
+#if !HAVE_DECL_STRCASESTR
+char		*strcasestr(const char *, const char *);
 #endif
 #if !HAVE_DECL_LCHFLAGS
 int		lchflags(const char *, unsigned long);
@@ -602,6 +620,10 @@ char *strndup(const char *, size_t);
 char *strsep(char **, const char *);
 #endif
 
+#if !HAVE_DECL_MEMPCPY
+void *mempcpy(void *, const void *, size_t);
+#endif
+
 #if !HAVE_DECL_STRSUFTOLL
 long long strsuftoll(const char *, const char *, long long, long long);
 long long strsuftollx(const char *, const char *,
@@ -610,6 +632,10 @@ long long strsuftollx(const char *, const char *,
 
 #if !HAVE_DECL_STRTOLL
 long long strtoll(const char *, char **, int);
+#endif
+
+#if !HAVE_DECL_STRTONUM
+long long strtonum(const char *, long long, long long, const char **);
 #endif
 
 #if !HAVE_DECL_STRTOI
@@ -640,6 +666,10 @@ int vasnprintf(char **, size_t, const char *, va_list);
 
 #if !HAVE_DECL_VSNPRINTF && !defined(vsnprintf)
 int vsnprintf(char *, size_t, const char *, va_list);
+#endif
+
+#if !HAVE_DECL_VSYSLOG
+void vsyslog(int, const char *, va_list);
 #endif
 
 /*
@@ -1086,63 +1116,68 @@ int	 cgetset(const char *);
 int	 cgetstr(char *, const char *, char **);
 int	 cgetustr(char *, const char *, char **);
 
-/* <sys/endian.h> */
+
+#ifdef HAVE_SYS_ENDIAN_H
+#include <sys/endian.h>
+#elif defined(HAVE_ENDIAN_H)
+#include <endian.h>
+#endif
 
 #if WORDS_BIGENDIAN
-#if !HAVE_DECL_HTOBE16
+#if !HAVE_DECL_HTOBE16 && !defined(htobe16)
 #define htobe16(x)	(x)
 #endif
-#if !HAVE_DECL_HTOBE32
+#if !HAVE_DECL_HTOBE32 && !defined(htobe32)
 #define htobe32(x)	(x)
 #endif
-#if !HAVE_DECL_HTOBE64
+#if !HAVE_DECL_HTOBE64 && !defined(htobe64)
 #define htobe64(x)	(x)
 #endif
-#if !HAVE_DECL_HTOLE16
+#if !HAVE_DECL_HTOLE16 && !defined(htole16)
 #define htole16(x)	bswap16((u_int16_t)(x))
 #endif
-#if !HAVE_DECL_HTOLE32
+#if !HAVE_DECL_HTOLE32 && !defined(htole32)
 #define htole32(x)	bswap32((u_int32_t)(x))
 #endif
-#if !HAVE_DECL_HTOLE64
+#if !HAVE_DECL_HTOLE64 && !defined(htole64)
 #define htole64(x)	bswap64((u_int64_t)(x))
 #endif
 #else
-#if !HAVE_DECL_HTOBE16
+#if !HAVE_DECL_HTOBE16 && !defined(htobe16)
 #define htobe16(x)	bswap16((u_int16_t)(x))
 #endif
-#if !HAVE_DECL_HTOBE32
+#if !HAVE_DECL_HTOBE32 && !defined(htobe32)
 #define htobe32(x)	bswap32((u_int32_t)(x))
 #endif
-#if !HAVE_DECL_HTOBE64
+#if !HAVE_DECL_HTOBE64 && !defined(htobe64)
 #define htobe64(x)	bswap64((u_int64_t)(x))
 #endif
-#if !HAVE_DECL_HTOLE16
+#if !HAVE_DECL_HTOLE16 && !defined(htole16)
 #define htole16(x)	(x)
 #endif
-#if !HAVE_DECL_HTOLE32
+#if !HAVE_DECL_HTOLE32 && !defined(htole32)
 #define htole32(x)	(x)
 #endif
-#if !HAVE_DECL_HTOLE64
+#if !HAVE_DECL_HTOLE64 && !defined(htole64)
 #define htole64(x)	(x)
 #endif
 #endif
-#if !HAVE_DECL_BE16TOH
+#if !HAVE_DECL_BE16TOH && !defined(be16toh)
 #define be16toh(x)	htobe16(x)
 #endif
-#if !HAVE_DECL_BE32TOH
+#if !HAVE_DECL_BE32TOH && !defined(be32toh)
 #define be32toh(x)	htobe32(x)
 #endif
-#if !HAVE_DECL_BE64TOH
+#if !HAVE_DECL_BE64TOH && !defined(be64toh)
 #define be64toh(x)	htobe64(x)
 #endif
-#if !HAVE_DECL_LE16TOH
+#if !HAVE_DECL_LE16TOH && !defined(le16toh)
 #define le16toh(x)	htole16(x)
 #endif
-#if !HAVE_DECL_LE32TOH
+#if !HAVE_DECL_LE32TOH && !defined(le32toh)
 #define le32toh(x)	htole32(x)
 #endif
-#if !HAVE_DECL_LE64TOH
+#if !HAVE_DECL_LE64TOH && !defined(le64toh)
 #define le64toh(x)	htole64(x)
 #endif
 
@@ -1271,6 +1306,9 @@ __GEN_ENDIAN_DEC(64, le)
 
 #undef roundup
 #define roundup(x, y)	((((x)+((y)-1))/(y))*(y))
+
+#undef roundup2
+#define roundup2(x, m)	((((x) - 1) | ((m) - 1)) + 1)
 
 /* <sys/stat.h> */
 

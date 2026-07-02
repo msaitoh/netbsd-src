@@ -1,4 +1,4 @@
-/*	$NetBSD: vm.c,v 1.197 2023/09/24 09:33:26 martin Exp $	*/
+/*	$NetBSD: vm.c,v 1.199 2026/05/04 04:11:34 thorpej Exp $	*/
 
 /*
  * Copyright (c) 2007-2011 Antti Kantee.  All Rights Reserved.
@@ -41,7 +41,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: vm.c,v 1.197 2023/09/24 09:33:26 martin Exp $");
+__KERNEL_RCSID(0, "$NetBSD: vm.c,v 1.199 2026/05/04 04:11:34 thorpej Exp $");
 
 #include <sys/param.h>
 #include <sys/atomic.h>
@@ -671,7 +671,7 @@ struct vm_page *
 uvm_pagelookup(struct uvm_object *uobj, voff_t off)
 {
 	struct vm_page *pg;
-	bool ispagedaemon = curlwp == uvm.pagedaemon_lwp;
+	bool ispagedaemon = uvm_lwp_is_pagedaemon(curlwp);
 
 	pg = radix_tree_lookup_node(&uobj->uo_pages, off >> PAGE_SHIFT);
 	if (pg && !UVM_OBJ_IS_AOBJ(pg->uobject) && !ispagedaemon) {
@@ -958,6 +958,12 @@ uvm_vsunlock(struct vmspace *vs, void *addr, size_t len)
 
 }
 
+long
+uvm_resident_count(struct vmspace *vm)
+{
+	return pmap_resident_count(vm->vm_map.pmap);
+}
+
 /*
  * For the local case the buffer mappers don't need to do anything.
  * For the remote case we need to reserve space and copy data in or
@@ -1102,7 +1108,7 @@ uvm_wait(const char *msg)
 	if (__predict_false(rump_threads == 0))
 		panic("pagedaemon missing (RUMP_THREADS = 0)");
 
-	if (curlwp == uvm.pagedaemon_lwp) {
+	if (uvm_lwp_is_pagedaemon(curlwp)) {
 		/* is it possible for us to later get memory? */
 		if (!uvmexp.paging)
 			panic("pagedaemon out of memory");
@@ -1292,11 +1298,17 @@ uvm_kick_pdaemon()
 	}
 }
 
+bool
+_uvm_lwp_is_pagedaemon(struct lwp *l)
+{
+	return _uvm_lwp_is_pagedaemon_test(l);
+}
+
 void *
 rump_hypermalloc(size_t howmuch, int alignment, bool waitok, const char *wmsg)
 {
 	const unsigned long thelimit =
-	    curlwp == uvm.pagedaemon_lwp ? pdlimit : rump_physmemlimit;
+	    uvm_lwp_is_pagedaemon(curlwp) ? pdlimit : rump_physmemlimit;
 	unsigned long newmem;
 	void *rv;
 	int error;

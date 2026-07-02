@@ -1,4 +1,4 @@
-/*	$NetBSD: virtio.c,v 1.82 2024/08/05 19:26:43 riastradh Exp $	*/
+/*	$NetBSD: virtio.c,v 1.85 2026/05/22 14:36:37 riastradh Exp $	*/
 
 /*
  * Copyright (c) 2020 The NetBSD Foundation, Inc.
@@ -28,7 +28,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: virtio.c,v 1.82 2024/08/05 19:26:43 riastradh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: virtio.c,v 1.85 2026/05/22 14:36:37 riastradh Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -38,6 +38,7 @@ __KERNEL_RCSID(0, "$NetBSD: virtio.c,v 1.82 2024/08/05 19:26:43 riastradh Exp $"
 #include <sys/device.h>
 #include <sys/kmem.h>
 #include <sys/module.h>
+#include <sys/paravirt_membar.h>
 
 #define VIRTIO_PRIVATE
 
@@ -65,6 +66,13 @@ static const char *virtio_device_name[] = {
 	"remote processor messaging",	/*  7 */
 	"SCSI",				/*  8 */
 	"9P transport",			/*  9 */
+	NULL,				/* 10 */
+	NULL,				/* 11 */
+	NULL,				/* 12 */
+	NULL,				/* 13 */
+	NULL,				/* 14 */
+	NULL,				/* 15 */
+	"GPU",				/* 16 */
 };
 #define NDEVNAMES	__arraycount(virtio_device_name)
 
@@ -599,8 +607,10 @@ virtio_vq_is_enqueued(struct virtio_softc *sc, struct virtqueue *vq)
 	}
 
 	vq_sync_uring_header(sc, vq, BUS_DMASYNC_POSTREAD);
-	if (vq->vq_used_idx == virtio_rw16(sc, vq->vq_used->idx))
+	if (vq->vq_used_idx == virtio_rw16(sc, vq->vq_used->idx)) {
+		vq_sync_uring_header(sc, vq, BUS_DMASYNC_PREREAD);
 		return 0;
+	}
 	vq_sync_uring_payload(sc, vq, BUS_DMASYNC_POSTREAD);
 	return 1;
 }
@@ -621,8 +631,10 @@ virtio_postpone_intr(struct virtio_softc *sc, struct virtqueue *vq,
 	vq_sync_aring_used(vq->vq_owner, vq, BUS_DMASYNC_PREWRITE);
 	vq->vq_queued++;
 
+	vq_sync_uring_header(sc, vq, BUS_DMASYNC_POSTREAD);
 	nused = (uint16_t)
 	    (virtio_rw16(sc, vq->vq_used->idx) - vq->vq_used_idx);
+	vq_sync_uring_header(sc, vq, BUS_DMASYNC_PREREAD);
 	KASSERT(nused <= vq->vq_num);
 
 	return nslots < nused;
@@ -701,9 +713,18 @@ virtio_start_vq_intr(struct virtio_softc *sc, struct virtqueue *vq)
 	}
 	vq->vq_queued++;
 
+	/*
+	 * Ensure we announce to the host side that we are accepting
+	 * interrupts _before_ we check whether any pending events had
+	 * come over the queue while we weren't accepting interrupts.
+	 */
+	paravirt_membar_sync();
+
 	vq_sync_uring_header(sc, vq, BUS_DMASYNC_POSTREAD);
-	if (vq->vq_used_idx == virtio_rw16(sc, vq->vq_used->idx))
+	if (vq->vq_used_idx == virtio_rw16(sc, vq->vq_used->idx)) {
+		vq_sync_uring_header(sc, vq, BUS_DMASYNC_PREREAD);
 		return 0;
+	}
 	vq_sync_uring_payload(sc, vq, BUS_DMASYNC_POSTREAD);
 	return 1;
 }
@@ -1245,14 +1266,22 @@ notify:
 		vq_sync_aring_header(sc, vq, BUS_DMASYNC_PREWRITE);
 		vq->vq_queued++;
 
+		/*
+		 * Ensure we publish the avail idx _before_ we check whether
+		 * the host needs to notified.
+		 */
+		paravirt_membar_sync();
+
 		if (sc->sc_active_features & VIRTIO_F_RING_EVENT_IDX) {
 			vq_sync_uring_avail(sc, vq, BUS_DMASYNC_POSTREAD);
 			t = virtio_rw16(sc, *vq->vq_avail_event) + 1;
+			vq_sync_uring_avail(sc, vq, BUS_DMASYNC_PREREAD);
 			if ((uint16_t) (n - t) < (uint16_t) (n - o))
 				sc->sc_ops->kick(sc, vq->vq_index);
 		} else {
 			vq_sync_uring_header(sc, vq, BUS_DMASYNC_POSTREAD);
 			flags = virtio_rw16(sc, vq->vq_used->flags);
+			vq_sync_uring_header(sc, vq, BUS_DMASYNC_PREREAD);
 			if (!(flags & VRING_USED_F_NO_NOTIFY))
 				sc->sc_ops->kick(sc, vq->vq_index);
 		}
@@ -1485,6 +1514,12 @@ uint64_t
 virtio_features(struct virtio_softc *sc)
 {
 	return sc->sc_active_features;
+}
+
+bool
+virtio_version_1(struct virtio_softc *sc)
+{
+	return sc->sc_version_1;
 }
 
 int

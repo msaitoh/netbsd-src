@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.21 2023/06/03 21:30:20 lukem Exp $
+#	$NetBSD: Makefile,v 1.23 2025/09/18 03:35:59 mrg Exp $
 
 PROG=netpgpverify
 BINDIR=		/usr/bin
@@ -13,13 +13,13 @@ SRCS+= md5c.c rmd160.c sha1.c sha2.c
 
 CPPFLAGS+=-I${.CURDIR} -I${EXTDIST}/src/netpgpverify
 COPTS.libverify.c+= -Wno-format-nonliteral
+COPTS.bufgap.c+=	${CC_WNO_CALLOC_TRANSPOSED_ARGS}
 
 .ifndef PRODUCTION
 CPPFLAGS+=-g -O0
 LDFLAGS+=-g -O0
 .endif
 
-LINTFLAGS.bzlib.c+=	-X 161	# constant in conditional context
 LINTFLAGS.bzlib.c+=	-X 220	# fallthrough on case statement
 LINTFLAGS.zlib.c+=	-X 220	# fallthrough on case statement
 

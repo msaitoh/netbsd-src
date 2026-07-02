@@ -1,4 +1,4 @@
-/*	$NetBSD: biosboot.c,v 1.33 2024/09/13 11:11:29 mlelstv Exp $ */
+/*	$NetBSD: biosboot.c,v 1.36 2025/12/17 16:18:11 nia Exp $ */
 
 /*
  * Copyright (c) 2009 The NetBSD Foundation, Inc.
@@ -37,13 +37,15 @@
 
 #include <sys/cdefs.h>
 #ifdef __RCSID
-__RCSID("$NetBSD: biosboot.c,v 1.33 2024/09/13 11:11:29 mlelstv Exp $");
+__RCSID("$NetBSD: biosboot.c,v 1.36 2025/12/17 16:18:11 nia Exp $");
 #endif
 
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/ioctl.h>
-#include <sys/param.h>
+#if defined(HAVE_SYS_ENDIAN_H) || ! defined(HAVE_NBTOOL_CONFIG_H)
+#include <sys/endian.h>
+#endif
 #include <sys/bootblock.h>
 
 #if defined(DIOCGWEDGEINFO) && !defined(HAVE_NBTOOL_CONFIG_H)
@@ -79,7 +81,7 @@ static const char *biosboothelp[] = {
 #endif
 };
 
-struct gpt_cmd c_biosboot = {
+const struct gpt_cmd c_biosboot = {
 	"biosboot",
 	cmd_biosboot,
 	biosboothelp, __arraycount(biosboothelp),

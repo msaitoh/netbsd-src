@@ -9,10 +9,9 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
-try:
-    import hypothesis as _
-except ImportError:
-    pass
-else:
-    from . import settings
-    from . import strategies
+from . import settings, strategies
+
+__all__ = [
+    "settings",
+    "strategies",
+]

@@ -1,4 +1,4 @@
-/*	$NetBSD: defs.h,v 1.92 2024/04/22 14:41:26 nia Exp $	*/
+/*	$NetBSD: defs.h,v 1.95 2026/04/26 13:31:47 martin Exp $	*/
 
 /*
  * Copyright 1997 Piermont Information Systems Inc.
@@ -645,6 +645,7 @@ extern char dist_tgz_postfix[SSTRSIZE];
 /* needed prototypes */
 void set_menu_numopts(int, int);
 void remove_color_options(void);
+void remove_https_options(void);
 #ifdef CHECK_ENTROPY
 bool do_add_entropy(void);
 size_t entropy_needed(void);
@@ -988,7 +989,7 @@ bool pm_force_parts(struct pm_devs *);
  * sector count and multiplicator.
  * If "extend" is supported, things like 120+ will be parsed as
  * 120 plus "extend this" flag.
- * Caller needs to init muliplicator upfront to the default value.
+ * Caller needs to init multiplicator upfront to the default value.
  */
 daddr_t parse_disk_pos(
 	const char *,	/* in: input string */
@@ -1026,6 +1027,7 @@ void	save_kb_encoding(void);
 /* from configmenu.c */
 void	do_configmenu(struct install_partition_desc*);
 void	root_pw_setup(void);
+void	do_time_and_date_setup(const char *);
 
 /* from checkrc.c */
 int	check_rcvar(const char *);

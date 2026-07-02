@@ -1,4 +1,4 @@
-/*	$NetBSD: param.h,v 1.75 2023/06/02 08:51:46 andvar Exp $ */
+/*	$NetBSD: param.h,v 1.77 2026/05/10 16:07:56 thorpej Exp $ */
 
 /*
  * Copyright (c) 1992, 1993
@@ -60,6 +60,8 @@
 #define SUN4_PGSHIFT	13	/* for a sun4 machine */
 #define SUN4CM_PGSHIFT	12	/* for a sun4c or sun4m machine */
 
+#define	STACK_ALIGNBYTES	(8 - 1)
+
 /*
  * The following variables are always defined and initialized (in locore)
  * so independently compiled modules (e.g. LKMs) can be used irrespective
@@ -84,7 +86,6 @@ extern int nbpg, pgofset, pgshift;
 #define PROM_LOADADDR	0x00004000	/* where the prom loads us */
 #define	KERNTEXTOFF	(KERNBASE+PROM_LOADADDR)/* start of kernel text */
 
-#define	SSIZE		1		/* initial stack size in pages */
 #define	USPACE		8192
 
 /*

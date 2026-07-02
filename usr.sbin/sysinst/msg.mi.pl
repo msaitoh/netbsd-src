@@ -1,4 +1,4 @@
-/*	$NetBSD: msg.mi.pl,v 1.49 2024/04/25 11:25:08 hannken Exp $	*/
+/*	$NetBSD: msg.mi.pl,v 1.52 2026/04/26 13:31:47 martin Exp $	*/
 /*	Based on english version: */
 /*	NetBSD: msg.mi.pl,v 1.36 2004/04/17 18:55:35 atatat Exp       */
 
@@ -696,8 +696,8 @@ Wybrales %d pakietow dystrybucyjnych. %d pakiety nie zostaly znalezione
 i %d zostalo pominietych z powodu bledow. Z %d docelowych,
 %d rozpakowalo sie bez bledow i %d z bledami.
 
-Instalacja zostala przerwana. Sprawdz zrodlo swojej dystrybucji i rozwaz
-reinstalacje pakietow z glownego menu.}
+Sprawdz zrodlo swojej dystrybucji i rozwaz reinstalacje pakietow z
+glownego menu.}
 
 message abort_inst {Instalacja zostala przerwana.}
 message abort_part {Install aborted.}
@@ -1072,6 +1072,7 @@ message Sectors {Sektory}
 message Select_medium {Wybierz nosnik}
 message ftp {FTP}
 message http {HTTP}
+message https {HTTPS}
 message nfs {NFS}
 .if HAVE_INSTALL_IMAGE
 message cdrom {CD-ROM / DVD / nosnik instalacyjny}
@@ -1509,3 +1510,33 @@ message network_ok
 {Your network seems to work fine. 
 Should we skip the configuration 
 and just use the network as-is?}
+
+message todr_old
+{The clock seems to be off!}
+
+message setdatetime
+{Set date and time}
+
+message time_ok
+{Save date and time as selected}
+
+/* Called with:				Example
+ *  $0 = header message			The clock is off!
+ *  $1 = current date/time string	Sun, 12 Apr 2026 21:04:50
+ */
+message date_and_time_hdr
+{$0
+
+Please enter the date and time.
+
+Current selection: $1
+
+
+}
+
+message year {Year}
+message month {Month (1-12)}
+message day {Day (1-31)}
+message hour {Hour (0-23)}
+message minute {Minute (0-59)}
+

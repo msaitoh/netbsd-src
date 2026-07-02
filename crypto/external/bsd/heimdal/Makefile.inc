@@ -1,9 +1,9 @@
-# $NetBSD: Makefile.inc,v 1.11 2023/10/12 17:18:38 riastradh Exp $
+# $NetBSD: Makefile.inc,v 1.14 2025/10/19 00:59:57 riastradh Exp $
 
 HEIMBASE?=	${NETBSDSRCDIR}/crypto/external/bsd/heimdal
 HEIMDIST=	${HEIMBASE}/dist
 
-SSLBASE?=	${NETBSDSRCDIR}/crypto/external/bsd/${EXTERNAL_OPENSSL_SUBDIR}
+SSLBASE?=	${NETBSDSRCDIR}/crypto/external/${EXTERNAL_OPENSSL_SUBDIR}
 
 DPLIBASN1=	asn1 ${HEIMBASE}/lib/libasn1
 DPLIBCOM_ERR=	com_err ${HEIMBASE}/lib/libcom_err

@@ -1,4 +1,4 @@
-/*	$NetBSD: libkern.h,v 1.146 2024/10/09 13:59:09 christos Exp $	*/
+/*	$NetBSD: libkern.h,v 1.148 2025/03/02 16:35:41 riastradh Exp $	*/
 
 /*-
  * Copyright (c) 1992, 1993
@@ -458,8 +458,8 @@ void	 mi_vector_hash(const void * __restrict, size_t, uint32_t,
 int	 scanc(u_int, const u_char *, const u_char *, int);
 int	 skpc(int, size_t, u_char *);
 int	 strcasecmp(const char *, const char *);
-size_t	 strlcpy(char *, const char *, size_t);
-size_t	 strlcat(char *, const char *, size_t);
+size_t	 strlcpy(char * __restrict, const char * __restrict, size_t);
+size_t	 strlcat(char * __restrict, const char * __restrict, size_t);
 int	 strncasecmp(const char *, const char *, size_t);
 u_long	 strtoul(const char *, char **, int);
 long long strtoll(const char *, char **, int);
@@ -476,7 +476,10 @@ void	 hexdump(void (*)(const char *, ...) __printflike(1, 2),
 int	 snprintb(char *, size_t, const char *, uint64_t);
 int	 snprintb_m(char *, size_t, const char *, uint64_t, size_t);
 int	 kheapsort(void *, size_t, size_t, int (*)(const void *, const void *),
-		   void *);
+	    void *);
+int	 kheapsort_r(void *, size_t, size_t,
+	    int (*)(const void *, const void *, void *), void *,
+	    void *);
 uint32_t crc32(uint32_t, const uint8_t *, size_t);
 #if __GNUC_PREREQ__(4, 5) \
     && (defined(__alpha_cix__) || defined(__mips_popcount))

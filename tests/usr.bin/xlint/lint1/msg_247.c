@@ -1,12 +1,8 @@
-/*	$NetBSD: msg_247.c,v 1.34 2024/09/28 19:09:37 rillig Exp $	*/
+/*	$NetBSD: msg_247.c,v 1.36 2026/04/20 21:52:07 rillig Exp $	*/
 # 3 "msg_247.c"
 
 // Test for message: pointer cast from '%s' to unrelated '%s' [247]
 
-//
-// The word 'may' in the message text means that the trouble is not necessarily
-// on this platform with its specific type sizes, but on other platforms.
-//
 // See also:
 //	msg_247_ilp32_ldbl64.c
 //	msg_247_lp64_ldbl128.c
@@ -176,7 +172,7 @@ lh_OPENSSL_STRING_new(void)
 	 */
 	return (struct lhash_st_OPENSSL_STRING *)OPENSSL_LH_new();
 }
-# 180 "msg_247.c" 2
+# 176 "msg_247.c" 2
 
 void sink(const void *);
 
@@ -330,7 +326,7 @@ unnecessary_cast_from_array_to_pointer(int dim)
 		return storage_1d;
 
 	if (dim == 2)
-		/* expect+1: warning: illegal combination of 'pointer to double' and 'pointer to array[5] of double' [184] */
+		/* expect+1: warning: invalid combination of 'pointer to double' and 'pointer to array[5] of double' [184] */
 		return storage_2d;
 
 	/*
@@ -371,16 +367,16 @@ conversions_from_and_to_union(void)
 	/* Self-assignment, disguised by a cast to a pointer. */
 	p_int = (void *)p_int;
 
-	/* expect+1: warning: illegal combination of 'pointer to int' and 'pointer to double', op '=' [124] */
+	/* expect+1: warning: invalid combination of 'pointer to int' and 'pointer to double', op '=' [124] */
 	p_int = p_double;
 	/* expect+1: warning: pointer cast from 'double' to unrelated 'int' [247] */
 	p_int = (int *)p_double;
 
-	/* expect+1: warning: illegal combination of 'pointer to union typedef anything' and 'pointer to double', op '=' [124] */
+	/* expect+1: warning: invalid combination of 'pointer to union typedef anything' and 'pointer to double', op '=' [124] */
 	p_anything = p_double;
 	/* OK, since the union 'anything' has a 'double' member. */
 	p_anything = (anything *)p_double;
-	/* expect+1: warning: illegal combination of 'pointer to double' and 'pointer to union typedef anything', op '=' [124] */
+	/* expect+1: warning: invalid combination of 'pointer to double' and 'pointer to union typedef anything', op '=' [124] */
 	p_double = p_anything;
 	/* OK, since the union 'anything' has a 'double' member. */
 	p_double = (double *)p_anything;
@@ -389,13 +385,13 @@ conversions_from_and_to_union(void)
 	 * Casting to an intermediate union does not make casting between two
 	 * incompatible types better.
 	 */
-	/* expect+1: warning: illegal combination of 'pointer to function(void) returning void' and 'pointer to union typedef anything', op '=' [124] */
+	/* expect+1: warning: invalid combination of 'pointer to function(void) returning void' and 'pointer to union typedef anything', op '=' [124] */
 	p_function = (anything *)p_int;
 
 	/* expect+2: warning: converting 'pointer to function(void) returning void' to 'pointer to union typedef anything' is questionable [229] */
-	/* expect+1: warning: illegal combination of 'pointer to function(void) returning void' and 'pointer to union typedef anything', op '=' [124] */
+	/* expect+1: warning: invalid combination of 'pointer to function(void) returning void' and 'pointer to union typedef anything', op '=' [124] */
 	p_function = (anything *)p_function_array->m_function_array[0];
 
-	/* expect+1: warning: illegal combination of 'pointer to int' and 'pointer to function(void) returning void', op '=' [124] */
+	/* expect+1: warning: invalid combination of 'pointer to int' and 'pointer to function(void) returning void', op '=' [124] */
 	p_int = p_function;
 }

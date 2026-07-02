@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.37 2024/07/15 06:34:17 riastradh Exp $
+#	$NetBSD: Makefile,v 1.39 2025/09/18 13:57:34 christos Exp $
 
 # RCSid:
 #	Id: Makefile,v 1.33 1998/11/11 11:53:53 sjg Exp
@@ -186,6 +186,7 @@ stack.h \
 store.h \
 storeerr.h \
 symhacks.h \
+thread.h \
 tls1.h \
 trace.h \
 ts.h \
@@ -242,7 +243,8 @@ SRCS+=fips.c fips_err_wrapper.c
 SRCS+=rc5_skey.c i_skey.c mdc2dgst.c
 .endif
 
-COPTS.eng_padlock.c = -Wno-stack-protector
+COPTS.eng_padlock.c = -Wno-error=stack-protector
+COPTS.bn_exp.c = -Wno-error=stack-protector
 
 INCSDIR=/usr/include/openssl
 

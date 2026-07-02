@@ -42,7 +42,7 @@ const struct cmd_entry cmd_confirm_before_entry = {
 	.alias = "confirm",
 
 	.args = { "bc:p:t:y", 1, 1, cmd_confirm_before_args_parse },
-	.usage = "[-by] [-c confirm_key] [-p prompt] " CMD_TARGET_CLIENT_USAGE
+	.usage = "[-by] [-c confirm-key] [-p prompt] " CMD_TARGET_CLIENT_USAGE
 		 " command",
 
 	.flags = CMD_CLIENT_TFLAG,
@@ -76,8 +76,10 @@ cmd_confirm_before_exec(struct cmd *self, struct cmdq_item *item)
 
 	cdata = xcalloc(1, sizeof *cdata);
 	cdata->cmdlist = args_make_commands_now(self, item, 0, 1);
-	if (cdata->cmdlist == NULL)
+	if (cdata->cmdlist == NULL) {
+		free(cdata);
 		return (CMD_RETURN_ERROR);
+	}
 
 	if (wait)
 		cdata->item = item;
@@ -90,6 +92,7 @@ cmd_confirm_before_exec(struct cmd *self, struct cmdq_item *item)
 			cdata->confirm_key = confirm_key[0];
 		else {
 			cmdq_error(item, "invalid confirm key");
+			free(cdata);
 			return (CMD_RETURN_ERROR);
 		}
 	}
@@ -100,8 +103,8 @@ cmd_confirm_before_exec(struct cmd *self, struct cmdq_item *item)
 		xasprintf(&new_prompt, "%s ", prompt);
 	else {
 		cmd = cmd_get_entry(cmd_list_first(cdata->cmdlist))->name;
-		xasprintf(&new_prompt, "Confirm '%s'? (%c/n) ",
-		cmd, cdata->confirm_key);
+		xasprintf(&new_prompt, "Confirm '%s'? (%c/n) ", cmd,
+		    cdata->confirm_key);
 	}
 
 	status_prompt_set(tc, target, new_prompt, NULL,
@@ -127,7 +130,7 @@ cmd_confirm_before_callback(struct client *c, void *data, const char *s,
 
 	if (s == NULL)
 		goto out;
-	if (s[0] != cdata->confirm_key && (s[0] != '\0' || !cdata->default_yes))
+	if (s[0] != cdata->confirm_key && (s[0] != '\r' || !cdata->default_yes))
 		goto out;
 	retcode = 0;
 

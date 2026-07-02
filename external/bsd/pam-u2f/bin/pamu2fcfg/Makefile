@@ -1,18 +1,15 @@
-# $NetBSD: Makefile,v 1.5 2023/05/09 21:08:34 christos Exp $
+# $NetBSD: Makefile,v 1.8 2025/10/19 00:59:58 riastradh Exp $
 
 .include <bsd.own.mk>
+.include "${.PARSEDIR}/../../Makefile.inc"
 
 DIST=${NETBSDSRCDIR}/external/bsd/pam-u2f/dist
 
 .PATH: ${DIST} ${DIST}/pamu2fcfg
 
 CFFILE=${DIST}/configure.ac
-PACKAGE!= ${TOOL_SED} -ne 's/AC_INIT(\[\([a-zA-Z0-9_-]*\)\].*/\1/p' ${CFFILE}
-VERSION!= ${TOOL_SED} -ne 's/AC_INIT(\[[a-zA-Z0-9_-]*\], \[\([0-9.]*\)\].*/\1/p' ${CFFILE}
 
 CPPFLAGS+= -I${DIST} -I${.CURDIR}
-CPPFLAGS+= -DPACKAGE='"${PACKAGE}"' -DVERSION='"${VERSION}"'
-CPPFLAGS+= -DHAVE_UNISTD_H
 
 BINDIR=/usr/bin
 PROG=pamu2fcfg

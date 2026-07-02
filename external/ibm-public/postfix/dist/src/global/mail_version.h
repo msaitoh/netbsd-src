@@ -1,4 +1,4 @@
-/*	$NetBSD: mail_version.h,v 1.6 2023/12/23 20:30:43 christos Exp $	*/
+/*	$NetBSD: mail_version.h,v 1.8 2026/05/09 18:49:16 christos Exp $	*/
 
 #ifndef _MAIL_VERSION_H_INCLUDED_
 #define _MAIL_VERSION_H_INCLUDED_
@@ -22,8 +22,8 @@
   * Patches change both the patchlevel and the release date. Snapshots have no
   * patchlevel; they change the release date only.
   */
-#define MAIL_RELEASE_DATE	"20231222"
-#define MAIL_VERSION_NUMBER	"3.8.4"
+#define MAIL_RELEASE_DATE	"20260501"
+#define MAIL_VERSION_NUMBER	"3.11.2"
 
 #ifdef SNAPSHOT
 #define MAIL_VERSION_DATE	"-" MAIL_RELEASE_DATE
@@ -106,6 +106,9 @@ extern void check_mail_version(const char *);
 /*	Google, Inc.
 /*	111 8th Avenue
 /*	New York, NY 10011, USA
+/*
+/*	Wietse Venema
+/*	porcupine.org
 /*--*/
 
 #endif

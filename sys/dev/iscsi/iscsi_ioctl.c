@@ -1,4 +1,4 @@
-/*	$NetBSD: iscsi_ioctl.c,v 1.35 2024/08/24 09:39:44 mlelstv Exp $	*/
+/*	$NetBSD: iscsi_ioctl.c,v 1.38 2026/06/06 08:29:08 mlelstv Exp $	*/
 
 /*-
  * Copyright (c) 2004,2005,2006,2011 The NetBSD Foundation, Inc.
@@ -490,6 +490,7 @@ kill_connection(connection_t *conn, uint32_t status, int logout, bool recover)
 			   "state=%d\n",
 			   conn->c_terminating, status, logout, conn->c_state));
 
+	mutex_enter(&conn->c_lock);
 	mutex_enter(&iscsi_cleanup_mtx);
 	if (recover &&
 	    !conn->c_destroy &&
@@ -545,14 +546,22 @@ kill_connection(connection_t *conn, uint32_t status, int logout, bool recover)
 			    logout == LOGOUT_CONNECTION) {
 				logout = LOGOUT_SESSION;
 			}
+
+			/* connection is terminating, prevent cleanup */
+			conn->c_usecount++;
+
 			mutex_exit(&iscsi_cleanup_mtx);
+			mutex_exit(&conn->c_lock);
 
 			DEBC(conn, 1, ("Send_logout for reason %d\n", logout));
 
 			connection_timeout_start(conn, CONNECTION_TIMEOUT);
 
 			if (!send_logout(conn, conn, logout, FALSE)) {
+				mutex_enter(&conn->c_lock);
+				conn->c_usecount--;
 				conn->c_terminating = ISCSI_STATUS_SUCCESS;
+				mutex_exit(&conn->c_lock);
 				return;
 			}
 			/*
@@ -563,7 +572,11 @@ kill_connection(connection_t *conn, uint32_t status, int logout, bool recover)
 			 * once the timeout hits.
 			 */
 
+			mutex_enter(&conn->c_lock);
 			mutex_enter(&iscsi_cleanup_mtx);
+
+			/* release connection */
+			conn->c_usecount--;
 		}
 
 	}
@@ -573,7 +586,6 @@ kill_connection(connection_t *conn, uint32_t status, int logout, bool recover)
 
 done:
 	/* let send thread take over next step of cleanup */
-	mutex_enter(&conn->c_lock);
 	cv_broadcast(&conn->c_conn_cv);
 	mutex_exit(&conn->c_lock);
 
@@ -630,19 +642,20 @@ kill_session(uint32_t sid, uint32_t status, int logout, bool recover)
 	}
 
 	if (recover) {
-		mutex_exit(&iscsi_cleanup_mtx);
-
 		/*
 		 * Only recover when there's just one active connection left.
 		 * Otherwise we get in all sorts of timing problems, and it doesn't
 		 * make much sense anyway to recover when the other side has
 		 * requested that we kill a multipathed session.
 		 */
-		if (sess->s_active_connections == 1) {
+		conn = NULL;
+		if (sess->s_active_connections == 1)
 			conn = assign_connection(sess, FALSE);
-			if (conn != NULL)
-				kill_connection(conn, status, logout, TRUE);
-		}
+
+		mutex_exit(&iscsi_cleanup_mtx);
+
+		if (conn != NULL)
+			kill_connection(conn, status, logout, TRUE);
 		return;
 	}
 
@@ -1134,6 +1147,7 @@ login(iscsi_login_parameters_t *par, struct lwp *l, device_t dev)
 
 	if ((rc = create_connection(par, sess, l)) != 0) {
 		if (rc > 0) {
+			DEB(1, ("Login: create session %d failed\n", sess->s_id));
 			destroy_ccbs(sess);
 			cv_destroy(&sess->s_ccb_cv);
 			cv_destroy(&sess->s_sess_cv);
@@ -1991,7 +2005,7 @@ iscsiioctl(struct file *fp, u_long cmd, void *addr)
 		break;
 
 	default:
-		DEBOUT(("Invalid IO-Control Code\n"));
+		DEBOUT(("Invalid IO-Control Code 0x%lx\n", cmd));
 		return ENOTTY;
 	}
 

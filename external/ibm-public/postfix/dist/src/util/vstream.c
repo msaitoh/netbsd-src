@@ -1,4 +1,4 @@
-/*	$NetBSD: vstream.c,v 1.4 2022/10/08 16:12:50 christos Exp $	*/
+/*	$NetBSD: vstream.c,v 1.6 2026/05/09 18:49:23 christos Exp $	*/
 
 /*++
 /* NAME
@@ -168,6 +168,9 @@
 /*	int	vstream_fstat(stream, flags)
 /*	VSTREAM	*stream;
 /*	int	flags;
+/*
+/*	void	vstream_no_debug(stream)
+/*	VSTREAM	*stream;
 /* DESCRIPTION
 /*	The \fIvstream\fR module implements light-weight buffered I/O
 /*	similar to the standard I/O routines.
@@ -496,6 +499,10 @@
 /* .IP VSTREAM_FLAG_OWN_VSTRING
 /*	The stream 'owns' the VSTRING buffer, and is responsible
 /*	for cleaning up when the stream is closed.
+/*
+/*	vstream_no_debug() disables 'spontaneous' logging of output
+/*	activity on the last specified VSTREAM, to prevent recursive
+/*	logging.
 /* DIAGNOSTICS
 /*	Panics: interface violations. Fatal errors: out of memory.
 /* SEE ALSO
@@ -524,6 +531,7 @@
 /* System library. */
 
 #include <sys_defs.h>
+#include <sys/stat.h>
 #include <stdlib.h>			/* 44BSD stdarg.h uses abort() */
 #include <stdarg.h>
 #include <stddef.h>
@@ -675,6 +683,8 @@ VSTREAM vstream_fstd[] = {
 	} \
     } while (0)
 
+static VSTREAM *vstream_log_veto;
+
 /* vstream_buf_init - initialize buffer */
 
 static void vstream_buf_init(VBUF *bp, int flags)
@@ -772,7 +782,7 @@ static int vstream_fflush_some(VSTREAM *stream, ssize_t to_flush)
     used = bp->len - bp->cnt;
     left_over = used - to_flush;
 
-    if (msg_verbose > 2 && stream != VSTREAM_ERR)
+    if (msg_verbose > 2 && stream != vstream_log_veto)
 	msg_info("%s: fd %d flush %ld", myname, stream->fd, (long) to_flush);
     if (to_flush < 0 || left_over < 0)
 	msg_panic("%s: bad to_flush %ld", myname, (long) to_flush);
@@ -835,7 +845,7 @@ static int vstream_fflush_some(VSTREAM *stream, ssize_t to_flush)
 		}
 	    }
 	}
-	if (msg_verbose > 2 && stream != VSTREAM_ERR && n != to_flush)
+	if (msg_verbose > 2 && stream != vstream_log_veto && n != to_flush)
 	    msg_info("%s: %d flushed %ld/%ld", myname, stream->fd,
 		     (long) n, (long) to_flush);
     }
@@ -1388,7 +1398,38 @@ VSTREAM *vstream_fopen(const char *path, int flags, mode_t mode)
     VSTREAM *stream;
     int     fd;
 
-    if ((fd = open(path, flags, mode)) < 0) {
+    /*
+     * To set permissions on new files only, we need to distinguish between
+     * creating a new file and opening an existing one.
+     */
+#define open_create(path, flags, mode) \
+	open((path), (flags) | (O_CREAT | O_EXCL), (mode))
+#define open_exist(path, flags, mode) \
+	open((path), (flags) & ~(O_CREAT | O_EXCL), (mode))
+
+    switch (flags & (O_CREAT | O_EXCL)) {
+    case O_CREAT:
+	fd = open_exist(path, flags, mode);
+	if (fd < 0 && errno == ENOENT) {
+	    fd = open_create(path, flags, mode);
+	    if (fd >= 0) {
+		if (fchmod(fd, mode) < 0)	/* can't uncreate */
+		    msg_warn("fchmod %s 0%o: %m", path, (unsigned) mode);
+	    } else if ( /* fd < 0 && */ errno == EEXIST)
+		fd = open_exist(path, flags, mode);
+	}
+	break;
+    case O_CREAT | O_EXCL:
+	fd = open(path, flags, mode);
+	if (fd >= 0)
+	    if (fchmod(fd, mode) < 0)		/* can't uncreate */
+		msg_warn("fchmod %s 0%o: %m", path, (unsigned) mode);
+	break;
+    default:
+	fd = open(path, flags, mode);
+	break;
+    }
+    if (fd < 0) {
 	return (0);
     } else {
 	stream = vstream_fdopen(fd, flags);
@@ -1858,6 +1899,13 @@ VSTREAM *vstream_memreopen(VSTREAM *stream, VSTRING *string, int flags)
 		  "O_RDONLY, O_WRONLY, or O_APPEND");
     }
     return (stream);
+}
+
+/* vstream_no_debug - debug logging lockout */
+
+void    vstream_no_debug(VSTREAM *stream)
+{
+    vstream_log_veto = stream;
 }
 
 #ifdef TEST

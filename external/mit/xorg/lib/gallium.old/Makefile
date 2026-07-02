@@ -1,4 +1,4 @@
-# $NetBSD: Makefile,v 1.9 2024/04/04 23:50:13 christos Exp $
+# $NetBSD: Makefile,v 1.11 2025/10/20 14:31:38 nat Exp $
 
 # Transparent struct/union broken
 NOLINT=yes
@@ -1212,10 +1212,15 @@ COPTS+=	${${ACTIVE_CC} == "clang":? -Wa,-Av8plus  :}
 .endif
 
 # XXXGCC12
-.if ${MACHINE_ARCH} == "m68k"
+.if ${MACHINE_ARCH:S/m68ksf/m68k/} == "m68k"
 COPTS.st_glsl_to_tgsi.cpp += -O1
 COPTS.vl_bicubic_filter.c += -O1
 COPTS.nir_opt_algebraic.c += -Os -fno-jump-tables
+.endif
+
+.if ${MACHINE} == "vax" && ${HAVE_GCC:U0} >= 12
+# in find_reloads_toplev, at reload.cc:4815
+COPTS.u_format_table.c+= -O0
 .endif
 
 COPTS.u_atomic.c+=	${${ACTIVE_CC} == "gcc" && ${HAVE_GCC:U0} >= 10:? -Wno-builtin-declaration-mismatch :}

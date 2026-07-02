@@ -1,4 +1,4 @@
-/*	$NetBSD: ffs_alloc.c,v 1.32 2023/03/13 22:17:24 christos Exp $	*/
+/*	$NetBSD: ffs_alloc.c,v 1.34 2026/01/10 08:58:47 tsutsui Exp $	*/
 /* From: NetBSD: ffs_alloc.c,v 1.50 2001/09/06 02:16:01 lukem Exp */
 
 /*
@@ -47,7 +47,7 @@
 
 #include <sys/cdefs.h>
 #if defined(__RCSID) && !defined(__lint)
-__RCSID("$NetBSD: ffs_alloc.c,v 1.32 2023/03/13 22:17:24 christos Exp $");
+__RCSID("$NetBSD: ffs_alloc.c,v 1.34 2026/01/10 08:58:47 tsutsui Exp $");
 #endif	/* !__lint */
 
 #include <sys/param.h>
@@ -88,13 +88,13 @@ extern const u_char * const fragtbl[];
  *   1) allocate the requested block.
  *   2) allocate a rotationally optimal block in the same cylinder.
  *   3) allocate a block in the same cylinder group.
- *   4) quadradically rehash into other cylinder groups, until an
+ *   4) quadratically rehash into other cylinder groups, until an
  *      available block is located.
  * If no block preference is given the following hierarchy is used
  * to allocate a block:
  *   1) allocate a block in the cylinder group that contains the
  *      inode for the file.
- *   2) quadradically rehash into other cylinder groups, until an
+ *   2) quadratically rehash into other cylinder groups, until an
  *      available block is located.
  */
 int
@@ -240,7 +240,7 @@ ffs_blkpref_ufs2(struct inode *ip, daddr_t lbn, int indx, int64_t *bap)
  *
  * The policy implemented by this algorithm is:
  *   1) allocate the block in its requested cylinder group.
- *   2) quadradically rehash on the cylinder group number.
+ *   2) quadratically rehash on the cylinder group number.
  *   3) brute force search for a free block.
  *
  * `size':	size for data blocks, mode for inodes
@@ -417,6 +417,14 @@ gotit:
 	ufs_add32(cgp->cg_cs.cs_nbfree, -1, needswap);
 	fs->fs_cstotal.cs_nbfree--;
 	fs->fs_cs(fs, ufs_rw32(cgp->cg_cgx, needswap)).cs_nbfree--;
+	if ((fs->fs_magic == FS_UFS1_MAGIC) &&
+	    ((fs->fs_old_flags & FS_FLAGS_UPDATED) == 0)) {
+		int cylno;
+		cylno = old_cbtocylno(fs, bno);
+		ufs_add16(old_cg_blks(fs, cgp, cylno,
+		    needswap)[old_cbtorpos(fs, bno)], -1, needswap);
+		ufs_add32(old_cg_blktot(cgp, needswap)[cylno], -1, needswap);
+	}
 	fs->fs_fmod = 1;
 	blkno = ufs_rw32(cgp->cg_cgx, needswap) * fs->fs_fpg + bno;
 	return (blkno);
@@ -472,6 +480,13 @@ ffs_blkfree(struct inode *ip, daddr_t bno, long size)
 		ufs_add32(cgp->cg_cs.cs_nbfree, 1, needswap);
 		fs->fs_cstotal.cs_nbfree++;
 		fs->fs_cs(fs, cg).cs_nbfree++;
+		if ((fs->fs_magic == FS_UFS1_MAGIC) &&
+		    ((fs->fs_old_flags & FS_FLAGS_UPDATED) == 0)) {
+			i = old_cbtocylno(fs, cgbno);
+			ufs_add16(old_cg_blks(fs, cgp, i,
+			    needswap)[old_cbtorpos(fs, cgbno)], 1, needswap);
+			ufs_add32(old_cg_blktot(cgp, needswap)[i], 1, needswap);
+		}
 	} else {
 		bbase = cgbno - ffs_fragnum(fs, cgbno);
 		/*
@@ -511,6 +526,15 @@ ffs_blkfree(struct inode *ip, daddr_t bno, long size)
 			ufs_add32(cgp->cg_cs.cs_nbfree, 1, needswap);
 			fs->fs_cstotal.cs_nbfree++;
 			fs->fs_cs(fs, cg).cs_nbfree++;
+			if ((fs->fs_magic == FS_UFS1_MAGIC) &&
+			    ((fs->fs_old_flags & FS_FLAGS_UPDATED) == 0)) {
+				i = old_cbtocylno(fs, bbase);
+				ufs_add16(old_cg_blks(fs, cgp, i,
+				    needswap)[old_cbtorpos(fs, bbase)], 1,
+				    needswap);
+				ufs_add32(old_cg_blktot(cgp, needswap)[i], 1,
+				    needswap);
+			}
 		}
 	}
 	fs->fs_fmod = 1;

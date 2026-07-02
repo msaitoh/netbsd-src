@@ -1,4 +1,4 @@
-/*	$NetBSD: mail_conf.c,v 1.3 2020/03/18 19:05:16 christos Exp $	*/
+/*	$NetBSD: mail_conf.c,v 1.5 2026/05/09 18:49:16 christos Exp $	*/
 
 /*++
 /* NAME
@@ -37,8 +37,8 @@
 /*	file, and stores its values into a global configuration
 /*	dictionary. When the configuration directory name is not
 /*	trusted, this function requires that the directory name is
-/*	authorized with the alternate_config_directories setting
-/*	in the default main.cf file.
+/*	authorized with the alternate_config_directories or
+/*	multi_instance_directories setting in the default main.cf file.
 /*
 /*	This function requires that all configuration directory
 /*	override mechanisms set the MAIL_CONFIG environment variable,
@@ -133,7 +133,7 @@
 
 /* mail_conf_checkdir - authorize non-default directory */
 
-void mail_conf_checkdir(const char *config_dir)
+void    mail_conf_checkdir(const char *config_dir)
 {
     VSTRING *buf;
     VSTREAM *fp;

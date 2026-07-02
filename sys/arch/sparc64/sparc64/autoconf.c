@@ -1,4 +1,4 @@
-/*	$NetBSD: autoconf.c,v 1.241 2024/06/20 18:02:45 palle Exp $ */
+/*	$NetBSD: autoconf.c,v 1.251 2026/06/04 13:58:28 jdc Exp $ */
 
 /*
  * Copyright (c) 1996
@@ -48,7 +48,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: autoconf.c,v 1.241 2024/06/20 18:02:45 palle Exp $");
+__KERNEL_RCSID(0, "$NetBSD: autoconf.c,v 1.251 2026/06/04 13:58:28 jdc Exp $");
 
 #include "opt_ddb.h"
 #include "opt_kgdb.h"
@@ -77,6 +77,7 @@ __KERNEL_RCSID(0, "$NetBSD: autoconf.c,v 1.241 2024/06/20 18:02:45 palle Exp $")
 
 #include <net/if.h>
 #include <net/if_ether.h>
+#include <net/ether_calls.h>
 
 #include <dev/cons.h>
 #include <sparc64/dev/cons.h>
@@ -774,9 +775,46 @@ extern struct sparc_bus_space_tag mainbus_space_tag;
 			portid = -1;
 		ma.ma_upaid = portid;
 
-		if (prom_getprop(node, "reg", sizeof(*ma.ma_reg), 
-				 &ma.ma_nreg, &ma.ma_reg) != 0)
-			continue;
+#define NREG32 3
+		if (prom_getproplen(node, "reg") == NREG32 * 4) {
+			/*
+			 * Fix up nodes where reg is encoded as a 64-bit and
+			 * a 32-bit value (e.g. 00000400 0fc62020 00000010),
+			 * but we want 2 * 64-bit values.
+			 * The length in this case is 3 * 4 (bytes).
+			 */
+			int n;
+			int32_t *reg32p = NULL;
+
+			if (prom_getprop(node, "reg", sizeof(int32_t),
+			    &n, &reg32p) != 0)
+				continue;
+			if (n != NREG32) {
+				free(reg32p, M_DEVBUF);
+				continue;
+			}
+			ma.ma_reg = malloc(sizeof(*ma.ma_reg), M_DEVBUF,
+			    M_NOWAIT);
+			if (ma.ma_reg == NULL) {
+				free(reg32p, M_DEVBUF);
+				continue;
+			}
+			ma.ma_reg->ur_paddr = reg32p[0];
+			ma.ma_reg->ur_paddr = ma.ma_reg->ur_paddr << 32;
+			ma.ma_reg->ur_paddr |= reg32p[1];
+			ma.ma_reg->ur_len = reg32p[2];
+			ma.ma_nreg = 1;
+			free(reg32p, M_DEVBUF);
+#ifdef DEBUG
+			if (autoconf_debug & ACDB_PROBE) {
+				printf(" fixed up 64/32 reg property\n");
+			}
+#endif
+		} else
+			/* reg is encoded as we expect */
+			if (prom_getprop(node, "reg", sizeof(*ma.ma_reg),
+			    &ma.ma_nreg, &ma.ma_reg) != 0)
+				continue;
 #ifdef DEBUG
 		if (autoconf_debug & ACDB_PROBE) {
 			if (ma.ma_nreg)
@@ -1094,6 +1132,39 @@ dev_bi_unit_drive_match(device_t dev, int ctrlnode, int target,
 	    booted_partition));
 }
 
+static int
+sparc64_ether_get_mac_address(device_t dev, devhandle_t call_handle, void *v)
+{
+	struct ether_get_mac_address_args *args = v;
+	int node = devhandle_to_of(call_handle);
+	char name[32], device_type[32];
+
+	if (OF_getprop(node, "name", name, sizeof(name)) <= 0) {
+		name[0] = '\0';
+	}
+	if (OF_getprop(node, "device_type", device_type,
+		       sizeof(device_type)) <= 0) {
+		device_type[0] = '\0';
+	}
+
+	/*
+	 * Is it a network interface with FCode?
+	 */
+	if (strcmp(name, "network") == 0 ||
+	    strcmp(device_type, "network") == 0) {
+		/* XXX without-seeprom */
+		prom_getether(node, args->enaddr);
+	} else {
+		/* No fallback to idprom in this case. */
+		if (! prom_get_node_ether(node, args->enaddr)) {
+			return ENOENT;
+		}
+	}
+	return 0;
+}
+OF_DEVICE_CALL_REGISTER(ETHER_GET_MAC_ADDRESS_STR,
+			sparc64_ether_get_mac_address)
+
 /*
  * Called back during autoconfiguration for each device found
  */
@@ -1130,18 +1201,9 @@ device_register(device_t dev, void *aux)
 		if (ia->ia_name == NULL)	/* indirect config */
 			return;
 
-		ofnode = (int)ia->ia_cookie;
-		if (device_is_a(dev, "pcagpio")) {
-			if (!strcmp(machine_model, "SUNW,Sun-Fire-V240") ||
-			    !strcmp(machine_model, "SUNW,Sun-Fire-V210")) {
-				add_gpio_props_v210(dev, aux);
-			}
-		} 
-		if (device_is_a(dev, "pcf8574io")) {
-			if (!strcmp(machine_model, "SUNW,Ultra-250")) {
-				add_gpio_props_e250(dev, aux);
-			}
-		} 
+		/* i2c device patches */
+		set_i2c_dev_props(dev, device_parent(busdev), aux);
+
 		return;
 	} else if (device_is_a(dev, "sd") || device_is_a(dev, "cd")) {
 		struct scsipibus_attach_args *sa = aux;
@@ -1229,14 +1291,12 @@ device_register(device_t dev, void *aux)
 		return;
 
 	if (ofnode != 0) {
-		uint8_t eaddr[ETHER_ADDR_LEN];
 		char tmpstr[32];
 		char tmpstr2[32];
 		int node;
 		uint32_t id = 0;
 		uint64_t nwwn = 0, pwwn = 0;
 		prop_dictionary_t dict;
-		prop_data_t blob;
 		prop_number_t pwwnd = NULL, nwwnd = NULL;
 		prop_number_t idd = NULL;
 
@@ -1248,39 +1308,13 @@ device_register(device_t dev, void *aux)
 			tmpstr2[0] = 0;
 
 		/*
-		 * If this is a network interface, note the
-		 * mac address.
+		 * Is it a network interface with FCode?
+		 * XXX Would like this to go away.
 		 */
-		if (strcmp(tmpstr, "network") == 0
-		   || strcmp(tmpstr, "ethernet") == 0
-		   || strcmp(tmpstr2, "network") == 0
-		   || strcmp(tmpstr2, "ethernet") == 0
-		   || OF_getprop(ofnode, "mac-address", &eaddr, sizeof(eaddr))
-		      >= ETHER_ADDR_LEN
-		   || OF_getprop(ofnode, "local-mac-address", &eaddr, sizeof(eaddr))
-		      >= ETHER_ADDR_LEN) {
-
-			dict = device_properties(dev);
-
-			/*
-			 * Is it a network interface with FCode?
-			 */
-			if (strcmp(tmpstr, "network") == 0 ||
-			    strcmp(tmpstr2, "network") == 0) {
-				prop_dictionary_set_bool(dict,
-				    "without-seeprom", true);
-				prom_getether(ofnode, eaddr);
-			} else {
-				if (!prom_get_node_ether(ofnode, eaddr))
-					goto noether;
-			}
-			blob = prop_data_create_copy(eaddr, ETHER_ADDR_LEN);
-			prop_dictionary_set(dict, "mac-address", blob);
-			prop_object_release(blob);
-			of_to_dataprop(dict, ofnode, "shared-pins",
-			    "shared-pins");
+		if (strcmp(tmpstr, "network") == 0 ||
+		    strcmp(tmpstr2, "network") == 0) {
+			device_setprop_bool(dev, "without-seeprom", true);
 		}
-noether:
 
 		/* is this a FC node? */
 		if (strcmp(tmpstr, "scsi-fcp") == 0) {
@@ -1358,28 +1392,17 @@ noether:
 					}
 				}
 
-				of_enter_i2c_devs(props, busnode,
+				cfg = of_copy_i2c_devs(busnode,
 				    sizeof(cell_t), 1);
+				if (cfg != NULL) {
+					prop_dictionary_set(props,
+					    "i2c-child-devices", cfg);
+					prop_object_release(cfg);
+				}
 			}
 		}
 
-		if (!strcmp(machine_model, "TAD,SPARCLE"))
-			add_spdmem_props_sparcle(busdev);
-
-		if (device_is_a(busdev, "pcfiic") &&
-		    (!strcmp(machine_model, "SUNW,Sun-Fire-V240") ||
-		    !strcmp(machine_model, "SUNW,Sun-Fire-V210")))
-			add_env_sensors_v210(busdev);
-
-		/* E450 SUNW,envctrl */
-		if (device_is_a(busdev, "pcfiic") &&
-		    (!strcmp(machine_model, "SUNW,Ultra-4")))
-			add_i2c_props_e450(busdev, busnode);
-
-		/* E250 SUNW,envctrltwo */
-		if (device_is_a(busdev, "pcfiic") &&
-		    (!strcmp(machine_model, "SUNW,Ultra-250")))
-			add_i2c_props_e250(busdev, busnode);
+		set_i2c_bus_props(busdev, busnode);	/* i2c bus patches */
 	}
 
 	/* set properties for PCI framebuffers */
@@ -1446,8 +1469,6 @@ noether:
 #endif
 		set_static_edid(dict);
 	}
-
-	set_hw_props(dev);
 }
 
 /*

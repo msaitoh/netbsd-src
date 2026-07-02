@@ -77,6 +77,7 @@ void	npfk_thread_register(npf_t *);
 void	npfk_thread_unregister(npf_t *);
 
 int	npfk_packet_handler(npf_t *, struct mbuf **, struct ifnet *, int);
+int	npfk_layer2_handler(npf_t *, struct mbuf **, struct ifnet *, int);
 
 void	npfk_ifmap_attach(npf_t *, struct ifnet *);
 void	npfk_ifmap_detach(npf_t *, struct ifnet *);
@@ -99,6 +100,10 @@ int	npf_ext_normalize_fini(npf_t *);
 
 int	npf_ext_rndblock_init(npf_t *);
 int	npf_ext_rndblock_fini(npf_t *);
+
+/* Routing */
+int	npf_ext_route_init(npf_t *);
+int	npf_ext_route_fini(npf_t *);
 
 /*
  * ALGs.

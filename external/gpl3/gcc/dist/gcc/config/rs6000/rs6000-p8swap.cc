@@ -1,6 +1,6 @@
 /* Subroutines used to remove unnecessary doubleword swaps
    for p8 little-endian VSX code.
-   Copyright (C) 1991-2022 Free Software Foundation, Inc.
+   Copyright (C) 1991-2024 Free Software Foundation, Inc.
 
    This file is part of GCC.
 
@@ -214,8 +214,9 @@ union_defs (swap_web_entry *insn_entry, rtx insn, df_ref use)
       if (DF_REF_INSN_INFO (link->ref))
 	{
 	  rtx def_insn = DF_REF_INSN (link->ref);
-	  (void)unionfind_union (insn_entry + INSN_UID (insn),
-				 insn_entry + INSN_UID (def_insn));
+	  gcc_assert (NONDEBUG_INSN_P (def_insn));
+	  unionfind_union (insn_entry + INSN_UID (insn),
+			   insn_entry + INSN_UID (def_insn));
 	}
 
       link = link->next;
@@ -242,8 +243,9 @@ union_uses (swap_web_entry *insn_entry, rtx insn, df_ref def)
       if (DF_REF_INSN_INFO (link->ref))
 	{
 	  rtx use_insn = DF_REF_INSN (link->ref);
-	  (void)unionfind_union (insn_entry + INSN_UID (insn),
-				 insn_entry + INSN_UID (use_insn));
+	  if (NONDEBUG_INSN_P (use_insn))
+	    unionfind_union (insn_entry + INSN_UID (insn),
+			     insn_entry + INSN_UID (use_insn));
 	}
 
       link = link->next;
@@ -2467,10 +2469,10 @@ rs6000_analyze_swaps (function *fun)
 		    mode = V4SImode;
 		}
 
-	      if (ALTIVEC_OR_VSX_VECTOR_MODE (mode) || mode == TImode)
+	      if (ALTIVEC_OR_VSX_VECTOR_MODE (mode) || TI_OR_PTI_MODE (mode))
 		{
 		  insn_entry[uid].is_relevant = 1;
-		  if (mode == TImode || mode == V1TImode
+		  if (TI_OR_PTI_MODE (mode) || mode == V1TImode
 		      || FLOAT128_VECTOR_P (mode))
 		    insn_entry[uid].is_128_int = 1;
 		  if (DF_REF_INSN_INFO (mention))
@@ -2495,10 +2497,10 @@ rs6000_analyze_swaps (function *fun)
 		  && ALTIVEC_OR_VSX_VECTOR_MODE (GET_MODE (SET_DEST (insn))))
 		mode = GET_MODE (SET_DEST (insn));
 
-	      if (ALTIVEC_OR_VSX_VECTOR_MODE (mode) || mode == TImode)
+	      if (ALTIVEC_OR_VSX_VECTOR_MODE (mode) || TI_OR_PTI_MODE (mode))
 		{
 		  insn_entry[uid].is_relevant = 1;
-		  if (mode == TImode || mode == V1TImode
+		  if (TI_OR_PTI_MODE (mode) || mode == V1TImode
 		      || FLOAT128_VECTOR_P (mode))
 		    insn_entry[uid].is_128_int = 1;
 		  if (DF_REF_INSN_INFO (mention))

@@ -1,4 +1,4 @@
-/*	$NetBSD: pciide_common.c,v 1.71 2024/03/31 18:59:52 thorpej Exp $	*/
+/*	$NetBSD: pciide_common.c,v 1.74 2026/03/30 16:43:45 tls Exp $	*/
 
 
 /*
@@ -70,7 +70,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: pciide_common.c,v 1.71 2024/03/31 18:59:52 thorpej Exp $");
+__KERNEL_RCSID(0, "$NetBSD: pciide_common.c,v 1.74 2026/03/30 16:43:45 tls Exp $");
 
 #include <sys/param.h>
 
@@ -83,7 +83,10 @@ __KERNEL_RCSID(0, "$NetBSD: pciide_common.c,v 1.71 2024/03/31 18:59:52 thorpej E
 #include <dev/ic/wdcreg.h>
 
 #ifdef ATADEBUG
-int atadebug_pciide_mask = 0;
+#ifndef ATADEBUG_PCIIDE_MASK
+#define ATADEBUG_PCIIDE_MASK 0
+#endif
+int atadebug_pciide_mask = ATADEBUG_PCIIDE_MASK;
 #endif
 
 #if NATA_DMA
@@ -155,6 +158,8 @@ pciide_common_attach(struct pciide_softc *sc, const struct pci_attach_args *pa,
 	if (atadebug_pciide_mask & DEBUG_PROBE)
 		pci_conf_print(sc->sc_pc, sc->sc_tag, NULL);
 #endif
+	sc->sc_wdcdev.cap |= WDC_CAPABILITY_ZERO_ABSENT;
+
 	sc->sc_pp->chip_map(sc, pa);
 
 #if NATA_DMA
@@ -485,11 +490,8 @@ pciide_mapreg_dma(struct pciide_softc *sc, const struct pci_attach_args *pa)
 			    ", but unused (forced off by config file)");
 			sc->sc_dma_ok = 0;
 		} else {
-			bool disable;
-
-			if (prop_dictionary_get_bool(
-			    device_properties(sc->sc_wdcdev.sc_atac.atac_dev),
-			    "pciide-disable-dma", &disable) && disable) {
+			if (device_getprop_bool(sc->sc_wdcdev.sc_atac.atac_dev,
+						"pciide-disable-dma")) {
 				aprint_verbose(
 				    ", but unused (disabled by platform)");
 				sc->sc_dma_ok = 0;

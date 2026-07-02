@@ -1,4 +1,4 @@
-/*	$NetBSD: virtiovar.h,v 1.29 2023/04/19 00:23:45 yamaguchi Exp $	*/
+/*	$NetBSD: virtiovar.h,v 1.31 2026/04/10 03:44:43 isaki Exp $	*/
 
 /*
  * Copyright (c) 2010 Minoura Makoto.
@@ -72,13 +72,13 @@
 
 struct virtqueue {
 	struct virtio_softc	*vq_owner;
-        unsigned int		vq_num; /* queue size (# of entries) */
+	unsigned int		vq_num; /* queue size (# of entries) */
 	int			vq_index; /* queue number (0, 1, ...) */
 
 	/* vring pointers (KVA) */
-        struct vring_desc	*vq_desc;
-        struct vring_avail	*vq_avail;
-        struct vring_used	*vq_used;
+	struct vring_desc	*vq_desc;
+	struct vring_avail	*vq_avail;
+	struct vring_used	*vq_used;
 	struct vring_desc	*vq_indirect;
 	uint16_t		*vq_used_event;		/* trails avail */
 	uint16_t		*vq_avail_event;	/* trails used  */
@@ -243,6 +243,7 @@ bus_dma_tag_t	virtio_dmat(struct virtio_softc *);
 device_t	virtio_child(struct virtio_softc *);
 int		virtio_intrhand(struct virtio_softc *);
 uint64_t	virtio_features(struct virtio_softc *);
+bool		virtio_version_1(struct virtio_softc *);
 
 /* autoconf(9) common */
 void virtio_set_status(struct virtio_softc *, int);

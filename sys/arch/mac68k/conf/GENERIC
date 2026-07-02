@@ -1,4 +1,4 @@
-# $NetBSD: GENERIC,v 1.238 2024/01/29 18:27:13 christos Exp $
+# $NetBSD: GENERIC,v 1.241 2026/06/13 15:28:08 thorpej Exp $
 #
 # GENERIC machine description file
 # 
@@ -22,7 +22,7 @@ include 	"arch/mac68k/conf/std.mac68k"
 
 options 	INCLUDE_CONFIG_FILE	# embed config file in kernel binary
 
-#ident 		"GENERIC-$Revision: 1.238 $"
+#ident 		"GENERIC-$Revision: 1.241 $"
 
 makeoptions	COPTS="-O2 -fno-reorder-blocks -fno-omit-frame-pointer"
 	# See share/mk/sys.mk. -fno-omit-frame-pointer is necessary for
@@ -31,12 +31,14 @@ makeoptions	COPTS="-O2 -fno-reorder-blocks -fno-omit-frame-pointer"
 maxusers	16		# estimated number of users
 
 # CPU support.  At least one is REQUIRED.
+options 	M68060
 options 	M68040
 options 	M68030
 options 	M68020		# Note:  must have 68851 PMMU
 
 # CPU-related options.
 options 	FPSP
+options 	M060SP
 options 	FPU_EMULATE
 
 # Support for 128 meg SIMMs in Centris / Quadra 610, 650 and 800 machines.
@@ -169,6 +171,7 @@ options 	RCONS_4BPP		# Support for 4-bit display
 options 	RCONS_16BPP		# Support for 16-bit display
 
 # Mac-specific options
+#options 	EMULFKEYS	# Map Opt-{1-8} to F1-F8.
 #options 	ALTXBUTTONS	# Map Opt-{1,2,3} to mouse buttons
 #options 	DISABLE_EXT_CACHE # If really paranoid, disable IIci ext. cache
 options 	GRF_COMPAT	# Include grf compatibility code
@@ -203,6 +206,9 @@ adb0	at obio?
 aed*	at adb?				# ADB event device
 akbd*	at adb?				# ADB keyboard
 ams*	at adb?				# ADB mouse
+
+# Powerbook 1xx AC adaptor and battery
+#pbbat*	at aed?
 
 # Basic frame buffer support
 intvid0	at obio?			# Internal video hardware

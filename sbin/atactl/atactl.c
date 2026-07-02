@@ -1,4 +1,4 @@
-/*	$NetBSD: atactl.c,v 1.85 2020/12/20 10:19:30 jmcneill Exp $	*/
+/*	$NetBSD: atactl.c,v 1.87 2025/12/25 11:13:18 nia Exp $	*/
 
 /*-
  * Copyright (c) 1998, 2019 The NetBSD Foundation, Inc.
@@ -35,7 +35,7 @@
 #include <sys/cdefs.h>
 
 #ifndef lint
-__RCSID("$NetBSD: atactl.c,v 1.85 2020/12/20 10:19:30 jmcneill Exp $");
+__RCSID("$NetBSD: atactl.c,v 1.87 2025/12/25 11:13:18 nia Exp $");
 #endif
 
 
@@ -43,6 +43,7 @@ __RCSID("$NetBSD: atactl.c,v 1.85 2020/12/20 10:19:30 jmcneill Exp $");
 #include <sys/ioctl.h>
 #include <err.h>
 #include <errno.h>
+#include <endian.h>
 #include <fcntl.h>
 #include <pwd.h>
 #include <stdio.h>
@@ -1434,8 +1435,7 @@ device_identify(int argc, char *argv[])
 			if ((inqbuf->atap_logical_align &
 			    ATA_LA_VALID_MASK) == ATA_LA_VALID) {
 				printf("First physically aligned sector: %d\n",
-				    lb_per_pb - (inqbuf->atap_logical_align &
-					ATA_LA_MASK));
+				    inqbuf->atap_logical_align & ATA_LA_MASK);
 			}
 		}
 	}

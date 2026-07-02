@@ -1,5 +1,5 @@
 #! /bin/sh
-# $NetBSD: accept.sh,v 1.16 2024/07/10 05:43:58 rillig Exp $
+# $NetBSD: accept.sh,v 1.18 2025/02/27 06:48:29 rillig Exp $
 #
 # Copyright (c) 2021 The NetBSD Foundation, Inc.
 # All rights reserved.
@@ -33,6 +33,13 @@
 #	'expect' comments.
 
 set -eu
+
+atf_get_srcdir() {
+	echo "."
+}
+atf_test_case() {
+	:
+}
 
 : "${archsubdir:=$(make -v ARCHSUBDIR)}"
 . './t_integration.sh'		# for configure_test_case
@@ -79,7 +86,7 @@ for pattern in "$@"; do
 			continue
 		fi
 
-		if [ -f "$exp_file" ] && cmp -s "$exp_tmp_file"  "$exp_file"; then
+		if [ -f "$exp_file" ] && cmp -s "$exp_tmp_file" "$exp_file"; then
 			rm "$exp_tmp_file"
 		else
 			mv "$exp_tmp_file" "$exp_file"

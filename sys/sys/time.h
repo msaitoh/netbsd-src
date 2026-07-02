@@ -1,4 +1,4 @@
-/*	$NetBSD: time.h,v 1.81 2024/05/12 10:34:56 rillig Exp $	*/
+/*	$NetBSD: time.h,v 1.83 2026/03/15 12:02:08 yamt Exp $	*/
 
 /*
  * Copyright (c) 1982, 1986, 1993
@@ -49,6 +49,10 @@ struct timeval {
 #include <sys/timespec.h>
 
 #if defined(_NETBSD_SOURCE)
+/*
+ * TIMEVAL_TO_TIMESPEC: exact conversion
+ * TIMESPEC_TO_TIMEVAL: round down sub us
+ */
 #define	TIMEVAL_TO_TIMESPEC(tv, ts) do {				\
 	(ts)->tv_sec = (tv)->tv_sec;					\
 	(ts)->tv_nsec = (tv)->tv_usec * 1000;				\
@@ -266,7 +270,8 @@ ns2bintime(uint64_t ns)
 	} while (0)
 #define timespec2ns(x) (((uint64_t)(x)->tv_sec) * 1000000000L + (x)->tv_nsec)
 
-#ifdef _KERNEL
+#if defined(_KERNEL) || defined(_TIME_TESTING)
+#include <sys/stdbool.h>
 bool timespecaddok(const struct timespec *, const struct timespec *) __pure;
 bool timespecsubok(const struct timespec *, const struct timespec *) __pure;
 #endif
@@ -310,6 +315,7 @@ struct	itimerspec {
 #define	TIMER_ABSTIME	0x1	/* absolute timer */
 
 #ifdef _KERNEL
+#include <sys/timearith.h>
 #include <sys/timevar.h>
 #else /* !_KERNEL */
 #ifndef _STANDALONE

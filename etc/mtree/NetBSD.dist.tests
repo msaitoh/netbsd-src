@@ -1,4 +1,4 @@
-#	$NetBSD: NetBSD.dist.tests,v 1.209 2024/10/18 23:23:40 christos Exp $
+#	$NetBSD: NetBSD.dist.tests,v 1.216 2026/01/30 09:01:07 wiz Exp $
 
 ./usr/libdata/debug/usr/tests
 ./usr/libdata/debug/usr/tests/atf
@@ -126,6 +126,7 @@
 ./usr/libdata/debug/usr/tests/lib/libprop
 ./usr/libdata/debug/usr/tests/lib/libpthread
 ./usr/libdata/debug/usr/tests/lib/libpthread/dlopen
+./usr/libdata/debug/usr/tests/lib/libpthread/weak
 ./usr/libdata/debug/usr/tests/lib/librefuse
 ./usr/libdata/debug/usr/tests/lib/librt
 ./usr/libdata/debug/usr/tests/lib/librumpclient
@@ -218,6 +219,7 @@
 ./usr/tests/compat/linux
 ./usr/tests/crypto
 ./usr/tests/crypto/libcrypto
+./usr/tests/crypto/libcrypto/store
 ./usr/tests/crypto/opencrypto
 ./usr/tests/dev
 ./usr/tests/dev/audio
@@ -341,6 +343,7 @@
 ./usr/tests/lib/libprop
 ./usr/tests/lib/libpthread
 ./usr/tests/lib/libpthread/dlopen
+./usr/tests/lib/libpthread/weak
 ./usr/tests/lib/librefuse
 ./usr/tests/lib/librt
 ./usr/tests/lib/librumpclient
@@ -448,11 +451,13 @@
 ./usr/tests/usr.bin/compress
 ./usr/tests/usr.bin/cut
 ./usr/tests/usr.bin/diff
+./usr/tests/usr.bin/diff3
 ./usr/tests/usr.bin/dirname
 ./usr/tests/usr.bin/error
 ./usr/tests/usr.bin/find
 ./usr/tests/usr.bin/fstat
 ./usr/tests/usr.bin/ftp
+./usr/tests/usr.bin/gcov
 ./usr/tests/usr.bin/gdb
 ./usr/tests/usr.bin/grep
 ./usr/tests/usr.bin/gzip
@@ -469,7 +474,10 @@
 ./usr/tests/usr.bin/mkdep
 ./usr/tests/usr.bin/mtree
 ./usr/tests/usr.bin/nbperf
+./usr/tests/usr.bin/netpgpkeys
+./usr/tests/usr.bin/netpgpkeys/data
 ./usr/tests/usr.bin/netpgpverify
+./usr/tests/usr.bin/netpgpverify/data
 ./usr/tests/usr.bin/patch
 ./usr/tests/usr.bin/pkill
 ./usr/tests/usr.bin/pr

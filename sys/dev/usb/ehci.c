@@ -1,4 +1,4 @@
-/*	$NetBSD: ehci.c,v 1.329 2024/10/04 10:25:51 skrll Exp $ */
+/*	$NetBSD: ehci.c,v 1.335 2026/05/02 07:23:00 tsutsui Exp $ */
 
 /*
  * Copyright (c) 2004-2012,2016,2020 The NetBSD Foundation, Inc.
@@ -54,7 +54,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: ehci.c,v 1.329 2024/10/04 10:25:51 skrll Exp $");
+__KERNEL_RCSID(0, "$NetBSD: ehci.c,v 1.335 2026/05/02 07:23:00 tsutsui Exp $");
 
 #include "ohci.h"
 #include "uhci.h"
@@ -1912,10 +1912,10 @@ ehci_dump_sitd(struct ehci_soft_itd *itd)
 {
 	EHCIHIST_FUNC(); EHCIHIST_CALLED();
 
-	DPRINTF("SITD %#jx next = %p prev = %#jx",
+	DPRINTF("SITD %#jx next = %#jx prev = %#jx",
 	    (uintptr_t)itd, (uintptr_t)itd->frame_list.next,
 	    (uintptr_t)itd->frame_list.prev, 0);
-	DPRINTF("        xfernext=%#jx physaddr=%jX slot=%jd",
+	DPRINTF("        xfernext=%#jx physaddr=%#jx slot=%jd",
 	    (uintptr_t)itd->xfer_next, itd->physaddr, itd->slot, 0);
 }
 
@@ -3315,7 +3315,7 @@ ehci_alloc_sitd(ehci_softc_t *sc)
 		 */
 		int err = usb_allocmem(sc->sc_dmatag,
 		    EHCI_SITD_SIZE * EHCI_SITD_CHUNK,
-		    EHCI_PAGE_SIZE, USBMALLOC_COHERENT, &dma);
+		    EHCI_PAGE_SIZE, 0, &dma);
 
 		if (err) {
 			DPRINTF("alloc returned %jd", err, 0, 0, 0);
@@ -3822,10 +3822,10 @@ ehci_device_ctrl_start(struct usbd_xfer *xfer)
 	usb_syncmem(&setup->dma, setup->offs, sizeof(*setup->qtd),
 	    BUS_DMASYNC_PREWRITE | BUS_DMASYNC_PREREAD);
 
-	 usb_syncmem(&status->dma, status->offs, sizeof(*status->qtd),
-	    BUS_DMASYNC_PREWRITE | BUS_DMASYNC_PREREAD);
-
 	KASSERT(status->qtd->qtd_status & htole32(EHCI_QTD_TOGGLE_MASK));
+
+	usb_syncmem(&status->dma, status->offs, sizeof(*status->qtd),
+	    BUS_DMASYNC_PREWRITE | BUS_DMASYNC_PREREAD);
 
 #ifdef EHCI_DEBUG
 	DPRINTFN(5, "--- dump start ---", 0, 0, 0, 0);
@@ -3836,6 +3836,20 @@ ehci_device_ctrl_start(struct usbd_xfer *xfer)
 
 	/* Insert qTD in QH list - also does usb_syncmem(sqh) */
 	ehci_set_qh_qtd(sqh, setup);
+
+	/*
+	 * Workaround SB600 first address-0 control transfer failure after
+	 * cold boot.  Reload ASYNCLISTADDR after linking the qTD chan so
+	 * the controller resumes walking the asyn list properly.
+	 * See PR/57359 for details.
+	 */
+	if ((sc->sc_flags & EHCIF_SB600_ASYNCLIST_RELOAD) != 0 &&
+	    epipe->pipe.up_dev->ud_addr == 0) {
+		sc->sc_flags &= ~EHCIF_SB600_ASYNCLIST_RELOAD;
+		EOWRITE4(sc, EHCI_ASYNCLISTADDR,
+		    sc->sc_async_head->physaddr | EHCI_LINK_QH);
+	}
+
 	ehci_add_intr_list(sc, exfer);
 	xfer->ux_status = USBD_IN_PROGRESS;
 	usbd_xfer_schedule_timeout(xfer);
@@ -4397,6 +4411,7 @@ Static usbd_status
 ehci_device_fs_isoc_transfer(struct usbd_xfer *xfer)
 {
 	ehci_softc_t *sc = EHCI_XFER2SC(xfer);
+	const bool isread = usbd_xfer_isread(xfer);
 	struct ehci_pipe *epipe = EHCI_XFER2EPIPE(xfer);
 	struct usbd_device *dev = xfer->ux_pipe->up_dev;
 	struct ehci_xfer *exfer = EHCI_XFER2EXFER(xfer);
@@ -4540,7 +4555,7 @@ ehci_device_fs_isoc_transfer(struct usbd_xfer *xfer)
 
 	if (xfer->ux_length)
 		usb_syncmem(&exfer->ex_xfer.ux_dmabuf, 0, xfer->ux_length,
-		    BUS_DMASYNC_PREREAD | BUS_DMASYNC_PREWRITE);
+		    isread ? BUS_DMASYNC_PREREAD : BUS_DMASYNC_PREWRITE);
 
 	/*
 	 * Part 2: Transfer descriptors have now been set up, now they must
@@ -4638,6 +4653,7 @@ ehci_device_fs_isoc_done(struct usbd_xfer *xfer)
 	struct ehci_xfer *exfer = EHCI_XFER2EXFER(xfer);
 	ehci_softc_t *sc = EHCI_XFER2SC(xfer);
 	struct ehci_pipe *epipe = EHCI_XFER2EPIPE(xfer);
+	const bool isread = usbd_xfer_isread(xfer);
 
 	KASSERT(mutex_owned(&sc->sc_lock));
 
@@ -4646,7 +4662,7 @@ ehci_device_fs_isoc_done(struct usbd_xfer *xfer)
 
 	if (xfer->ux_length)
 		usb_syncmem(&xfer->ux_dmabuf, 0, xfer->ux_length,
-		    BUS_DMASYNC_POSTWRITE | BUS_DMASYNC_POSTREAD);
+		    isread ? BUS_DMASYNC_POSTREAD : BUS_DMASYNC_POSTWRITE);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -4761,6 +4777,7 @@ Static usbd_status
 ehci_device_isoc_transfer(struct usbd_xfer *xfer)
 {
 	ehci_softc_t *sc = EHCI_XFER2SC(xfer);
+	const bool isread = usbd_xfer_isread(xfer);
 	struct ehci_pipe *epipe = EHCI_XFER2EPIPE(xfer);
 	struct ehci_xfer *exfer = EHCI_XFER2EXFER(xfer);
 	ehci_soft_itd_t *itd, *prev;
@@ -4792,7 +4809,8 @@ ehci_device_isoc_transfer(struct usbd_xfer *xfer)
 			xfer->ux_nframes >= (sc->sc_flsize - 4) * 8) {
 		DPRINTF(
 		    "isoc descriptor spans entire frametable", 0, 0, 0, 0);
-		printf("ehci: isoc descriptor requested that spans the entire frametable, too many frames\n");
+		printf("ehci: isoc descriptor requested that spans the entire"
+		    " frametable, too many frames\n");
 		return USBD_INVAL;
 	}
 
@@ -4917,7 +4935,7 @@ ehci_device_isoc_transfer(struct usbd_xfer *xfer)
 
 	if (xfer->ux_length)
 		usb_syncmem(&exfer->ex_xfer.ux_dmabuf, 0, xfer->ux_length,
-		    BUS_DMASYNC_PREREAD | BUS_DMASYNC_PREWRITE);
+		    isread ? BUS_DMASYNC_PREREAD : BUS_DMASYNC_PREWRITE);
 
 	/*
 	 * Part 2: Transfer descriptors have now been set up, now they must
@@ -5020,12 +5038,14 @@ ehci_device_isoc_done(struct usbd_xfer *xfer)
 	struct ehci_xfer *exfer = EHCI_XFER2EXFER(xfer);
 	ehci_softc_t *sc = EHCI_XFER2SC(xfer);
 	struct ehci_pipe *epipe = EHCI_XFER2EPIPE(xfer);
+	const bool isread = usbd_xfer_isread(xfer);
 
 	KASSERT(mutex_owned(&sc->sc_lock));
 
 	epipe->isoc.cur_xfers--;
 	ehci_remove_itd_chain(sc, exfer->ex_sitdstart);
+
 	if (xfer->ux_length)
 		usb_syncmem(&xfer->ux_dmabuf, 0, xfer->ux_length,
-		    BUS_DMASYNC_POSTWRITE | BUS_DMASYNC_POSTREAD);
+		    isread ? BUS_DMASYNC_POSTREAD : BUS_DMASYNC_POSTWRITE);
 }

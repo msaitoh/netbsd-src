@@ -1,4 +1,4 @@
-/*	$NetBSD: pq3etsec.c,v 1.60 2024/06/29 12:11:11 riastradh Exp $	*/
+/*	$NetBSD: pq3etsec.c,v 1.63 2025/12/08 22:27:52 andvar Exp $	*/
 /*-
  * Copyright (c) 2010, 2011 The NetBSD Foundation, Inc.
  * All rights reserved.
@@ -35,7 +35,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: pq3etsec.c,v 1.60 2024/06/29 12:11:11 riastradh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: pq3etsec.c,v 1.63 2025/12/08 22:27:52 andvar Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_inet.h"
@@ -603,7 +603,7 @@ pq3etsec_attach(device_t parent, device_t self, void *aux)
 	}
 
 	/*
-	 * Assume firmware has aready set the mac address and fetch it
+	 * Assume firmware has already set the mac address and fetch it
 	 * before we reinit it.
 	 */
 	sc->sc_macstnaddr2 = etsec_read(sc, MACSTNADDR2);
@@ -1092,7 +1092,7 @@ pq3etsec_ifstop(struct ifnet *ifp, int disable)
 	etsec_write(sc, MIIMCFG, miimcfg);
 
 	/*
-	 * Let's consume any remaing transmitted packets.  And if we are
+	 * Let's consume any remaining transmitted packets.  And if we are
 	 * disabling the interface, purge ourselves of any untransmitted
 	 * packets.  But don't consume any received packets, just drop them.
 	 * If we aren't disabling the interface, save the mbufs in the
@@ -1338,7 +1338,7 @@ pq3etsec_mapcache_create(
 		     BUS_DMA_WAITOK | BUS_DMA_ALLOCNOW, &dmc->dmc_maps[i]);
 		if (error) {
 			aprint_error_dev(sc->sc_dev,
-			    "failed to creat dma map cache "
+			    "failed to create dma map cache "
 			    "entry %u of %zu: %d\n",
 			    i, maxmaps, error);
 			while (i-- > 0) {

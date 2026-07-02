@@ -1,4 +1,4 @@
-# $NetBSD: Makefile.inc,v 1.51 2024/10/04 20:35:58 christos Exp $
+# $NetBSD: Makefile.inc,v 1.55 2025/09/10 23:07:39 nat Exp $
 
 COMPILER_RT_DIR=	${NETBSDSRCDIR}/sys/external/bsd/compiler_rt
 COMPILER_RT_SRCDIR=	${COMPILER_RT_DIR}/dist
@@ -118,13 +118,16 @@ GENERIC_SRCS+=	\
 	floatundidf.c \
 	floatundisf.c \
 	floatundixf.c \
-	negdf2.c \
-	negsf2.c \
 	powidf2.c \
 	powisf2.c \
 	powitf2.c \
 	powixf2.c
 
+.  if ${MKLIBCSOFTFLOAT} != "no" || ${MKSOFTFLOAT} == "no"
+GENERIC_SRCS+=	\
+	negdf2.c \
+	negsf2.c
+.  endif
 .endif # IEEE 754 only machines
 
 .if ${LIBC_MACHINE_ARCH} != "m68k"
@@ -333,6 +336,7 @@ COPTS.${src}+=	-D__SOFT_FP__
 .endfor
 
 LINTFLAGS.GCDAProfiling.c += -X 123,132,351 # Ok, this is just sloppy
+LINTFLAGS.GCDAProfiling.c += -X 286,287 # missing prototypes
 LINTFLAGS.GCDAProfiling.c += -X 298 # vax
 LINTFLAGS.InstrProfiling.c += -X 298 # vax
 LINTFLAGS.InstrProfiling.c += -X 351
@@ -396,7 +400,7 @@ LINTFLAGS.floatuntidf.c += -X 122,141,267,351
 LINTFLAGS.floatuntisf.c += -X 351
 LINTFLAGS.floatuntixf.c += -X 122,351
 LINTFLAGS.floatuntixf.c += -X 141 # alpha
-LINTFLAGS.gcc_personality_v0.c += -X 132,231
+LINTFLAGS.gcc_personality_v0.c += -X 132,193,231
 LINTFLAGS.int_util.c += -X 231
 LINTFLAGS.lshrti3.c += -X 351
 LINTFLAGS.moddi3.c += -X 117 # vax
@@ -420,9 +424,9 @@ LINTFLAGS.parityti2.c += -X 351
 LINTFLAGS.popcountdi2.c += -X 351
 LINTFLAGS.popcountsi2.c += -X 351
 LINTFLAGS.popcountti2.c += -X 122,132,351
-LINTFLAGS.powidf2.c += -X 161,351
-LINTFLAGS.powisf2.c += -X 161,351
-LINTFLAGS.powixf2.c += -X 161,351
+LINTFLAGS.powidf2.c += -X 351
+LINTFLAGS.powisf2.c += -X 351
+LINTFLAGS.powixf2.c += -X 351
 LINTFLAGS.subvdi3.c += -X 351
 LINTFLAGS.subvsi3.c += -X 351
 LINTFLAGS.subvti3.c += -X 351

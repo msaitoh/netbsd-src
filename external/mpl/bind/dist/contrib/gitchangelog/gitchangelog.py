@@ -483,7 +483,7 @@ class TextProc(object):
             return TextProc(lambda text: value.fun(self.fun(text)))
         import inspect
 
-        (_frame, filename, lineno, _function_name, lines, _index) = inspect.stack()[1]
+        _frame, filename, lineno, _function_name, lines, _index = inspect.stack()[1]
         raise SyntaxError(
             "Invalid syntax in config file",
             (
@@ -561,7 +561,8 @@ def paragraph_wrap(text, regexp="\n\n", separator="\n"):
     """
     regexp = re.compile(regexp, re.MULTILINE)
     return separator.join(
-        "\n".join(textwrap.wrap(paragraph.strip())) for paragraph in regexp.split(text)
+        "\n".join(textwrap.wrap(paragraph.strip(), break_on_hyphens=False))
+        for paragraph in regexp.split(text)
     ).strip()
 
 
@@ -1514,7 +1515,12 @@ def rest_py(data, opts={}):
         if opts["include_commit_sha"]:
             subject += " ``%s``" % commit["commit"].sha1_short
 
-        entry = indent("\n".join(textwrap.wrap(subject)), first="- ").strip() + "\n"
+        entry = (
+            indent(
+                "\n".join(textwrap.wrap(subject, break_on_hyphens=False)), first="- "
+            ).strip()
+            + "\n"
+        )
 
         if commit["body"]:
             entry += "\n" + indent(commit["body"])
@@ -1883,8 +1889,7 @@ def changelog(
     try:
         first_version = next(versions)
     except StopIteration:
-        warn("Empty changelog. No commits were elected to be used as entry.")
-        data["versions"] = []
+        die("Empty changelog. No commits were elected to be used as entry.")
     else:
         data["versions"] = itertools.chain([first_version], versions)
 
@@ -2079,10 +2084,7 @@ def safe_print(content):
             raise
         ## XXXvlab: should use $COLUMNS in bash and for windows:
         ## http://stackoverflow.com/questions/14978548
-        stderr(
-            paragraph_wrap(
-                textwrap.dedent(
-                    """\
+        stderr(paragraph_wrap(textwrap.dedent("""\
             UnicodeEncodeError:
               There was a problem outputing the resulting changelog to
               your console.
@@ -2090,11 +2092,7 @@ def safe_print(content):
               This probably means that the changelog contains characters
               that can't be translated to characters in your current charset
               (%s).
-            """
-                )
-                % sys.stdout.encoding
-            )
-        )
+            """) % sys.stdout.encoding))
         if WIN32 and PY_VERSION < 3.6 and sys.stdout.encoding != "utf-8":
             ## As of PY 3.6, encoding is now ``utf-8`` regardless of
             ## PYTHONIOENCODING

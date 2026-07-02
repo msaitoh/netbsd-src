@@ -1,4 +1,4 @@
-/*	$NetBSD: sti.c,v 1.39 2024/08/19 16:09:42 skrll Exp $	*/
+/*	$NetBSD: sti.c,v 1.47 2025/05/30 19:42:28 tsutsui Exp $	*/
 
 /*	$OpenBSD: sti.c,v 1.61 2009/09/05 14:09:35 miod Exp $	*/
 
@@ -35,7 +35,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: sti.c,v 1.39 2024/08/19 16:09:42 skrll Exp $");
+__KERNEL_RCSID(0, "$NetBSD: sti.c,v 1.47 2025/05/30 19:42:28 tsutsui Exp $");
 
 #include "wsdisplay.h"
 
@@ -52,6 +52,7 @@ __KERNEL_RCSID(0, "$NetBSD: sti.c,v 1.39 2024/08/19 16:09:42 skrll Exp $");
 #include <dev/wscons/wsconsio.h>
 
 #include <dev/ic/stireg.h>
+#include <dev/ic/summitreg.h>
 #include <dev/ic/stivar.h>
 
 #ifdef STIDEBUG
@@ -132,8 +133,10 @@ int	ngle_default_putcmap(struct sti_screen *, u_int, u_int);
 void	ngle_artist_setupfb(struct sti_screen *);
 void	ngle_elk_setupfb(struct sti_screen *);
 void	ngle_timber_setupfb(struct sti_screen *);
+void	summit_setupfb(struct sti_screen *);
 int	ngle_putcmap(struct sti_screen *, u_int, u_int);
 int	ngle_hcrx_putcmap(struct sti_screen *, u_int, u_int);
+int	summit_putcmap(struct sti_screen *, u_int, u_int);
 #endif
 
 #define	STI_ENABLE_ROM(sc) \
@@ -444,9 +447,10 @@ sti_region_setup(struct sti_screen *scr)
 		/*
 		 * Assume an existing mapping exists.
 		 */
-		addr = bases[regno] + (r->offset << PGSHIFT);
+		addr = bases[regno] + (r->offset << STI_PGSHIFT);
 		DPRINTF(("%08x @ 0x%08x%s%s%s%s",
-		    r->length << PGSHIFT, (int)addr, r->sys_only ? " sys" : "",
+		    r->length << STI_PGSHIFT, (int)addr,
+		    r->sys_only ? " sys" : "",
 		    r->cache ? " cache" : "", r->btlb ? " btlb" : "",
 		    r->last ? " last" : ""));
 
@@ -461,7 +465,7 @@ sti_region_setup(struct sti_screen *scr)
 			continue;
 		}
 
-		if (bus_space_map(memt, addr, r->length << PGSHIFT,
+		if (bus_space_map(memt, addr, r->length << STI_PGSHIFT,
 		    BUS_SPACE_MAP_LINEAR | (r->cache ?
 		    BUS_SPACE_MAP_CACHEABLE : 0), &rom->regh[regno]) != 0) {
 			rom->regh[regno] = romh;	/* XXX */
@@ -472,7 +476,7 @@ sti_region_setup(struct sti_screen *scr)
 			if (regno == 1) {
 				DPRINTF((" - fb"));
 				scr->fbaddr = addr;
-				scr->fblen = r->length << PGSHIFT;
+				scr->fblen = r->length << STI_PGSHIFT;
 			}
 			DPRINTF(("\n"));
 		}
@@ -486,7 +490,7 @@ sti_region_setup(struct sti_screen *scr)
 	 */
 	for (regno = 0; regno < STI_REGION_MAX; regno++)
 		if (cc->regions[regno] == 0)
-		    cc->regions[regno] = 0x81234567;
+			cc->regions[regno] = 0x81234567;
 #endif
 }
 
@@ -698,13 +702,26 @@ sti_screen_setup(struct sti_screen *scr, int flags)
 		scr->cmap_finish_register = NGLE_REG_38;
 		break;
 
+	case STI_DD_SUMMIT:
+	case STI_DD_LEGO:
+		scr->setupfb = summit_setupfb;
+		scr->putcmap = summit_putcmap;
+		scr->scr_bpp = 8;	/* for now */
+		break;
+
+	case STI_DD_EVRX:
+	case STI_DD_382C:
+	case STI_DD_3X2V:
+		/*
+		 * EVRX, 382C, and 3X2V are available only on hp300 models
+		 * and board specific routines are handled by MD
+		 * sti_machdep_attach() in arch/hp300/dev/sti_machdep.c.
+		 */
+		break;
+
 	case STI_DD_GRX:
 	case STI_DD_CRX24:
-	case STI_DD_EVRX:
-	case STI_DD_3X2V:
 	case STI_DD_DUAL_CRX:
-	case STI_DD_LEGO:
-	case STI_DD_SUMMIT:
 	case STI_DD_PINNACLE:
 	default:
 		scr->setupfb = NULL;
@@ -857,6 +874,7 @@ rescan:
 #ifdef STIDEBUG
 		STI_DISABLE_ROM(rom->rom_softc);
 		DPRINTF(("%s: %dx%d font type %d, %d bpc, charset %d-%d\n",
+		    scr->scr_rom->rom_softc == NULL ? __func__ :
 		    device_xname(scr->scr_rom->rom_softc->sc_dev), fp->width,
 		    fp->height, fp->type, fp->bpc, fp->first, fp->last));
 		STI_ENABLE_ROM(rom->rom_softc);
@@ -973,6 +991,7 @@ sti_init(struct sti_screen *scr, int mode)
 	a.in.ext_in = &a.ein;
 
 	DPRINTF(("%s: init,%p(%x, %p, %p, %p)\n",
+	    rom->rom_softc == NULL ? __func__ :
 	    device_xname(rom->rom_softc->sc_dev), rom->init, a.flags.flags,
 	    &a.in, &a.out, &scr->scr_cfg));
 
@@ -1041,6 +1060,7 @@ sti_bmove(struct sti_screen *scr, int x1, int y1, int x2, int y2, int h, int w,
 #ifdef STIDEBUG
 	if (a.out.errno)
 		printf("%s: blkmv returned %d\n",
+		    rom->rom_softc == NULL ? __func__ :
 		    device_xname(rom->rom_softc->sc_dev), a.out.errno);
 #endif
 }
@@ -1286,7 +1306,7 @@ sti_cursor(void *v, int on, int row, int col)
 /*
  * ISO 8859-1 part of Unicode to HP Roman font index conversion array.
  */
-static const uint8_t
+const uint8_t
 sti_unitoroman[0x100 - 0xa0] = {
 	0xa0, 0xb8, 0xbf, 0xbb, 0xba, 0xbc,    0, 0xbd,
 	0xab,    0, 0xf9, 0xfb,    0, 0xf6,    0, 0xb0,
@@ -1583,6 +1603,47 @@ ngle_timber_setupfb(struct sti_screen *scr)
 	ngle_bt458_write(memt, memh, 0x0e, 0x43);
 }
 
+static void
+summit_wait(struct sti_screen *scr)
+{
+	struct sti_rom *rom = scr->scr_rom;
+	bus_space_tag_t memt = rom->memt;
+	bus_space_handle_t memh = rom->regh[0];
+
+	while (bus_space_read_stream_4(memt, memh, VISFX_STATUS) != 0)
+		continue;
+}
+
+void
+summit_setupfb(struct sti_screen *scr)
+{
+	struct sti_rom *rom = scr->scr_rom;
+	bus_space_tag_t memt = rom->memt;
+	bus_space_handle_t memh = rom->regh[0];
+
+	summit_wait(scr);
+	bus_space_write_stream_4(memt, memh, 0xb08044, 0x1b);
+	bus_space_write_stream_4(memt, memh, 0xb08048, 0x1b);
+	bus_space_write_stream_4(memt, memh, 0x920860, 0xe4);
+	bus_space_write_stream_4(memt, memh, 0xa00818, 0);
+	bus_space_write_stream_4(memt, memh, 0xa00404, 0);
+	bus_space_write_stream_4(memt, memh, 0x921110, 0);
+	bus_space_write_stream_4(memt, memh, 0x9211d8, 0);
+	bus_space_write_stream_4(memt, memh, 0xa0086c, 0);
+	bus_space_write_stream_4(memt, memh, 0x921114, 0);
+	bus_space_write_stream_4(memt, memh, 0xac1050, 0);
+
+	bus_space_write_stream_4(memt, memh, VISFX_APERTURE_ACCESS,
+	    VISFX_DEPTH_8);
+
+	bus_space_write_stream_4(memt, memh, VISFX_PIXEL_MASK, 0xffffffff);
+	bus_space_write_stream_4(memt, memh, VISFX_PLANE_MASK, 0xffffffff);
+	bus_space_write_stream_4(memt, memh, VISFX_VRAM_WRITE_MODE,
+	    VISFX_WRITE_MODE_PLAIN);
+	bus_space_write_stream_4(memt, memh, VISFX_VRAM_READ_MODE,
+	    VISFX_READ_MODE_COPY);
+}
+
 void
 ngle_setup_bt458(struct sti_screen *scr)
 {
@@ -1704,6 +1765,36 @@ ngle_hcrx_putcmap(struct sti_screen *scr, u_int idx, u_int count)
 	bus_space_write_stream_4(memt, memh, NGLE_REG_38, cmap_finish);
 	ngle_setup_fb(memt, memh, scr->reg10_value);
 
+
+	return 0;
+}
+
+int
+summit_putcmap(struct sti_screen *scr, u_int idx, u_int count)
+{
+	struct sti_rom *rom = scr->scr_rom;
+	bus_space_tag_t memt = rom->memt;
+	bus_space_handle_t memh = rom->regh[0];
+	uint8_t *r, *g, *b;
+
+	r = scr->scr_rcmap + idx;
+	g = scr->scr_gcmap + idx;
+	b = scr->scr_bcmap + idx;
+
+	if (rom->rom_dd.dd_grid[0] == STI_DD_LEGO) {
+		bus_space_write_stream_4(memt, memh, VISFX_COLOR_INDEX, idx);
+	} else
+		bus_space_write_stream_4(memt, memh, VISFX_COLOR_INDEX,
+		     0xc0005100 + idx);
+
+	while (count-- != 0) {
+		bus_space_write_stream_4(memt, memh,
+		     VISFX_COLOR_VALUE, (*r << 16) | (*g << 8) | *b);
+		r++, g++, b++;
+	}
+	bus_space_write_stream_4(memt, memh, VISFX_COLOR_MASK, 0xff);
+	bus_space_write_stream_4(memt, memh, 0x80004c, 0xc);
+	bus_space_write_stream_4(memt, memh, 0x800000, 0);
 
 	return 0;
 }

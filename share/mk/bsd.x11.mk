@@ -1,4 +1,4 @@
-#	$NetBSD: bsd.x11.mk,v 1.158 2024/07/04 21:48:19 mrg Exp $
+#	$NetBSD: bsd.x11.mk,v 1.167 2026/06/11 19:46:18 andvar Exp $
 
 .include <bsd.init.mk>
 
@@ -22,7 +22,8 @@ X11FLAGS.THREADS=	-DXTHREADS -D_REENTRANT -DXUSE_MTSAFE_API \
 
 #	 CONNECTION_FLAGS
 X11FLAGS.CONNECTION=	-DTCPCONN -DUNIXCONN -DHAS_STICKY_DIR_BIT \
-			-DHAS_FCHOWN
+			-DHAS_FCHOWN -DHAVE_GETADDRINFO -DHAVE_INET_NTOP \
+			-DHAVE_STRUCT_SOCKADDR_STORAGE
 
 .if (${USE_INET6} != "no")
 X11FLAGS.CONNECTION+=	-DIPv6
@@ -133,7 +134,7 @@ XORG_VERSION_CURRENT="(((${XORG_SERVER_MAJOR}) * 10000000) + ((${XORG_SERVER_MIN
 .else
 XORG_SERVER_MAJOR=	21
 XORG_SERVER_MINOR=	1
-XORG_SERVER_TEENY=	13
+XORG_SERVER_TEENY=	23
 XORG_VERSION_CURRENT="((10000000) + ((${XORG_SERVER_MAJOR}) * 100000) + ((${XORG_SERVER_MINOR}) * 1000) + ${XORG_SERVER_TEENY})"
 .endif
 
@@ -262,7 +263,7 @@ FILESMODE_${_pkg}.pc=	${NONBINMODE}
 ${_PKGDEST.${_pkg}}: ${_pkg}.pc __fileinstall
 pkgconfig-install: ${_PKGDEST.${_pkg}}
 
-# Add a dependancy on the configure file if it exists; this way we
+# Add a dependency on the configure file if it exists; this way we
 # will rebuild the .pc file if the version in configure changes.
 .if exists(${PKGDIST.${_pkg}}/configure)
 ${_pkg}.pc: ${PKGDIST.${_pkg}}/configure Makefile

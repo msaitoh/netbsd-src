@@ -1,4 +1,4 @@
-/*	$NetBSD: bl.c,v 1.3 2024/08/02 17:11:55 christos Exp $	*/
+/*	$NetBSD: bl.c,v 1.9 2025/03/30 01:53:59 christos Exp $	*/
 
 /*-
  * Copyright (c) 2014 The NetBSD Foundation, Inc.
@@ -32,8 +32,10 @@
 #include "config.h"
 #endif
 
+#ifdef HAVE_SYS_CDEFS_H
 #include <sys/cdefs.h>
-__RCSID("$NetBSD: bl.c,v 1.3 2024/08/02 17:11:55 christos Exp $");
+#endif
+__RCSID("$NetBSD: bl.c,v 1.9 2025/03/30 01:53:59 christos Exp $");
 
 #include <sys/param.h>
 #include <sys/types.h>
@@ -57,20 +59,11 @@ __RCSID("$NetBSD: bl.c,v 1.3 2024/08/02 17:11:55 christos Exp $");
 #include <pthread.h>
 #endif
 
-#include "bl.h"
-
-#ifndef SYSLOG_DATA_INIT
-struct syslog_data {
-	int dummy;
-};
-#define SYSLOG_DATA_INIT  { 0 }
-
-static void
-vsyslog_r(int priority, struct syslog_data *sd, const char *fmt, va_list ap)
-{
-	vsyslog(priority, fmt, ap);
-}
+#if defined(SO_RECVUCRED)
+#include <ucred.h>
 #endif
+
+#include "bl.h"
 
 typedef struct {
 	uint32_t bl_len;
@@ -245,8 +238,8 @@ bl_init(bl_t b, bool srv)
 #if defined(LOCAL_CREDS)
 #define CRED_LEVEL	0
 #define	CRED_NAME	LOCAL_CREDS
-#define CRED_SC_UID	sc_euid
-#define CRED_SC_GID	sc_egid
+#define CRED_SC_UID(x)	(x)->sc_euid
+#define CRED_SC_GID(x)	(x)->sc_egid
 #define CRED_MESSAGE	SCM_CREDS
 #define CRED_SIZE	SOCKCREDSIZE(NGROUPS_MAX)
 #define CRED_TYPE	struct sockcred
@@ -254,11 +247,20 @@ bl_init(bl_t b, bool srv)
 #elif defined(SO_PASSCRED)
 #define CRED_LEVEL	SOL_SOCKET
 #define	CRED_NAME	SO_PASSCRED
-#define CRED_SC_UID	uid
-#define CRED_SC_GID	gid
+#define CRED_SC_UID(x)	(x)->uid
+#define CRED_SC_GID(x)	(x)->gid
 #define CRED_MESSAGE	SCM_CREDENTIALS
 #define CRED_SIZE	sizeof(struct ucred)
 #define CRED_TYPE	struct ucred
+#define GOT_CRED	2
+#elif defined(SO_RECVUCRED)
+#define CRED_LEVEL	SOL_SOCKET
+#define CRED_NAME	SO_RECVUCRED
+#define CRED_SC_UID(x)	ucred_geteuid(x)
+#define CRED_SC_GID(x)	ucred_getegid(x)
+#define CRED_MESSAGE	SCM_UCRED
+#define CRED_SIZE	ucred_size()
+#define CRED_TYPE	ucred_t
 #define GOT_CRED	2
 #else
 #define GOT_CRED	0
@@ -436,10 +438,11 @@ bl_recv(bl_t b)
 	union {
 		char ctrl[CMSG_SPACE(sizeof(int)) + CMSG_SPACE(CRED_SIZE)];
 		uint32_t fd;
-		CRED_TYPE sc;
 	} ua;
 	struct cmsghdr *cmsg;
+#if GOT_CRED != 0
 	CRED_TYPE *sc;
+#endif
 	union {
 		bl_message_t bl;
 		char buf[512];
@@ -462,7 +465,7 @@ bl_recv(bl_t b)
 	msg.msg_flags = 0;
 
 	msg.msg_control = ua.ctrl;
-	msg.msg_controllen = sizeof(ua.ctrl) + 100;
+	msg.msg_controllen = sizeof(ua.ctrl);
 
         rlen = recvmsg(b->b_fd, &msg, 0);
         if (rlen == -1) {
@@ -481,10 +484,15 @@ bl_recv(bl_t b)
 		switch (cmsg->cmsg_type) {
 		case SCM_RIGHTS:
 			if (cmsg->cmsg_len != CMSG_LEN(sizeof(int))) {
+				int *fd = (void *)CMSG_DATA(cmsg);
+				size_t len = cmsg->cmsg_len / sizeof(int);
 				bl_log(b, LOG_ERR,
 				    "%s: unexpected cmsg_len %d != %zu",
 				    __func__, cmsg->cmsg_len,
-				    CMSG_LEN(2 * sizeof(int)));
+				    CMSG_LEN(sizeof(int)));
+
+				for (size_t i = 0;  i < len; i++)
+					(void)close(fd[i]);
 				continue;
 			}
 			memcpy(&bi->bi_fd, CMSG_DATA(cmsg), sizeof(bi->bi_fd));
@@ -493,8 +501,8 @@ bl_recv(bl_t b)
 #ifdef CRED_MESSAGE
 		case CRED_MESSAGE:
 			sc = (void *)CMSG_DATA(cmsg);
-			bi->bi_uid = sc->CRED_SC_UID;
-			bi->bi_gid = sc->CRED_SC_GID;
+			bi->bi_uid = CRED_SC_UID(sc);
+			bi->bi_gid = CRED_SC_GID(sc);
 			got |= GOT_CRED;
 			break;
 #endif
@@ -535,10 +543,12 @@ bl_recv(bl_t b)
 	bi->bi_uid = -1;
 	bi->bi_gid = -1;
 #endif
-	rem = MIN(sizeof(bi->bi_msg), rem);
 	if (rem == 0)
 		bi->bi_msg[0] = '\0';
-	else
-		strlcpy(bi->bi_msg, ub.bl.bl_data, rem);
+	else {
+		rem = MIN(sizeof(bi->bi_msg) - 1, rem);
+		memcpy(bi->bi_msg, ub.bl.bl_data, rem);
+		bi->bi_msg[rem] = '\0';
+	}
 	return bi;
 }

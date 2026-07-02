@@ -531,9 +531,11 @@ tty_term_create(struct tty *tty, char *name, char **caps, u_int ncaps,
 	struct options_array_item		*a;
 	union options_value			*ov;
 	u_int					 i, j;
-	const char				*s, *value;
+	const char				*s, *value, *errstr;
 	size_t					 offset, namelen;
 	char					*first;
+	int					 n;
+	struct environ_entry			*envent;
 
 	log_debug("adding term %s", name);
 
@@ -567,8 +569,13 @@ tty_term_create(struct tty *tty, char *name, char **caps, u_int ncaps,
 				code->value.string = tty_term_strip(value);
 				break;
 			case TTYCODE_NUMBER:
-				code->type = TTYCODE_NUMBER;
-				code->value.number = atoi(value);
+				n = strtonum(value, 0, INT_MAX, &errstr);
+				if (errstr != NULL)
+					log_debug("%s: %s", ent->name, errstr);
+				else {
+					code->type = TTYCODE_NUMBER;
+					code->value.number = n;
+				}
 				break;
 			case TTYCODE_FLAG:
 				code->type = TTYCODE_FLAG;
@@ -597,6 +604,16 @@ tty_term_create(struct tty *tty, char *name, char **caps, u_int ncaps,
     (NCURSES_VERSION_MAJOR == 5 && NCURSES_VERSION_MINOR > 6)
 	del_curterm(cur_term);
 #endif
+	/* Check for COLORTERM. */
+	envent = environ_find(tty->client->environ, "COLORTERM");
+	if (envent != NULL) {
+		log_debug("%s COLORTERM=%s", tty->client->name, envent->value);
+		if (strcasecmp(envent->value, "truecolor") == 0 ||
+		    strcasecmp(envent->value, "24bit") == 0)
+			tty_add_features(feat, "RGB", ",");
+ 		else if (strstr(envent->value, "256") != NULL)
+			tty_add_features(feat, "256", ",");
+	}
 
 	/* Apply overrides so any capabilities used for features are changed. */
 	tty_term_apply_overrides(term);

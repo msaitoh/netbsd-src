@@ -1,4 +1,4 @@
-/*	$NetBSD: postfix.c,v 1.6 2023/12/23 20:30:44 christos Exp $	*/
+/*	$NetBSD: postfix.c,v 1.8 2026/05/09 18:49:19 christos Exp $	*/
 
 /*++
 /* NAME
@@ -39,7 +39,7 @@
 /*	when running as PID 1.
 /*	This command requires that multi-instance support is
 /*	disabled (i.e. the multi_instance_directories parameter
-/*	value must be empty). 
+/*	value must be empty).
 /*
 /*	When running Postfix inside a container, see MAILLOG_README
 /*	for logging to stdout. Postfix logs to syslog by default,
@@ -91,7 +91,14 @@
 /*	with the command specified with $maillog_file_compressor.
 /*	This will not rotate /dev/* files.
 /* .sp
-/*	This feature is available in Postfix 3.4 and later.
+/* .IP "\fBnon-bdb\fR \fIsubcommand\fR"
+/*	Migrate a Postfix configuration that uses Berkeley DB hash:
+/*	or btree: tables, to a configuration that uses lmdb: or a
+/*	combination of cdb: and lmdb:. This is needed because some
+/*	(Linux) distributions have removed Berkeley DB support.
+/*	See postfix-nbdb(1) for documentation.
+/* .sp
+/*	This feature is available in Postfix 3.11 and later.
 /* .IP "\fBtls\fR \fIsubcommand\fR"
 /*	Enable opportunistic TLS in the Postfix SMTP client or
 /*	server, and manage Postfix SMTP server TLS private keys and
@@ -285,6 +292,7 @@
 /*	postconf(1), Postfix configuration utility
 /*	postdrop(1), Postfix mail posting utility
 /*	postfix(1), Postfix control program
+/*	postfix-non-bdb(1), Postfix Non-Berkeley-DB migration
 /*	postfix-tls(1), Postfix TLS management
 /*	postkick(1), trigger Postfix daemon
 /*	postlock(1), Postfix-compatible locking
@@ -305,7 +313,7 @@
 /*
 /*	Table-driven mechanisms:
 /*	access(5), Postfix SMTP access control table
-/*	aliases(5), Postfix alias database
+/*	aliases(5), Postfix local aliasing
 /*	canonical(5), Postfix input address rewriting
 /*	generic(5), Postfix output address rewriting
 /*	header_checks(5), body_checks(5), Postfix content inspection
@@ -318,6 +326,7 @@
 /*	ldap_table(5), Postfix LDAP client
 /*	lmdb_table(5), Postfix LMDB database driver
 /*	memcache_table(5), Postfix memcache client
+/*	mongodb_table(5), Postfix MongoDB client
 /*	mysql_table(5), Postfix MYSQL client
 /*	nisplus_table(5), Postfix NIS+ client
 /*	pcre_table(5), Associate PCRE pattern with value
@@ -591,7 +600,7 @@ int     main(int argc, char **argv)
      */
     if (compat_level < compat_level_from_string(LAST_COMPAT_LEVEL, msg_panic)) {
 	msg_info("Postfix is using backwards-compatible default settings");
-	msg_info("See http://www.postfix.org/COMPATIBILITY_README.html "
+	msg_info("See https://www.postfix.org/COMPATIBILITY_README.html "
 		 "for details");
 	msg_info("To disable backwards compatibility use \"postconf "
 		 VAR_COMPAT_LEVEL "=%s\" and \"postfix reload\"",

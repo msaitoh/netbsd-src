@@ -1,4 +1,4 @@
-/*	$NetBSD: pmap.c,v 1.52 2023/12/27 17:35:36 thorpej Exp $	*/
+/*	$NetBSD: pmap.c,v 1.57 2026/05/04 15:30:20 thorpej Exp $	*/
 
 /*-
  * Copyright (c) 1996 The NetBSD Foundation, Inc.
@@ -82,7 +82,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: pmap.c,v 1.52 2023/12/27 17:35:36 thorpej Exp $");
+__KERNEL_RCSID(0, "$NetBSD: pmap.c,v 1.57 2026/05/04 15:30:20 thorpej Exp $");
 
 #include "opt_ddb.h"
 #include "opt_pmap_debug.h"
@@ -106,6 +106,7 @@ __KERNEL_RCSID(0, "$NetBSD: pmap.c,v 1.52 2023/12/27 17:35:36 thorpej Exp $");
 #include <machine/pmap.h>
 #include <machine/pte.h>
 #include <machine/vmparam.h>
+#include <m68k/seglist.h>
 
 #include <sun2/sun2/control.h>
 #include <sun2/sun2/machdep.h>
@@ -195,13 +196,6 @@ int pmap_db_watchpmeg = -1;
  */
 vaddr_t virtual_avail, virtual_end;
 paddr_t avail_start, avail_end;
-#define	managed(pa)	(((pa) >= avail_start) && ((pa) < avail_end))
-
-/* used to skip a single hole in RAM */
-static vaddr_t hole_start, hole_size;
-
-/* This is for pmap_next_page() */
-static paddr_t avail_next;
 
 /* This is where we map a PMEG without a context. */
 static vaddr_t temp_seg_va;
@@ -375,7 +369,6 @@ static void pmeg_clean_free(void);
 static void pmap_common_init(pmap_t);
 static void pmap_kernel_init(pmap_t);
 static void pmap_user_init(pmap_t);
-static void pmap_page_upload(void);
 
 static void pmap_enter_kernel(vaddr_t, int, bool);
 static void pmap_enter_user(pmap_t, vaddr_t, int, bool);
@@ -1487,12 +1480,14 @@ pmap_common_init(pmap_t pmap)
  * after the "start/end" globals are set.
  * This function must NOT leave context zero.
  */
-void 
+paddr_t 
 pmap_bootstrap(vaddr_t nextva)
 {
 	vaddr_t va, eva;
 	int i, pte, sme;
+	paddr_t nextpa;
 	extern char etext[];
+	extern void *msgbufaddr;
 
 	nextva = m68k_round_page(nextva);
 
@@ -1508,15 +1503,16 @@ pmap_bootstrap(vaddr_t nextva)
 	/*
 	 * Determine the range of physical memory available.
 	 */
-	avail_start = nextva;
-	avail_end = prom_memsize();
-	avail_end = m68k_trunc_page(avail_end);
+	phys_seg_list[0].ps_start = 0;
+	phys_seg_list[0].ps_end = m68k_trunc_page(prom_memsize());
+
+	nextpa = nextva;
 
 	/*
 	 * Report the actual amount of physical memory,
 	 * even though the PROM takes a few pages.
 	 */
-	physmem = (btoc(avail_end) + 0xF) & ~0xF;
+	physmem = (btoc(phys_seg_list[0].ps_end) + 0xF) & ~0xF;
 
 	/*
 	 * Done allocating PAGES of virtual space, so
@@ -1531,7 +1527,7 @@ pmap_bootstrap(vaddr_t nextva)
 	 * and either reserve them or clear them out.
 	 * -- but first, init PMEG management.
 	 * This puts all PMEGs in the free list.
-	 * We will allocte the in-use ones.
+	 * We will allocate the in-use ones.
 	 */
 	pmeg_init();
 
@@ -1602,12 +1598,12 @@ pmap_bootstrap(vaddr_t nextva)
 	 * We use pages four through seven for the msgbuf.
 	 */
 	eva = va + PAGE_SIZE * 4;
+	msgbufaddr = (void *)va;
 	for(; va < eva; va += PAGE_SIZE) {
 		pte = get_pte(va);
 		pte |= (PG_SYSTEM | PG_WRITE | PG_NC);
 		set_pte(va, pte);
 	}
-	/* Initialize msgbufaddr later, in machdep.c */
 
 	/*
 	 * On the Sun3, two of the three dead pages in SUN3_MONSHORTSEG
@@ -1695,9 +1691,6 @@ pmap_bootstrap(vaddr_t nextva)
 	}
 #endif
 
-	/* Initialization for pmap_next_page() */
-	avail_next = avail_start;
-
 	uvmexp.pagesize = NBPG;
 	uvm_md_init();
 
@@ -1710,7 +1703,7 @@ pmap_bootstrap(vaddr_t nextva)
 
 	pmeg_clean_free();
 
-	pmap_page_upload();
+	return nextpa;
 }
 
 /*
@@ -1750,31 +1743,6 @@ pmap_virtual_space(vaddr_t *v_start, vaddr_t *v_end)
 {
 	*v_start = virtual_avail;
 	*v_end   = virtual_end;
-}
-
-/* Provide memory to the VM system. */
-static void 
-pmap_page_upload(void)
-{
-	int a, b, c, d;
-
-	if (hole_size) {
-		/*
-		 * Supply the memory in two segments so the
-		 * reserved memory (3/50 video ram at 1MB)
-		 * can be carved from the front of the 2nd.
-		 */
-		a = atop(avail_start);
-		b = atop(hole_start);
-		uvm_page_physload(a, b, a, b, VM_FREELIST_DEFAULT);
-		c = atop(hole_start + hole_size);
-		d = atop(avail_end);
-		uvm_page_physload(b, d, c, d, VM_FREELIST_DEFAULT);
-	} else {
-		a = atop(avail_start);
-		d = atop(avail_end);
-		uvm_page_physload(a, d, a, d, VM_FREELIST_DEFAULT);
-	}
 }
 
 /*
@@ -2522,7 +2490,7 @@ pmap_kremove(vaddr_t va, vsize_t len)
  * XXX: Merge this with the next function?
  */
 int 
-_pmap_fault(struct vm_map *map, vaddr_t va, vm_prot_t ftype)
+pmap_fault(struct vm_map *map, vaddr_t va, vm_prot_t ftype)
 {
 	pmap_t pmap;
 	int rv;
@@ -2919,6 +2887,18 @@ pmap_extract(pmap_t pmap, vaddr_t va, paddr_t *pap)
 	return (true);
 }
 
+/*
+ *	pmap_phys_address:
+ *
+ *	Return the physical address corresponding to the specified
+ *	cookie.  Used by the device pager to decode a device driver's
+ *	mmap entry point return value.
+ */
+paddr_t
+pmap_phys_address(paddr_t addr)
+{
+	return addr;
+}
 
 /*
  *	  pmap_page_protect:

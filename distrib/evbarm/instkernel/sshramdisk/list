@@ -1,4 +1,11 @@
-#	$NetBSD: list,v 1.5 2021/03/09 00:08:04 christos Exp $
+#	$NetBSD: list,v 1.7 2025/12/17 20:05:54 riastradh Exp $
+
+# Touching this file for:
+#
+# 20251217 new -L argument in CRUNCHGEN_FLAGS for libssh
+#
+# Feel free to remove this comment when anything else in the file
+# changes.
 
 SRCDIRS	bin sbin external/bsd/less/bin crypto/external/bsd/openssh/bin/sshd usr.bin usr.sbin
 
@@ -69,7 +76,7 @@ SPECIAL	umount		srcdir	distrib/utils/x_umount
 SPECIAL sshd		srcdir	crypto/external/bsd/openssh/bin/sshd
 SPECIAL sshd		keepsymbols allow_severity deny_severity
 
-LIBS	libhack.o -ledit -lutil -lcurses -lterminfo -lrmt -lcrypt -ll -lm -lz -lprop    -lssh -lcrypto
+LIBS	libhack.o -ledit -lutil -lcurses -lterminfo -lrmt -lcrypt -ll -lm -lz -lprop    -lssh -lcrypto -lpthread
 
 # init invokes the shell as -sh
 ARGVLN	sh -sh

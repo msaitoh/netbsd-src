@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2011-2012 The NetBSD Foundation, Inc.
+ * Copyright (c) 2011-2025 The NetBSD Foundation, Inc.
  * All rights reserved.
  *
  * This code is derived from software contributed to The NetBSD Foundation
@@ -34,7 +34,7 @@
  */
 
 #include <sys/cdefs.h>
-__RCSID("$NetBSD: npf_var.c,v 1.13 2020/05/30 14:16:56 rmind Exp $");
+__RCSID("$NetBSD: npf_var.c,v 1.16 2025/08/20 11:03:59 joe Exp $");
 
 #include <stdlib.h>
 #include <string.h>
@@ -183,6 +183,45 @@ npfvar_expand_string(const npfvar_t *vp)
 	return npfvar_get_data(vp, NPFVAR_STRING, 0);
 }
 
+uint32_t
+npfvar_expand_number(const npfvar_t *vp)
+{
+	uint32_t *number;
+	if (npfvar_get_count(vp) != 1) {
+		yyerror("variable '%s' has multiple elements", vp->v_key);
+	}
+	number =  (uint32_t *)npfvar_get_data(vp, NPFVAR_NUM, 0);
+	return *number;
+}
+
+void
+npf_var_rid(char *var_id, rid_parser parser, uint32_t *rid, const char *ridt)
+{
+	npfvar_t *vp = npfvar_lookup(var_id);
+	int type = npfvar_get_type(vp, 0);
+	char *rid_type;
+
+	switch (type) {
+	case NPFVAR_IDENTIFIER:
+	case NPFVAR_STRING:
+		rid_type = npfvar_expand_string(vp);
+		if (parser(rid_type, rid) == -1) {
+			yyerror("unknown %s %s", var_id, ridt);
+		}
+		break;
+	case NPFVAR_NUM:
+		*rid = npfvar_expand_number(vp);
+		break;
+	case -1:
+		yyerror("undefined variable '%s'", var_id);
+		break;
+	default:
+		yyerror("wrong variable '%s' type '%s' for %s id",
+			var_id, npfvar_type(type), ridt);
+		break;
+	}
+}
+
 size_t
 npfvar_get_count(const npfvar_t *vp)
 {
@@ -218,27 +257,76 @@ npfvar_get_element(const npfvar_t *vp, size_t idx, size_t level)
 		el = el->e_next;
 	}
 
-	/*
-	 * Resolve if it is a reference to another variable.
-	 */
-	if (el->e_type == NPFVAR_VAR_ID) {
-		const npfvar_t *rvp = npfvar_lookup(el->e_data);
-		return npfvar_get_element(rvp, 0, level + 1);
-	}
 	return el;
+}
+
+/*
+ * now we can return a VAR_ID to be fully resolved
+ * and fleshed out in filter rules in both type and data
+ */
+void *
+npfvar_getfilt_data(const npfvar_t *vp, unsigned type, size_t idx)
+{
+	npf_element_t *el = npfvar_get_element(vp, idx, 0);
+
+	if (!el)
+		return NULL;
+
+	if (el && NPFVAR_TYPE(el->e_type) != NPFVAR_TYPE(type)) {
+		yyerror("variable '%s' element %zu "
+		    "is of type '%s' rather than '%s'", vp->v_key,
+		    idx, npfvar_type(el->e_type), npfvar_type(type));
+		return NULL;
+	}
+	return el->e_data;
+}
+
+int
+npfvar_getfilt_type(const npfvar_t *vp, size_t idx)
+{
+	npf_element_t *el = npfvar_get_element(vp, idx, 0);
+	return el ? (int)el->e_type : -1;
 }
 
 int
 npfvar_get_type(const npfvar_t *vp, size_t idx)
 {
 	npf_element_t *el = npfvar_get_element(vp, idx, 0);
-	return el ? (int)el->e_type : -1;
+
+	if (!el)
+		return -1;
+
+	/*
+	 * Resolve if it is a reference to another variable.
+	 */
+	if (el->e_type == NPFVAR_VAR_ID) {
+		const npfvar_t *rvp = npfvar_lookup(el->e_data);
+		if (rvp == NULL)
+			yyerror("variable not found");
+
+		return npfvar_get_type(rvp, idx);
+	}
+	return (int)el->e_type;
 }
 
 void *
 npfvar_get_data(const npfvar_t *vp, unsigned type, size_t idx)
 {
 	npf_element_t *el = npfvar_get_element(vp, idx, 0);
+
+	if (!el)
+		return NULL;
+
+	/*
+	 * Resolve if it is a reference to another variable.
+	 */
+	if (el->e_type == NPFVAR_VAR_ID) {
+		const npfvar_t *rvp = npfvar_lookup(el->e_data);
+		if (rvp == NULL)
+			yyerror("variable not found");
+
+		return npfvar_get_data(rvp, type, idx);
+	}
 
 	if (el && NPFVAR_TYPE(el->e_type) != NPFVAR_TYPE(type)) {
 		yyerror("variable '%s' element %zu "

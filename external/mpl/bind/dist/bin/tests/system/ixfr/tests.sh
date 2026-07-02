@@ -32,27 +32,16 @@ n=0
 DIGOPTS="+tcp +noadd +nosea +nostat +noquest +nocomm +nocmd -p ${PORT}"
 RNDCCMD="$RNDC -p ${CONTROLPORT} -c ../_common/rndc.conf -s"
 
-sendcmd() {
-  send 10.53.0.2 "${EXTRAPORT1}"
+switch_responses() {
+  RESPONSES_KEY="${1}"
+  $DIG $DIGOPTS "@10.53.0.2" "${RESPONSES_KEY}.switch._control." TXT +time=5 +tries=1 +tcp >/dev/null 2>&1
 }
 
 n=$((n + 1))
 echo_i "testing initial AXFR ($n)"
 ret=0
 
-sendcmd <<EOF
-/SOA/
-nil.      	300	SOA	ns.nil. root.nil. 1 300 300 604800 300
-/AXFR/
-nil.      	300	SOA	ns.nil. root.nil. 1 300 300 604800 300
-/AXFR/
-nil.      	300	NS	ns.nil.
-nil.		300	TXT	"initial AXFR"
-a.nil.		60	A	10.0.0.61
-b.nil.		60	A	10.0.0.62
-/AXFR/
-nil.      	300	SOA	ns.nil. root.nil. 1 300 300 604800 300
-EOF
+switch_responses "initial_axfr"
 
 sleep 1
 
@@ -65,6 +54,7 @@ zone "nil" {
 	type secondary;
 	file "myftp.db";
 	primaries { 10.53.0.2; };
+	max-records-per-type 5; # use a small value for fallback test
 };
 EOF
 
@@ -83,21 +73,7 @@ ret=0
 # We change the IP address of a.nil., and the TXT record at the apex.
 # Then we do a SOA-only update.
 
-sendcmd <<EOF
-/SOA/
-nil.      	300	SOA	ns.nil. root.nil. 3 300 300 604800 300
-/IXFR/
-nil.      	300	SOA	ns.nil. root.nil. 3 300 300 604800 300
-nil.      	300	SOA	ns.nil. root.nil. 1 300 300 604800 300
-a.nil.      	60	A	10.0.0.61
-nil.		300	TXT	"initial AXFR"
-nil.      	300	SOA	ns.nil. root.nil. 2 300 300 604800 300
-nil.		300	TXT	"successful IXFR"
-a.nil.      	60	A	10.0.1.61
-nil.      	300	SOA	ns.nil. root.nil. 2 300 300 604800 300
-nil.      	300	SOA	ns.nil. root.nil. 3 300 300 604800 300
-nil.      	300	SOA	ns.nil. root.nil. 3 300 300 604800 300
-EOF
+switch_responses "successful_ixfr"
 
 sleep 1
 
@@ -114,25 +90,7 @@ echo_i "testing AXFR fallback after IXFR failure (not exact error) ($n)"
 ret=0
 
 # Provide a broken IXFR response and a working fallback AXFR response
-
-sendcmd <<EOF
-/SOA/
-nil.      	300	SOA	ns.nil. root.nil. 4 300 300 604800 300
-/IXFR/
-nil.      	300	SOA	ns.nil. root.nil. 4 300 300 604800 300
-nil.      	300	SOA	ns.nil. root.nil. 3 300 300 604800 300
-nil.      	300	TXT	"delete-nonexistent-txt-record"
-nil.      	300	SOA	ns.nil. root.nil. 4 300 300 604800 300
-nil.      	300	TXT	"this-txt-record-would-be-added"
-nil.      	300	SOA	ns.nil. root.nil. 4 300 300 604800 300
-/AXFR/
-nil.      	300	SOA	ns.nil. root.nil. 3 300 300 604800 300
-/AXFR/
-nil.      	300	NS	ns.nil.
-nil.      	300	TXT	"fallback AXFR"
-/AXFR/
-nil.      	300	SOA	ns.nil. root.nil. 3 300 300 604800 300
-EOF
+switch_responses "not_exact"
 
 sleep 1
 
@@ -145,6 +103,28 @@ if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
 n=$((n + 1))
+echo_i "testing AXFR fallback after IXFR failure (too many records) ($n)"
+ret=0
+
+# Provide an IXFR response that would cause a "too many records" condition
+switch_responses "too_many_records"
+
+sleep 1
+
+$RNDCCMD 10.53.0.1 refresh nil | sed 's/^/ns1 /' | cat_i
+
+sleep 2
+
+$DIG $DIGOPTS @10.53.0.1 nil. TXT | grep 'AXFR on too many records' >/dev/null || ret=1
+if [ $ret != 0 ]; then echo_i "failed"; fi
+status=$((status + ret))
+
+msg="error adding 'nil/TXT' in 'nil/IN' (zone): too many records (must not exceed 5)"
+wait_for_log 10 "$msg" ns1/named.run || ret=1
+if [ $ret != 0 ]; then echo_i "failed"; fi
+status=$((status + ret))
+
+n=$((n + 1))
 echo_i "testing AXFR fallback after IXFR failure (bad SOA owner) ($n)"
 ret=0
 
@@ -152,23 +132,7 @@ ret=0
 nextpart ns1/named.run >/dev/null
 
 # Provide a broken IXFR response and a working fallback AXFR response.
-sendcmd <<EOF
-/SOA/
-nil.      	300	SOA	ns.nil. root.nil. 4 300 300 604800 300
-/IXFR/
-nil.      	300	SOA	ns.nil. root.nil. 4 300 300 604800 300
-nil.      	300	SOA	ns.nil. root.nil. 3 300 300 604800 300
-bad-owner.    	300	SOA	ns.nil. root.nil. 4 300 300 604800 300
-test.nil.	300	TXT	"serial 4, malformed IXFR"
-nil.      	300	SOA	ns.nil. root.nil. 4 300 300 604800 300
-/AXFR/
-nil.      	300	SOA	ns.nil. root.nil. 4 300 300 604800 300
-/AXFR/
-nil.      	300	NS	ns.nil.
-test.nil.      	300	TXT	"serial 4, fallback AXFR"
-/AXFR/
-nil.      	300	SOA	ns.nil. root.nil. 4 300 300 604800 300
-EOF
+switch_responses "bad_soa_owner"
 $RNDCCMD 10.53.0.1 refresh nil | sed 's/^/ns1 /' | cat_i
 
 # A broken server would accept the malformed IXFR and apply its contents to the
@@ -199,7 +163,7 @@ $DIG $DIGOPTS test.nil. TXT @10.53.0.1 >dig.out.test$n.2 || ret=1
 grep -q -F "serial 4, fallback AXFR" dig.out.test$n.2 || ret=1
 
 # Ensure the expected error is logged.
-nextpart ns1/named.run | grep -q -F "SOA name mismatch" || ret=1
+nextpart ns1/named.run | grep -F "SOA name mismatch" >/dev/null || ret=1
 
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
@@ -389,9 +353,9 @@ status=$((status + ret))
 n=$((n + 1))
 echo_i "checking whether dig calculates IXFR statistics correctly ($n)"
 ret=0
-$DIG $DIGOPTS +noedns +stat -b 10.53.0.4 @10.53.0.4 test. ixfr=2 >dig.out1.test$n
+$DIG $DIGOPTS +expire +nocookie +stat -b 10.53.0.4 @10.53.0.4 test. ixfr=2 >dig.out1.test$n
 get_dig_xfer_stats dig.out1.test$n >stats.dig
-diff ixfr-stats.good stats.dig >/dev/null || ret=1
+diff ixfr-stats-with-expire.good stats.dig >/dev/null || ret=1
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
@@ -401,20 +365,20 @@ status=$((status + ret))
 
 _wait_for_stats() {
   get_named_xfer_stats ns4/named.run "$1" test "$2" >"$3"
-  diff ixfr-stats.good "$3" >/dev/null || return 1
+  diff "$4" "$3" >/dev/null || return 1
   return 0
 }
 
 n=$((n + 1))
 echo_i "checking whether named calculates incoming IXFR statistics correctly ($n)"
 ret=0
-retry_quiet 10 _wait_for_stats 10.53.0.3 "Transfer completed" stats.incoming || ret=1
+retry_quiet 10 _wait_for_stats 10.53.0.3 "Transfer completed" stats.incoming ixfr-stats-without-expire.good || ret=1
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 
 n=$((n + 1))
 echo_i "checking whether named calculates outgoing IXFR statistics correctly ($n)"
-retry_quiet 10 _wait_for_stats 10.53.0.4 "IXFR ended" stats.outgoing || ret=1
+retry_quiet 10 _wait_for_stats 10.53.0.4 "IXFR ended" stats.outgoing ixfr-stats-with-expire.good || ret=1
 if [ $ret != 0 ]; then echo_i "failed"; fi
 status=$((status + ret))
 

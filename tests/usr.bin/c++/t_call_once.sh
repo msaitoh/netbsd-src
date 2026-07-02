@@ -1,4 +1,4 @@
-#	$NetBSD: t_call_once.sh,v 1.6 2022/06/12 15:08:38 skrll Exp $
+#	$NetBSD: t_call_once.sh,v 1.8 2026/03/09 20:29:25 skrll Exp $
 #
 # Copyright (c) 2018 The NetBSD Foundation, Inc.
 # All rights reserved.

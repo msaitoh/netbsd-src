@@ -25,7 +25,7 @@ echo_i "testing basic ACL processing"
 # key "one" should fail
 t=$((t + 1))
 $DIG $DIGOPTS tsigzone. \
-  @10.53.0.2 -b 10.53.0.1 axfr -y one:1234abcd8765 >dig.out.${t}
+  @10.53.0.2 -b 10.53.0.1 axfr -y "${DEFAULT_HMAC}:one:1234abcd8765" >dig.out.${t}
 grep "^;" dig.out.${t} >/dev/null 2>&1 || {
   echo_i "test $t failed"
   status=1
@@ -34,20 +34,20 @@ grep "^;" dig.out.${t} >/dev/null 2>&1 || {
 # any other key should be fine
 t=$((t + 1))
 $DIG $DIGOPTS tsigzone. \
-  @10.53.0.2 -b 10.53.0.1 axfr -y two:1234abcd8765 >dig.out.${t}
+  @10.53.0.2 -b 10.53.0.1 axfr -y "${DEFAULT_HMAC}:two:1234abcd8765" >dig.out.${t}
 grep "^;" dig.out.${t} >/dev/null 2>&1 && {
   echo_i "test $t failed"
   status=1
 }
 
-copy_setports ns2/named2.conf.in ns2/named.conf
+cp ns2/named2.conf ns2/named.conf
 rndc_reload ns2 10.53.0.2
 sleep 5
 
 # prefix 10/8 should fail
 t=$((t + 1))
 $DIG $DIGOPTS tsigzone. \
-  @10.53.0.2 -b 10.53.0.1 axfr -y one:1234abcd8765 >dig.out.${t}
+  @10.53.0.2 -b 10.53.0.1 axfr -y "${DEFAULT_HMAC}:one:1234abcd8765" >dig.out.${t}
 grep "^;" dig.out.${t} >/dev/null 2>&1 || {
   echo_i "test $t failed"
   status=1
@@ -56,7 +56,7 @@ grep "^;" dig.out.${t} >/dev/null 2>&1 || {
 # any other address should work, as long as it sends key "one"
 t=$((t + 1))
 $DIG $DIGOPTS tsigzone. \
-  @10.53.0.2 -b 127.0.0.1 axfr -y two:1234abcd8765 >dig.out.${t}
+  @10.53.0.2 -b 127.0.0.1 axfr -y "${DEFAULT_HMAC}:two:1234abcd8765" >dig.out.${t}
 grep "^;" dig.out.${t} >/dev/null 2>&1 || {
   echo_i "test $t failed"
   status=1
@@ -64,7 +64,7 @@ grep "^;" dig.out.${t} >/dev/null 2>&1 || {
 
 t=$((t + 1))
 $DIG $DIGOPTS tsigzone. \
-  @10.53.0.2 -b 127.0.0.1 axfr -y one:1234abcd8765 >dig.out.${t}
+  @10.53.0.2 -b 127.0.0.1 axfr -y "${DEFAULT_HMAC}:one:1234abcd8765" >dig.out.${t}
 grep "^;" dig.out.${t} >/dev/null 2>&1 && {
   echo_i "test $t failed"
   status=1
@@ -72,14 +72,14 @@ grep "^;" dig.out.${t} >/dev/null 2>&1 && {
 
 echo_i "testing nested ACL processing"
 # all combinations of 10.53.0.{1|2} with key {one|two}, should succeed
-copy_setports ns2/named3.conf.in ns2/named.conf
+cp ns2/named3.conf ns2/named.conf
 rndc_reload ns2 10.53.0.2
 sleep 5
 
 # should succeed
 t=$((t + 1))
 $DIG $DIGOPTS tsigzone. \
-  @10.53.0.2 -b 10.53.0.2 axfr -y two:1234abcd8765 >dig.out.${t}
+  @10.53.0.2 -b 10.53.0.2 axfr -y "${DEFAULT_HMAC}:two:1234abcd8765" >dig.out.${t}
 grep "^;" dig.out.${t} >/dev/null 2>&1 && {
   echo_i "test $t failed"
   status=1
@@ -88,7 +88,7 @@ grep "^;" dig.out.${t} >/dev/null 2>&1 && {
 # should succeed
 t=$((t + 1))
 $DIG $DIGOPTS tsigzone. \
-  @10.53.0.2 -b 10.53.0.2 axfr -y one:1234abcd8765 >dig.out.${t}
+  @10.53.0.2 -b 10.53.0.2 axfr -y "${DEFAULT_HMAC}:one:1234abcd8765" >dig.out.${t}
 grep "^;" dig.out.${t} >/dev/null 2>&1 && {
   echo_i "test $t failed"
   status=1
@@ -97,7 +97,7 @@ grep "^;" dig.out.${t} >/dev/null 2>&1 && {
 # should succeed
 t=$((t + 1))
 $DIG $DIGOPTS tsigzone. \
-  @10.53.0.2 -b 10.53.0.1 axfr -y two:1234abcd8765 >dig.out.${t}
+  @10.53.0.2 -b 10.53.0.1 axfr -y "${DEFAULT_HMAC}:two:1234abcd8765" >dig.out.${t}
 grep "^;" dig.out.${t} >/dev/null 2>&1 && {
   echo_i "test $t failed"
   status=1
@@ -106,7 +106,7 @@ grep "^;" dig.out.${t} >/dev/null 2>&1 && {
 # should succeed
 t=$((t + 1))
 $DIG $DIGOPTS tsigzone. \
-  @10.53.0.2 -b 10.53.0.1 axfr -y two:1234abcd8765 >dig.out.${t}
+  @10.53.0.2 -b 10.53.0.1 axfr -y "${DEFAULT_HMAC}:two:1234abcd8765" >dig.out.${t}
 grep "^;" dig.out.${t} >/dev/null 2>&1 && {
   echo_i "test $t failed"
   status=1
@@ -115,7 +115,7 @@ grep "^;" dig.out.${t} >/dev/null 2>&1 && {
 # but only one or the other should fail
 t=$((t + 1))
 $DIG $DIGOPTS tsigzone. \
-  @10.53.0.2 -b 127.0.0.1 axfr -y one:1234abcd8765 >dig.out.${t}
+  @10.53.0.2 -b 127.0.0.1 axfr -y "${DEFAULT_HMAC}:one:1234abcd8765" >dig.out.${t}
 grep "^;" dig.out.${t} >/dev/null 2>&1 || {
   echo_i "test $t failed"
   status=1
@@ -139,14 +139,14 @@ grep "^;" dig.out.${t} >/dev/null 2>&1 || {
 }
 
 # now we only allow 10.53.0.1 *and* key one, or 10.53.0.2 *and* key two
-copy_setports ns2/named4.conf.in ns2/named.conf
+cp ns2/named4.conf ns2/named.conf
 rndc_reload ns2 10.53.0.2
 sleep 5
 
 # should succeed
 t=$((t + 1))
 $DIG $DIGOPTS tsigzone. \
-  @10.53.0.2 -b 10.53.0.2 axfr -y two:1234abcd8765 >dig.out.${t}
+  @10.53.0.2 -b 10.53.0.2 axfr -y "${DEFAULT_HMAC}:two:1234abcd8765" >dig.out.${t}
 grep "^;" dig.out.${t} >/dev/null 2>&1 && {
   echo_i "test $t failed"
   status=1
@@ -155,7 +155,7 @@ grep "^;" dig.out.${t} >/dev/null 2>&1 && {
 # should succeed
 t=$((t + 1))
 $DIG $DIGOPTS tsigzone. \
-  @10.53.0.2 -b 10.53.0.1 axfr -y one:1234abcd8765 >dig.out.${t}
+  @10.53.0.2 -b 10.53.0.1 axfr -y "${DEFAULT_HMAC}:one:1234abcd8765" >dig.out.${t}
 grep "^;" dig.out.${t} >/dev/null 2>&1 && {
   echo_i "test $t failed"
   status=1
@@ -164,7 +164,7 @@ grep "^;" dig.out.${t} >/dev/null 2>&1 && {
 # should fail
 t=$((t + 1))
 $DIG $DIGOPTS tsigzone. \
-  @10.53.0.2 -b 10.53.0.2 axfr -y one:1234abcd8765 >dig.out.${t}
+  @10.53.0.2 -b 10.53.0.2 axfr -y "${DEFAULT_HMAC}:one:1234abcd8765" >dig.out.${t}
 grep "^;" dig.out.${t} >/dev/null 2>&1 || {
   echo_i "test $t failed"
   status=1
@@ -173,7 +173,7 @@ grep "^;" dig.out.${t} >/dev/null 2>&1 || {
 # should fail
 t=$((t + 1))
 $DIG $DIGOPTS tsigzone. \
-  @10.53.0.2 -b 10.53.0.1 axfr -y two:1234abcd8765 >dig.out.${t}
+  @10.53.0.2 -b 10.53.0.1 axfr -y "${DEFAULT_HMAC}:two:1234abcd8765" >dig.out.${t}
 grep "^;" dig.out.${t} >/dev/null 2>&1 || {
   echo_i "test $t failed"
   status=1
@@ -182,14 +182,14 @@ grep "^;" dig.out.${t} >/dev/null 2>&1 || {
 # should fail
 t=$((t + 1))
 $DIG $DIGOPTS tsigzone. \
-  @10.53.0.2 -b 10.53.0.3 axfr -y one:1234abcd8765 >dig.out.${t}
+  @10.53.0.2 -b 10.53.0.3 axfr -y "${DEFAULT_HMAC}:one:1234abcd8765" >dig.out.${t}
 grep "^;" dig.out.${t} >/dev/null 2>&1 || {
   echo_i "test $t failed"
   status=1
 }
 
 echo_i "testing allow-query-on ACL processing"
-copy_setports ns2/named5.conf.in ns2/named.conf
+cp ns2/named5.conf ns2/named.conf
 rndc_reload ns2 10.53.0.2
 sleep 5
 t=$((t + 1))

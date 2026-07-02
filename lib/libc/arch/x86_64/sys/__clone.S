@@ -1,4 +1,4 @@
-/*	$NetBSD: __clone.S,v 1.5 2014/05/22 15:01:57 uebayasi Exp $	*/
+/*	$NetBSD: __clone.S,v 1.7 2025/11/06 15:25:18 christos Exp $	*/
 
 /*
  * Copyright (c) 2002 Wasabi Systems, Inc.
@@ -74,11 +74,7 @@ ENTRY(__clone)
 	call	*%r12		/* this is the clone, call the function */
 
 	movq	%rax,%rdi
-#ifdef __PIC__
 	call	PIC_PLT(_C_LABEL(_exit))
-#else
-	call	_C_LABEL(_exit)
-#endif
 
 2:
 	addq	$8,%rsp
@@ -93,5 +89,5 @@ ENTRY(__clone)
 5:
 	popq	%r13
 	popq	%r12
-	jmp	CERROR
+	_SYSCALL_ERR
 END(__clone)

@@ -1,4 +1,4 @@
-# $NetBSD: GENERIC64,v 1.12 2024/10/26 15:49:43 skrll Exp $
+# $NetBSD: GENERIC64,v 1.27 2026/05/26 06:28:23 skrll Exp $
 #
 # GENERIC machine description file
 #
@@ -28,20 +28,21 @@ options 	VERBOSE_INIT_RISCV
 # Diagnostic/debugging support options
 options 	DIAGNOSTIC	# inexpensive kernel consistency checks
 				# XXX to be commented out on release branch
-options 	DEBUG		# expensive debugging checks/support
+#options 	DEBUG		# expensive debugging checks/support
 #options 	LOCKDEBUG	# expensive locking checks/support
 #options 	KERNHIST
-#options 	KERNHIST_PRINT
+#options 	KERNHIST_PRINT,KERNHIST_DELAY=0
 #options 	UVMHIST
-#options 	UVMHIST_PRINT
+#options 	UVMHIST_PRINT,KERNHIST_DELAY=0
 #options 	PMAPHIST
-#options 	PMAPHIST_PRINT
+#options 	PMAPHIST_PRINT,KERNHIST_DELAY=0
 #options 	SYSCTL_DEBUG
 #options 	SYSCTL_DEBUG_SETUP
 #options 	SYSCTL_DEBUG_CREATE
 #options 	PMAP_FAULTINFO
 #options 	RISCV_SYSCALL_DEBUG
 #options 	SYSCALL_DEBUG
+#options 	PMAP_DEBUG
 
 #options 	COMPAT_NETBSD32
 #options 	EXEC_ELF32
@@ -50,7 +51,7 @@ options 	DEBUG		# expensive debugging checks/support
 ccache* 	at fdt?			# SiFive FU[57]40 L2 Cache
 
 # Fixed Voltage/Current Regulators
-fregulator*	at fdt? pass 4
+fregulator* 	at fdt? pass 4
 
 # Clock and reset controller
 jh7100clkc* 	at fdt?	pass 2		# StarFive JH7100 clock controller
@@ -58,18 +59,32 @@ jh7110clkc* 	at fdt?	pass 2		# StarFive JH7110 clock controller
 sun20id1ccu* 	at fdt? pass 2		# Allwinner D1/D1s CCU
 
 # Security ID EFUSE
-sunxisid*	at fdt? pass 4		# Allwinner SID
+sunxisid* 	at fdt? pass 4		# Allwinner SID
 
 # DMA
 sun6idma* 	at fdt? pass 4		# Allwinner DMA controller (sun6i)
 
+# PCIe PHY
+jh7110pciephy* 	at fdt? pass 3		# StarFive JH7110 PCIe PHY
+
+# PCIe
+jh7110pcie* 	at fdt?			# StarFive JH7110 PCIe
+
 # Pin control
 jh7100pinctrl* 	at fdt? pass 2		# StarFive JH7100 pinctrl driver
-sunxigpio* 	at fdt? pass 3		# Allwinner GPIO
+jh7110pinctrl* 	at fdt? pass 2		# StarFive JH7110 pinctrl driver
+sunxigpio* 	at fdt? pass 2		# Allwinner GPIO
 gpio* 		at gpiobus?
+
+# System control
+jh7110syscon* 	at fdt? pass 1
+
+# Watchdog
+sunxiwdt* 	at fdt?			# Allwinner watchdog
 
 # SDMMC
 dwcmmc* 	at fdt?			# DesignWare SD/MMC
+sunximmc*	at fdt?			# Allwinner SD/MMC
 sdmmc* 		at sdmmcbus?
 ld0 		at sdmmc0
 ld1 		at sdmmc1
@@ -84,12 +99,6 @@ sunxiusbphy* 	at fdt?			# Allwinner USB PHY
 # USB
 jh71x0usb* 	at fdt?			# StarFive JH71x0 usb
 
-# USB
-xhci* 		at fdt?			# XHCI
-usb* 		at usbus?
-include "dev/usb/usbdevices.config"
-midi* 		at midibus?
-
 # Ethernet
 #awge* 		at fdt?			# DesignWare Gigabit Ethernet
 eqos* 		at fdt?			# DesignWare Ethernet QoS
@@ -97,7 +106,14 @@ eqos* 		at fdt?			# DesignWare Ethernet QoS
 # MII/PHY support
 micphy* 	at mii? phy ?		# Micrel KSZ[89]xxx PHYs
 mcommphy* 	at mii? phy ?		# Motorcomm YT8511C/YT8511H PHYs
+rgephy* 	at mii? phy ?		# Realtek 8169S/8110S internal PHYs
 ukphy* 		at mii? phy ?		# generic unknown PHYs
+
+# Temperature sensor
+jh71x0temp* 	at fdt?			# StarFive JH71x0 Temperature sensor
+
+# Random number generators
+jh7110trng* 	at fdt?			# StarFive JH7110 True RNG
 
 # Pull in optional local configuration - always at end
 cinclude 	"arch/riscv/conf/GENERIC64.local"

@@ -1,4 +1,4 @@
-# $NetBSD: cond-func-empty.mk,v 1.26 2024/08/06 18:00:16 rillig Exp $
+# $NetBSD: cond-func-empty.mk,v 1.29 2025/06/11 18:49:58 sjg Exp $
 #
 # Tests for the empty() function in .if conditions, which tests an
 # expression for emptiness.
@@ -152,6 +152,7 @@ ${:U }=	space
 
 # There may be spaces outside the parentheses.
 # Spaces inside the parentheses are interpreted as part of the variable name.
+# expect+1: warning: Invalid character " " in variable name " WORD "
 .if ! empty ( WORD )
 .  error
 .endif
@@ -163,8 +164,7 @@ ${:U WORD }=	variable name with spaces
 .  error
 .endif
 
-# expect+2: Unclosed variable "WORD"
-# expect+1: Malformed conditional 'empty(WORD'
+# expect+1: Unclosed variable "WORD"
 .if empty(WORD
 .  error
 .else
@@ -207,6 +207,10 @@ VARNAME=	${VARNAME${:U1}}
 .if defined(VARNAME${:U2}) && !empty(VARNAME${:U2})
 .endif
 
+# Expressions in the argument of a function call don't have to be defined.
+.if !empty(${UNDEF})
+.  error
+.endif
 
 # If the word 'empty' is not followed by '(', it is not a function call but an
 # ordinary bare word.  This bare word is interpreted as 'defined(empty)', and

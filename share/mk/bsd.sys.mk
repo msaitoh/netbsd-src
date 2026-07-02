@@ -1,4 +1,4 @@
-#	$NetBSD: bsd.sys.mk,v 1.316 2024/02/13 16:15:59 christos Exp $
+#	$NetBSD: bsd.sys.mk,v 1.319 2026/02/03 19:39:37 christos Exp $
 #
 # Build definitions used for NetBSD source tree builds.
 
@@ -29,9 +29,9 @@ CPPFLAGS+=	-Wp,-iremap,${NETBSDSRCDIR}:/usr/src
 CPPFLAGS+=	-Wp,-iremap,${X11SRCDIR}:/usr/xsrc
 
 REPROFLAGS+=	-fdebug-prefix-map=\$$NETBSDSRCDIR=/usr/src
-REPROFLAGS+=	-fmacro-prefix-map=\$$NETBSDSRCDIR=/usr/src
+CREPROFLAGS+=	-fmacro-prefix-map=\$$NETBSDSRCDIR=/usr/src
 REPROFLAGS+=	-fdebug-prefix-map=\$$X11SRCDIR=/usr/xsrc
-REPROFLAGS+=	-fmacro-prefix-map=\$$X11SRCDIR=/usr/xsrc
+CREPROFLAGS+=	-fmacro-prefix-map=\$$X11SRCDIR=/usr/xsrc
 .if defined(MAKEOBJDIRPREFIX)
 NETBSDOBJDIR=	${MAKEOBJDIRPREFIX}${NETBSDSRCDIR}
 .endif
@@ -51,16 +51,23 @@ REPROFLAGS+=	-fdebug-regex-map='/usr/src/(.*)/obj/(.*)=/usr/obj/\1/\2'
 REPROFLAGS+=	-fdebug-regex-map='/usr/src/(.*)/obj\..*=/usr/obj/\1'
 REPROFLAGS+=	-fdebug-regex-map='/usr/src/(.*)/obj\..*/(.*)=/usr/obj/\1/\2'
 
-CFLAGS+=	${REPROFLAGS}
-CXXFLAGS+=	${REPROFLAGS}
+CFLAGS+=	${REPROFLAGS} ${CREPROFLAGS}
+CXXFLAGS+=	${REPROFLAGS} ${CREPROFLAGS}
+FFLAGS+=	${REPROFLAGS}
 .endif
 
 # NetBSD sources use C99 style, with some GCC extensions.
-# Coverity does not like -std=gnu99
+# Coverity does not like -std=gnu99 (XXX untested but likely not gnu11 either)
+#
+# XXX Ideally we would not rely on GNU extensions, but currently some
+# code uses alloca(3) which -std=c11 compiles broken-at-runtime.  Until
+# we fix that (PR toolchain/58969: use of alloca is warning, not error,
+# with -std=c11), we have to continue using -std=gnu11 and not
+# -std=c11.
 .if !defined(COVERITY_TOP_CONFIG) && empty(CFLAGS:M*-std=*)
-CFLAGS+=	${${ACTIVE_CC} == "clang":? -std=gnu99 :}
-CFLAGS+=	${${ACTIVE_CC} == "gcc":? -std=gnu99 :}
-CFLAGS+=	${${ACTIVE_CC} == "pcc":? -std=gnu99 :}
+CFLAGS+=	${${ACTIVE_CC} == "clang":? -std=gnu11 :}
+CFLAGS+=	${${ACTIVE_CC} == "gcc":? -std=gnu11 :}
+CFLAGS+=	${${ACTIVE_CC} == "pcc":? -std=gnu11 :}
 .endif
 
 .if defined(WARNS)
@@ -227,7 +234,7 @@ CFLAGS+=	-Wa,-Av8plus
 .endif
 
 .if !defined(NOGCCERROR)
-.if ${MACHINE_MIPS64}
+.if ${MACHINE_MIPS64} || ${MACHINE_CPU} == "m68k"
 CPUFLAGS+=	-Wa,--fatal-warnings
 .endif
 .endif

@@ -1,7 +1,7 @@
-/*	$NetBSD: main.c,v 1.133 2024/09/30 13:03:37 christos Exp $	*/
+/*	$NetBSD: main.c,v 1.138 2026/02/08 08:31:58 lukem Exp $	*/
 
 /*-
- * Copyright (c) 1996-2023 The NetBSD Foundation, Inc.
+ * Copyright (c) 1996-2026 The NetBSD Foundation, Inc.
  * All rights reserved.
  *
  * This code is derived from software contributed to The NetBSD Foundation
@@ -98,7 +98,7 @@ __COPYRIGHT("@(#) Copyright (c) 1985, 1989, 1993, 1994\
 #if 0
 static char sccsid[] = "@(#)main.c	8.6 (Berkeley) 10/9/94";
 #else
-__RCSID("$NetBSD: main.c,v 1.133 2024/09/30 13:03:37 christos Exp $");
+__RCSID("$NetBSD: main.c,v 1.138 2026/02/08 08:31:58 lukem Exp $");
 #endif
 #endif /* not lint */
 
@@ -134,14 +134,11 @@ static int	usage(void);
 static int	usage_help(void);
 static void	setupoption(const char *, const char *, const char *);
 
-struct http_headers custom_headers;
-
 int
 main(int volatile argc, char **volatile argv)
 {
 	int ch, rval;
 	struct passwd *pw;
-	struct entry *p;
 	char *cp, *ep, *anonpass, *upload_path, *src_addr;
 	const char *anonuser;
 	int dumbterm, isupload;
@@ -270,8 +267,8 @@ main(int volatile argc, char **volatile argv)
 		}
 	}
 
-	SLIST_INIT(&custom_headers);
-	while ((ch = getopt(argc, argv, ":46Aab:defgH:inN:o:pP:q:r:Rs:tT:u:vVx:")) != -1) {
+	custom_headers = ftp_sl_init();
+	while ((ch = getopt(argc, argv, ":46Aab:defgH:iN:no:P:pq:Rr:s:T:tu:Vvx:")) != -1) {
 		switch (ch) {
 		case '4':
 			family = AF_INET;
@@ -320,17 +317,11 @@ main(int volatile argc, char **volatile argv)
 			break;
 
 		case 'H':
-			p = ftp_malloc(sizeof(*p));
-			p->header = ftp_strdup(optarg);
-			SLIST_INSERT_HEAD(&custom_headers, p, entries);
+			ftp_sl_add(custom_headers, ftp_strdup(optarg));
 			break;
 
 		case 'i':
 			interactive = 0;
-			break;
-
-		case 'n':
-			autologin = 0;
 			break;
 
 		case 'N':
@@ -340,19 +331,23 @@ main(int volatile argc, char **volatile argv)
 				    strerror(ENAMETOOLONG));
 			break;
 
+		case 'n':
+			autologin = 0;
+			break;
+
 		case 'o':
 			outfile = ftp_strdup(optarg);
 			if (strcmp(outfile, "-") == 0)
 				ttyout = stderr;
 			break;
 
+		case 'P':
+			ftpport = optarg;
+			break;
+
 		case 'p':
 			passivemode = 1;
 			activefallback = 0;
-			break;
-
-		case 'P':
-			ftpport = optarg;
 			break;
 
 		case 'q':
@@ -361,22 +356,18 @@ main(int volatile argc, char **volatile argv)
 				errx(1, "Bad quit value: %s", optarg);
 			break;
 
+		case 'R':
+			restartautofetch = 1;
+			break;
+
 		case 'r':
 			retry_connect = (int)strtol(optarg, &ep, 10);
 			if (retry_connect < 1 || *ep != '\0')
 				errx(1, "Bad retry value: %s", optarg);
 			break;
 
-		case 'R':
-			restartautofetch = 1;
-			break;
-
 		case 's':
 			src_addr = optarg;
-			break;
-
-		case 't':
-			trace = 1;
 			break;
 
 		case 'T':
@@ -408,6 +399,10 @@ main(int volatile argc, char **volatile argv)
 			break;
 		}
 
+		case 't':
+			trace = 1;
+			break;
+
 		case 'u':
 		{
 			isupload = 1;
@@ -417,17 +412,17 @@ main(int volatile argc, char **volatile argv)
 			break;
 		}
 
-		case 'v':
-			progress = verbose = 1;
-			break;
-
 		case 'V':
 			progress = verbose = 0;
 			break;
 
+		case 'v':
+			progress = verbose = 1;
+			break;
+
 		case 'x':
 			sndbuf_size = strsuftoi(optarg);
-			if (sndbuf_size < 1)
+			if (sndbuf_size < 0)
 				errx(1, "Bad xferbuf value: %s", optarg);
 			rcvbuf_size = sndbuf_size;
 			break;
@@ -1079,10 +1074,11 @@ synopsis(FILE * stream)
 {
 	const char * progname = getprogname();
 
+	/* Note: don't use tabs in the message below. */
 	fprintf(stream,
-"usage: %s [-46AadefginpRtVv] [-H HEADER] [-N NETRC] [-o OUTPUT] [-P PORT]\n"
-"           [-q QUITTIME] [-r RETRY] [-s SRCADDR] [-T DIR,MAX[,INC]]\n"
-"	    [-x XFERSIZE]\n"
+"usage: %s [-46AadefginpRtVv] [-b BUFSIZE] [-H HEADER] [-N NETRC] [-o OUTPUT]\n"
+"           [-P PORT] [-q QUITTIME] [-r RETRY] [-s SRCADDR] [-T DIR,MAX[,INC]]\n"
+"           [-x XFERSIZE]\n"
 "           [[USER@]HOST [PORT]]\n"
 "           [[USER@]HOST:[PATH][/]]\n"
 "           [file:///PATH]\n"
@@ -1102,16 +1098,19 @@ usage_help(void)
 {
 	synopsis(stdout);
 #ifndef NO_USAGE
+	/* Note: don't use tabs in the message below. */
 	printf(
 "  -4            Only use IPv4 addresses\n"
 "  -6            Only use IPv6 addresses\n"
 "  -A            Force active mode\n"
 "  -a            Use anonymous login\n"
-"  -b BUFLEN     Use BUFLEN bytes for fetch buffer\n"
+"  -b BUFSIZE    Use BUFSIZE bytes for fetch buffer\n"
 "  -d            Enable debugging\n"
 "  -e            Disable command-line editing\n"
 "  -f            Force cache reload for FTP or HTTP proxy transfers\n"
 "  -g            Disable file name globbing\n"
+"  -H HEADER     Add custom HTTP header HEADER for HTTP transfers;\n"
+"                may be repeated for additional headers\n"
 "  -i            Disable interactive prompt during multiple file transfers\n"
 "  -N NETRC      Use NETRC instead of ~/.netrc\n"
 "  -n            Disable auto-login\n"
@@ -1121,15 +1120,15 @@ usage_help(void)
 "  -q QUITTIME   Quit if connection stalls for QUITTIME seconds\n"
 "  -R            Restart non-proxy auto-fetch\n"
 "  -r RETRY      Retry failed connection attempts after RETRY seconds\n"
-"  -s SRCADDR    Use source address SRCADDR\n"
-"  -t            Enable packet tracing\n"
+"  -s SRCADDR    Use IP source address SRCADDR\n"
 "  -T DIR,MAX[,INC]\n"
-"                Set maximum transfer rate for direction DIR to MAX bytes/s,\n"
-"                with optional increment INC bytes/s\n"
+"                Set maximum transfer rate for direction DIR (all, get, or put)\n"
+"                to MAX bytes/s, with optional increment INC bytes/s\n"
+"  -t            Enable packet tracing\n"
 "  -u URL        URL to upload file arguments to\n"
 "  -V            Disable verbose and progress\n"
 "  -v            Enable verbose and progress\n"
-"  -x XFERSIZE   Set socket send and receive size to XFERSIZE\n"
+"  -x XFERSIZE   Set socket send and receive size to XFERSIZE bytes\n"
 "  -?            Display this help and exit\n"
 		);
 #endif

@@ -1,4 +1,4 @@
-# $NetBSD: Makefile,v 1.3 2018/02/06 20:10:05 christos Exp $
+# $NetBSD: Makefile,v 1.5 2025/10/19 01:00:00 riastradh Exp $
 
 PROG=	nbsvtool
 LDADD+=	-lcrypto

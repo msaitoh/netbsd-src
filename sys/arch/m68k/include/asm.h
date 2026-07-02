@@ -1,4 +1,4 @@
-/*	$NetBSD: asm.h,v 1.35 2023/09/26 12:46:30 tsutsui Exp $	*/
+/*	$NetBSD: asm.h,v 1.38 2026/03/15 17:10:34 christos Exp $	*/
 
 /*-
  * Copyright (c) 1997 The NetBSD Foundation, Inc.
@@ -94,11 +94,7 @@
 #define GOT_SETUP(reg)		/* nothing */
 #endif
 
-#if __STDC__
-# define _C_LABEL(name)	name
-#else
-# define _C_LABEL(name)	name
-#endif /* __STDC__ */
+#define _C_LABEL(x)	x
 
 #define	_ASM_LABEL(name)	name
 
@@ -139,9 +135,18 @@
 #define ALTENTRY(name, rname)	_ENTRY(_C_LABEL(name))
 #endif
 
+#ifdef _NETBSD_REVISIONID
+#define RCSID(x)	.pushsection ".ident","MS",@progbits,1;		\
+			.asciz x;					\
+			.ascii "$"; .ascii "NetBSD: "; .ascii __FILE__;	\
+			.ascii " "; .ascii _NETBSD_REVISIONID;		\
+			.asciz " $";					\
+			.popsection
+#else
 #define RCSID(x)	.pushsection ".ident","MS",@progbits,1;		\
 			.asciz x;					\
 			.popsection
+#endif
 
 /*
  * Global variables of whatever sort.

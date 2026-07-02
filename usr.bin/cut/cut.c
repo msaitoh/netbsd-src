@@ -1,4 +1,4 @@
-/*	$NetBSD: cut.c,v 1.29 2014/02/03 20:22:19 wiz Exp $	*/
+/*	$NetBSD: cut.c,v 1.33 2026/04/05 03:03:56 gutteridge Exp $	*/
 
 /*
  * Copyright (c) 1989, 1993
@@ -42,8 +42,10 @@ __COPYRIGHT("@(#) Copyright (c) 1989, 1993\
 #if 0
 static char sccsid[] = "@(#)cut.c	8.3 (Berkeley) 5/4/95";
 #endif
-__RCSID("$NetBSD: cut.c,v 1.29 2014/02/03 20:22:19 wiz Exp $");
+__RCSID("$NetBSD: cut.c,v 1.33 2026/04/05 03:03:56 gutteridge Exp $");
 #endif /* not lint */
+
+#include <sys/param.h>
 
 #include <ctype.h>
 #include <err.h>
@@ -56,16 +58,17 @@ __RCSID("$NetBSD: cut.c,v 1.29 2014/02/03 20:22:19 wiz Exp $");
 #include <unistd.h>
 #include <util.h>
 #include <wchar.h>
-#include <sys/param.h>
 
-static int bflag;
+static int	bflag;
 static int	cflag;
 static char	dchar;
 static int	dflag;
 static int	fflag;
+static int	nflag;
 static int	sflag;
 
 static void	b_cut(FILE *, const char *);
+static void	b_n_cut(FILE *, const char *);
 static void	c_cut(FILE *, const char *);
 static void	f_cut(FILE *, const char *);
 static void	get_list(char *);
@@ -83,8 +86,6 @@ main(int argc, char *argv[])
 
 	dchar = '\t';			/* default delimiter is \t */
 
-	/* Since we don't support multi-byte characters, the -c and -b
-	   options are equivalent, and the -n option is meaningless. */
 	while ((ch = getopt(argc, argv, "b:c:d:f:sn")) != -1)
 		switch(ch) {
 		case 'b':
@@ -110,6 +111,7 @@ main(int argc, char *argv[])
 			sflag = 1;
 			break;
 		case 'n':
+			nflag = 1;
 			break;
 		case '?':
 		default:
@@ -118,13 +120,13 @@ main(int argc, char *argv[])
 	argc -= optind;
 	argv += optind;
 
-	if (fflag) {
-		if (cflag || bflag)
-			usage();
-	} else if ((!cflag && !bflag) || dflag || sflag)
+	if (bflag + cflag + fflag != 1 ||
+	    (nflag && !bflag) ||
+	    ((dflag || sflag) && !fflag))
 		usage();
-	else if (bflag && cflag)
-		usage();
+
+	if (nflag)
+		fcn = b_n_cut;
 
 	rval = 0;
 	if (*argv)
@@ -156,8 +158,7 @@ static void
 get_list(char *list)
 {
 	size_t setautostart, start, stop;
-	char *pos;
-	char *p;
+	char *p, *pos;
 
 	if (positions == NULL) {
 		numpositions = ALLOC_CHUNK;
@@ -165,12 +166,10 @@ get_list(char *list)
 	}
 
 	/*
-	 * set a byte in the positions array to indicate if a field or
+	 * Set a byte in the positions array to indicate if a field or
 	 * column is to be selected; use +1, it's 1-based, not 0-based.
-	 * This parser is less restrictive than the Draft 9 POSIX spec.
-	 * POSIX doesn't allow lists that aren't in increasing order or
-	 * overlapping lists.  We also handle "-3-5" although there's no
-	 * real reason to.
+	 * Numbers and number ranges may be overlapping, repeated, and in
+	 * any order. We handle "-3-5" although there's no real reason to.
 	 */
 	for (; (p = strtok(list, ", \t")) != NULL; list = NULL) {
 		setautostart = start = stop = 0;
@@ -219,15 +218,79 @@ get_list(char *list)
 		(void)memset(positions + 1, '1', autostart);
 }
 
+/*
+ * Cut based on byte positions, taking care not to split multibyte characters.
+ * Although this function also handles the case where -n is not specified,
+ * b_cut() ought to be much faster.
+ */
+static void
+b_n_cut(FILE *fp, const char *fname)
+{
+	size_t col, i, lbuflen;
+	char *lbuf;
+	int canwrite, clen, warned;
+	mbstate_t mbs;
+
+	memset(&mbs, 0, sizeof(mbs));
+	warned = 0;
+	while ((lbuf = fgetln(fp, &lbuflen)) != NULL) {
+		for (col = 0; lbuflen > 0; col += clen) {
+			if ((clen = mbrlen(lbuf, lbuflen, &mbs)) < 0) {
+				if (!warned) {
+					warn("%s", fname);
+					warned = 1;
+				}
+				memset(&mbs, 0, sizeof(mbs));
+				clen = 1;
+			}
+			if (clen == 0 || *lbuf == '\n')
+				break;
+			if (col < maxval && !positions[1 + col]) {
+				/*
+				 * Print the character if (1) after an initial
+				 * segment of un-selected bytes, the rest of
+				 * it is selected, and (2) the last byte is
+				 * selected.
+				 */
+				i = col;
+				while (i < col + clen && i < maxval &&
+				    !positions[1 + i])
+					i++;
+				canwrite = i < col + clen;
+				for (; i < col + clen && i < maxval; i++)
+					canwrite &= positions[1 + i];
+				if (canwrite)
+					fwrite(lbuf, 1, clen, stdout);
+			} else {
+				/*
+				 * Print the character if all of it has
+				 * been selected.
+				 */
+				canwrite = 1;
+				for (i = col; i < col + clen; i++)
+					if ((i >= maxval && !autostop) ||
+					    (i < maxval && !positions[1 + i])) {
+						canwrite = 0;
+						break;
+					}
+				if (canwrite)
+					fwrite(lbuf, 1, clen, stdout);
+			}
+			lbuf += clen;
+			lbuflen -= clen;
+		}
+		if (lbuflen > 0)
+			putchar('\n');
+	}
+}
+
 static void
 /*ARGSUSED*/
 f_cut(FILE *fp, const char *fname __unused)
 {
-	int ch, field, isdelim;
-	char *pos, *p, sep;
-	int output;
 	size_t len;
-	char *lbuf, *tbuf;
+	int ch, field, isdelim, output;
+	char *lbuf, *pos, *p, sep, *tbuf;
 
 	for (sep = dchar, tbuf = NULL; (lbuf = fgetln(fp, &len)) != NULL;) {
 		output = 0;
@@ -295,12 +358,12 @@ usage(void)
 	exit(1);
 }
 
-/* make b_put(): */
+/* make b_cut(): */
 #define CUT_BYTE 1
 #include "x_cut.c"
 #undef CUT_BYTE
 
-/* make c_put(): */
+/* make c_cut(): */
 #define CUT_BYTE 0
 #include "x_cut.c"
 #undef CUT_BYTE

@@ -1,4 +1,4 @@
-/*	$NetBSD: param.h,v 1.30 2022/03/22 18:32:51 macallan Exp $	*/
+/*	$NetBSD: param.h,v 1.33 2026/05/10 16:07:56 thorpej Exp $	*/
 
 /*	$OpenBSD: param.h,v 1.12 2001/07/06 02:07:41 provos Exp $	*/
 
@@ -51,10 +51,6 @@
 #define	SEGOFSET	(NBSEG - 1)	/* byte offset into segment */
 
 #define	KERNBASE	0x00000000	/* start of kernel virtual */
-#define	BTOPKERNBASE	((u_long)KERNBASE >> PGSHIFT)
-
-#define	SSIZE		(1)		/* initial stack size/NBPG */
-#define	SINCR		(1)		/* increment of stack/NBPG */
 
 #ifdef DIAGNOSTIC
 #define	UPAGES		5		/* pages of u-area + redzone */
@@ -78,6 +74,8 @@
 #define	MCLSHIFT	11
 #define	MCLBYTES	(1 << MCLSHIFT)	/* large enough for ether MTU */
 #define	MCLOFSET	(MCLBYTES - 1)
+
+#define	STACK_ALIGNBYTES	(64 - 1)
 
 /*
  * Size of kernel malloc arena in logical pages

@@ -1,4 +1,4 @@
-/*	$NetBSD: gtmr.c,v 1.49 2022/03/03 06:26:28 riastradh Exp $	*/
+/*	$NetBSD: gtmr.c,v 1.51 2026/05/11 19:38:21 yurix Exp $	*/
 
 /*-
  * Copyright (c) 2012 The NetBSD Foundation, Inc.
@@ -30,13 +30,14 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: gtmr.c,v 1.49 2022/03/03 06:26:28 riastradh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: gtmr.c,v 1.51 2026/05/11 19:38:21 yurix Exp $");
 
 #include <sys/param.h>
 #include <sys/bus.h>
 #include <sys/device.h>
 #include <sys/intr.h>
 #include <sys/kernel.h>
+#include <sys/lock.h>
 #include <sys/percpu.h>
 #include <sys/proc.h>
 #include <sys/systm.h>
@@ -327,6 +328,7 @@ gtmr_delay(unsigned int n)
 	uint64_t last = gtmr_read_cntct(sc);
 
 	while (ticks > 0) {
+		SPINLOCK_BACKOFF_HOOK;
 		uint64_t curr = gtmr_read_cntct(sc);
 		if (curr >= last)
 			ticks -= (curr - last);
@@ -409,10 +411,13 @@ gtmr_intr(void *arg)
 	return 1;
 }
 
+#ifndef __HAVE_GENERIC_SETSTATCLOCKRATE
 void
 setstatclockrate(int newhz)
 {
+	/* use hardclock */
 }
+#endif
 
 static u_int
 gtmr_get_timecount(struct timecounter *tc)

@@ -35,11 +35,13 @@
 __FBSDID("$FreeBSD: src/sbin/gpt/gpt.c,v 1.16 2006/07/07 02:44:23 marcel Exp $");
 #endif
 #ifdef __RCSID
-__RCSID("$NetBSD: gpt.c,v 1.90 2024/10/20 08:21:30 mlelstv Exp $");
+__RCSID("$NetBSD: gpt.c,v 1.100 2026/02/09 12:49:18 kre Exp $");
 #endif
 
-#include <sys/param.h>
 #include <sys/types.h>
+#if defined(HAVE_SYS_ENDIAN_H) || ! defined(HAVE_NBTOOL_CONFIG_H)
+#include <sys/endian.h>
+#endif
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 #include <sys/bootblock.h>
@@ -181,13 +183,10 @@ utf16_to_utf8(const uint16_t *s16, size_t s16len, uint8_t *s8, size_t s8len)
 void
 utf8_to_utf16(const uint8_t *s8, uint16_t *s16, size_t s16len)
 {
-	size_t s16idx, s8idx, s8len;
+	size_t s16idx, s8idx;
 	uint32_t utfchar = 0;
 	unsigned int c, utfbytes;
 
-	s8len = 0;
-	while (s8[s8len++] != 0)
-		;
 	s8idx = s16idx = 0;
 	utfbytes = 0;
 	do {
@@ -269,6 +268,10 @@ gpt_write(gpt_t gpt, map_t map)
 	off_t ofs;
 	size_t count;
 
+	if (gpt->flags & GPT_READONLY) {
+		gpt_warnx(gpt, "Readonly mode, no changes made");
+		return 0;
+	}
 	count = (size_t)(map->map_size * gpt->secsz);
 	ofs = map->map_start * gpt->secsz;
 	if (lseek(gpt->fd, ofs, SEEK_SET) != ofs ||
@@ -483,7 +486,7 @@ gpt_open(const char *dev, int flags, int verbose, off_t mediasz, u_int secsz,
 	int mode, found;
 	off_t devsz;
 	gpt_t gpt;
-	unsigned int index;
+	unsigned int idx;
 
 	if ((gpt = calloc(1, sizeof(*gpt))) == NULL) {
 		if (!(flags & GPT_QUIET))
@@ -501,6 +504,21 @@ gpt_open(const char *dev, int flags, int verbose, off_t mediasz, u_int secsz,
 		
 	gpt->fd = opendisk(dev, mode, gpt->device_name,
 	    sizeof(gpt->device_name), 0);
+	if (gpt->fd == -1 && !(gpt->flags & GPT_READONLY) && errno == EACCES) {
+		gpt->fd = opendisk(dev, O_RDONLY, gpt->device_name,
+			    sizeof(gpt->device_name), 0);
+		if (gpt->fd != -1) {
+			gpt_warnx(gpt,
+			    "No write permission, enabling readonly (-r) mode");
+			gpt->flags |= GPT_READONLY;
+		}
+	}
+	if (gpt->fd == -1 && !(gpt->flags & GPT_READONLY) && mediasz != 0 &&
+	    errno == ENOENT) {
+		strlcpy(gpt->device_name, dev, sizeof(gpt->device_name));
+		/* No opendisk() with O_CREAT, but we want a file, so OK */
+		gpt->fd = open(dev, O_RDWR|O_EXCL|O_CREAT, 0644);
+	}
 	if (gpt->fd == -1) {
 		strlcpy(gpt->device_name, dev, sizeof(gpt->device_name));
 		gpt_warn(gpt, "Cannot open");
@@ -513,6 +531,11 @@ gpt_open(const char *dev, int flags, int verbose, off_t mediasz, u_int secsz,
 	}
 
 	if ((gpt->sb.st_mode & S_IFMT) != S_IFREG) {
+		if ((gpt->sb.st_mode & S_IFMT) != S_IFCHR &&
+		    (gpt->sb.st_mode & S_IFMT) != S_IFBLK) {
+			gpt_warnx(gpt, "Not a device or plain file");
+			goto close;
+		}
 		if (gpt->secsz == 0) {
 #ifdef DIOCGSECTORSIZE
 			if (ioctl(gpt->fd, DIOCGSECTORSIZE, &gpt->secsz) == -1) {
@@ -543,8 +566,10 @@ gpt_open(const char *dev, int flags, int verbose, off_t mediasz, u_int secsz,
 			gpt->secsz = 512;	/* Fixed size for files. */
 		if (gpt->mediasz == 0) {
 			if (gpt->sb.st_size % gpt->secsz) {
-				gpt_warn(gpt, "Media size not a multiple of sector size (%u)\n", gpt->secsz);
-				errno = EINVAL;
+				gpt_warnx(gpt,
+				    "Media size (%jd) is not a multiple of "
+				    "sector size (%u)\n",
+				    (intmax_t)gpt->sb.st_size, gpt->secsz);
 				goto close;
 			}
 			gpt->mediasz = gpt->sb.st_size;
@@ -571,13 +596,29 @@ gpt_open(const char *dev, int flags, int verbose, off_t mediasz, u_int secsz,
 	}
 
 	if (map_init(gpt, devsz) == -1)
-		goto close;
+		goto eclose;
 
-	index = 1;
-	if (gpt_mbr(gpt, 0LL, &index, 0U) == -1)
-		goto close;
+	if (gpt->flags & GPT_FILE && gpt->sb.st_size == 0) {
+		if (gpt->flags & GPT_READONLY) {
+			gpt_warnx(gpt, "Cannot operate on empty file with -r");
+			goto close;
+		}
+		if (!mediasz) {
+			gpt_warnx(gpt, "Need -m mediasz to use an empty file");
+			goto close;
+		}
+		if (truncate(gpt->device_name, gpt->mediasz) == -1) {
+			gpt_warn(gpt, "truncate(%ju) failed",
+			    (uintmax_t)gpt->mediasz);
+			goto close;
+		}
+	}
+
+	idx = 1;
+	if (gpt_mbr(gpt, 0LL, &idx, 0U) == -1)
+		goto eclose;
 	if ((found = gpt_gpt(gpt, 1LL, 1)) == -1)
-		goto close;
+		goto eclose;
 
 	if (found) {
 		struct map *map;
@@ -593,19 +634,20 @@ gpt_open(const char *dev, int flags, int verbose, off_t mediasz, u_int secsz,
 		lba = le64toh(hdr->hdr_lba_alt);
 		if (hdr && lba > 0 && lba < (uint64_t)devsz) {
 			if (gpt_gpt(gpt, (off_t)lba, found) == -1)
-				goto close;
+				goto eclose;
 		}
 	} else {
 		if (gpt_gpt(gpt, devsz - 1LL, found) == -1)
-			goto close;
+			goto eclose;
 	}
 
 	return gpt;
 
- close:
+ eclose:;
+	gpt_warn(gpt, "No GPT found");
+ close:;
 	if (gpt->fd != -1)
 		close(gpt->fd);
-	gpt_warn(gpt, "No GPT found");
 	free(gpt);
 	return NULL;
 }
@@ -723,6 +765,9 @@ gpt_write_crc(gpt_t gpt, map_t map, map_t tbl)
 	hdr->hdr_crc_self = 0;
 	hdr->hdr_crc_self = htole32(crc32(hdr, le32toh(hdr->hdr_size)));
 
+	if (gpt->flags & GPT_READONLY)
+		return 0;
+
 	if (gpt_write(gpt, map) == -1) {
 		gpt_warn(gpt, "Error writing crc map");
 		return -1;
@@ -739,6 +784,10 @@ gpt_write_crc(gpt_t gpt, map_t map, map_t tbl)
 int
 gpt_write_primary(gpt_t gpt)
 {
+	if (gpt->flags & GPT_READONLY) {
+		gpt_warnx(gpt, "Readonly mode, device unchanged");
+		return 0;
+	}
 	return gpt_write_crc(gpt, gpt->gpt, gpt->tbl);
 }
 
@@ -766,7 +815,7 @@ gpt_create_pmbr_part(struct mbr_part *part, off_t last, int active)
 		part->part_size_hi = htole16(0xffff);
 	} else {
 		part->part_size_lo = htole16((uint16_t)last);
-		part->part_size_hi = htole16((uint16_t)(last >> 16));
+		part->part_size_hi = htole16((uint16_t)((uint64_t)last >> 16));
 	}
 }
 
@@ -830,7 +879,7 @@ gpt_last(gpt_t gpt)
 off_t
 gpt_create(gpt_t gpt, off_t last, u_int parts, int primary_only)
 {
-	off_t blocks;
+	off_t blocks, lastoff;
 	map_t map;
 	struct gpt_hdr *hdr;
 	struct gpt_ent *ent;
@@ -861,8 +910,9 @@ gpt_create(gpt_t gpt, off_t last, u_int parts, int primary_only)
 	}
 
 	/* Never cross the median of the device. */
-	if ((blocks + 1LL) > ((last + 1LL) >> 1))
-		blocks = ((last + 1LL) >> 1) - 1LL;
+	lastoff = (off_t)(((uint64_t)last + 1LL) >> 1);
+	if ((blocks + 1LL) > lastoff)
+		blocks = lastoff - 1LL;
 
 	/*
 	 * Get the amount of free space at the end of the device and
@@ -966,11 +1016,22 @@ gpt_size_get(gpt_t gpt, off_t *size)
 		return 0;
 	}
 	if ((*p == 'b' || *p == 'B') && p[1] == '\0') {
+		if (sectors % gpt->secsz) {
+			gpt_warnx(gpt,
+			    "Size must be a multiple of sector size (%u)",
+			    gpt->secsz);
+			return -1;
+		}
 		*size = sectors;
 		return 0;
 	}
 	if (dehumanize_number(optarg, &human_num) < 0)
 		return -1;
+	if (human_num % gpt->secsz) {
+		gpt_warnx(gpt, "Size must be a multiple of sector size (%u)",
+		    gpt->secsz);
+		return -1;
+	}
 	*size = human_num;
 	return 0;
 }
@@ -1042,7 +1103,6 @@ gpt_change_ent(gpt_t gpt, const struct gpt_find *find,
     void (*cfn)(struct gpt_ent *, void *, int), void *v)
 {
 	map_t m;
-	struct gpt_hdr *hdr;
 	struct gpt_ent *ent;
 	unsigned int i;
 	uint8_t utfbuf[__arraycount(ent->ent_name) * 3 + 1];
@@ -1052,7 +1112,7 @@ gpt_change_ent(gpt_t gpt, const struct gpt_find *find,
 	    || find->size > 0 || !gpt_uuid_is_nil(find->type)))
 		return -1;
 
-	if ((hdr = gpt_hdr(gpt)) == NULL)
+	if (gpt_hdr(gpt) == NULL)
 		return -1;
 
 	/* Relabel all matching entries in the map. */
@@ -1275,7 +1335,7 @@ gpt_attr_list(char *buf, size_t len, uint64_t attributes)
 	 * (it does build however).
 	 */
 			if (gpt_attr[i].mask & (gpt_attr[i].mask - 1)) {
-				/* This only happens in bits 46..63 */
+				/* This only happens in bits 48..63 */
 
 				/*
 				 * xbuf is big enough for "=65535\0"
@@ -1348,18 +1408,49 @@ gpt_attr_update(gpt_t gpt, u_int entry, uint64_t set, uint64_t clr)
 }
 
 int
-gpt_uint_get(gpt_t gpt, u_int *entry)
+gpt_scaled_uint_get(gpt_t gpt, u_int *entry)
 {
 	char *p;
+
 	if (*entry > 0)
 		return -1;
 	*entry = (u_int)strtoul(optarg, &p, 10);
+	if (*p == 'k' || *p == 'K') {
+		if (*entry > UINT_MAX/1024) {
+			gpt_warnx(gpt, "Value too big '%s'", optarg);
+			return -1;
+		}
+		*entry *= 1024;
+		if (*++p == 'i')
+			p++;
+	}
+	if (*p == 'b' || *p == 'B')
+		p++;
 	if (*p != 0 || *entry < 1) {
+		gpt_warnx(gpt, "Bad number `%s'", optarg);
+		return -1;
+	}
+	return 0;
+}
+
+int
+gpt_uint_get(gpt_t gpt, u_int *entry)
+{
+	char *p;
+
+	if (*entry > 0)
+		return -1;
+	errno = 0;
+	*entry = (u_int)strtoul(optarg, &p, 10);
+	if (*p != 0 || *entry < 1) {
+		if (errno == 0)
+			errno = EINVAL;
 		gpt_warn(gpt, "Bad number `%s'", optarg);
 		return -1;
 	}
 	return 0;
 }
+
 int
 gpt_uuid_get(gpt_t gpt, gpt_uuid_t *uuid)
 {
@@ -1437,3 +1528,4 @@ gpt_add_hdr(gpt_t gpt, int type, off_t loc)
 	}
 	return 0;
 }
+

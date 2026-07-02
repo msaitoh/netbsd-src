@@ -1,5 +1,5 @@
-/*	$NetBSD: scp.c,v 1.42 2024/07/08 22:33:44 christos Exp $	*/
-/* $OpenBSD: scp.c,v 1.261 2024/06/26 23:14:14 deraadt Exp $ */
+/*	$NetBSD: scp.c,v 1.45 2026/04/08 18:58:41 christos Exp $	*/
+/* $OpenBSD: scp.c,v 1.273 2026/04/02 07:42:16 djm Exp $ */
 
 /*
  * scp - secure remote copy.  This is basically patched BSD rcp which
@@ -74,14 +74,13 @@
  */
 
 #include "includes.h"
-__RCSID("$NetBSD: scp.c,v 1.42 2024/07/08 22:33:44 christos Exp $");
+__RCSID("$NetBSD: scp.c,v 1.45 2026/04/08 18:58:41 christos Exp $");
 
 #include <sys/param.h>	/* roundup MAX */
 #include <sys/types.h>
-#include <sys/poll.h>
-#include <sys/wait.h>
 #include <sys/stat.h>
 #include <sys/time.h>
+#include <sys/wait.h>
 #include <sys/uio.h>
 
 #include <ctype.h>
@@ -92,6 +91,7 @@ __RCSID("$NetBSD: scp.c,v 1.42 2024/07/08 22:33:44 christos Exp $");
 #include <glob.h>
 #include <libgen.h>
 #include <locale.h>
+#include <poll.h>
 #include <pwd.h>
 #include <signal.h>
 #include <stdarg.h>
@@ -217,7 +217,7 @@ suspchild(int signo)
 static int
 do_local_cmd(arglist *a)
 {
-	u_int i;
+	char *cp;
 	int status;
 	pid_t pid;
 
@@ -225,10 +225,9 @@ do_local_cmd(arglist *a)
 		fatal("do_local_cmd: no arguments");
 
 	if (verbose_mode) {
-		fprintf(stderr, "Executing:");
-		for (i = 0; i < a->num; i++)
-			fmprintf(stderr, " %s", a->list[i]);
-		fprintf(stderr, "\n");
+		cp = argv_assemble(a->num, a->list);
+		fmprintf(stderr, "Executing: %s\n", cp);
+		free(cp);
 	}
 	if ((pid = fork()) == -1)
 		fatal("do_local_cmd: fork: %s", strerror(errno));
@@ -460,6 +459,7 @@ main(int argc, char **argv)
 	addargs(&args, "-oClearAllForwardings=yes");
 	addargs(&args, "-oRemoteCommand=none");
 	addargs(&args, "-oRequestTTY=no");
+	addargs(&args, "-oControlMaster=no");
 
 	fflag = Tflag = tflag = 0;
 	while ((ch = getopt(argc, argv,
@@ -939,7 +939,7 @@ brace_expand(const char *pattern, char ***patternsp, size_t *npatternsp)
 			continue;
 		}
 		/*
-		 * Pattern did not expand; append the finename component to
+		 * Pattern did not expand; append the filename component to
 		 * the completed list
 		 */
 		if ((cp2 = strrchr(cp, '/')) != NULL)
@@ -1039,8 +1039,9 @@ toremote(int argc, char **argv, enum scp_mode_e mode, char *sftp_direct)
 		}
 		if (host && throughlocal) {	/* extended remote to remote */
 			if (mode == MODE_SFTP) {
-				if (remin == -1) {
+				if (remin == -1 || conn == NULL) {
 					/* Connect to dest now */
+					sftp_free(conn);
 					conn = do_sftp_connect(thost, tuser,
 					    tport, sftp_direct,
 					    &remin, &remout, &do_cmd_pid);
@@ -1058,6 +1059,7 @@ toremote(int argc, char **argv, enum scp_mode_e mode, char *sftp_direct)
 				 * scp -3 hosta:/foo hosta:/bar hostb:
 				 */
 				/* Connect to origin now */
+				sftp_free(conn2);
 				conn2 = do_sftp_connect(host, suser,
 				    sport, sftp_direct,
 				    &remin2, &remout2, &do_cmd_pid2);
@@ -1147,6 +1149,7 @@ toremote(int argc, char **argv, enum scp_mode_e mode, char *sftp_direct)
 				}
 				if (remin == -1) {
 					/* Connect to remote now */
+					sftp_free(conn);
 					conn = do_sftp_connect(thost, tuser,
 					    tport, sftp_direct,
 					    &remin, &remout, &do_cmd_pid);
@@ -1175,14 +1178,15 @@ toremote(int argc, char **argv, enum scp_mode_e mode, char *sftp_direct)
 		}
 	}
 out:
-	if (mode == MODE_SFTP)
-		free(conn);
+	freeargs(&alist);
 	free(tuser);
 	free(thost);
 	free(targ);
 	free(suser);
 	free(host);
 	free(src);
+	sftp_free(conn);
+	sftp_free(conn2);
 }
 
 static void
@@ -1228,6 +1232,7 @@ tolocal(int argc, char **argv, enum scp_mode_e mode, char *sftp_direct)
 		}
 		/* Remote to local. */
 		if (mode == MODE_SFTP) {
+			sftp_free(conn);
 			conn = do_sftp_connect(host, suser, sport,
 			    sftp_direct, &remin, &remout, &do_cmd_pid);
 			if (conn == NULL) {
@@ -1239,7 +1244,6 @@ tolocal(int argc, char **argv, enum scp_mode_e mode, char *sftp_direct)
 			/* The protocol */
 			sink_sftp(1, argv[argc - 1], src, conn);
 
-			free(conn);
 			(void) close(remin);
 			(void) close(remout);
 			remin = remout = -1;
@@ -1259,9 +1263,11 @@ tolocal(int argc, char **argv, enum scp_mode_e mode, char *sftp_direct)
 		(void) close(remin);
 		remin = remout = -1;
 	}
+	freeargs(&alist);
 	free(suser);
 	free(host);
 	free(src);
+	sftp_free(conn);
 }
 
 /* Prepare remote path, handling ~ by assuming cwd is the homedir */
@@ -1291,7 +1297,8 @@ prepare_remote_path(struct sftp_conn *conn, const char *path)
 void
 source_sftp(int argc, char *src, char *targ, struct sftp_conn *conn)
 {
-	char *target = NULL, *filename = NULL, *abs_dst = NULL;
+	char *target = NULL, *abs_dst = NULL;
+	const char *filename = NULL;
 	int src_is_dir, target_is_dir;
 	Attrib a;
 	struct stat st;
@@ -1302,6 +1309,10 @@ source_sftp(int argc, char *src, char *targ, struct sftp_conn *conn)
 	src_is_dir = S_ISDIR(st.st_mode);
 	if ((filename = basename(src)) == NULL)
 		fatal("basename \"%s\": %s", src, strerror(errno));
+
+	/* Special handling for source of '..' */
+	if (strcmp(filename, "..") == 0)
+		filename = "."; /* Upload to dest, not dest/.. */
 
 	/*
 	 * No need to glob here - the local shell already took care of
@@ -1509,7 +1520,8 @@ sink_sftp(int argc, char *dst, const char *src, struct sftp_conn *conn)
 	char *abs_src = NULL;
 	char *abs_dst = NULL;
 	glob_t g;
-	char *filename, *tmp = NULL;
+	const char *filename;
+	char *tmp = NULL;
 	int i, r, err = 0, dst_is_dir;
 	struct stat st;
 
@@ -1536,7 +1548,7 @@ sink_sftp(int argc, char *dst, const char *src, struct sftp_conn *conn)
 	}
 
 	/* Did we actually get any matches back from the glob? */
-	if (g.gl_matchc == 0 && g.gl_pathc == 1 && g.gl_pathv[0] != 0) {
+	if (g.gl_matchc == 0 && g.gl_pathc == 1 && g.gl_pathv[0] != NULL) {
 		/*
 		 * If nothing matched but a path returned, then it's probably
 		 * a GLOB_NOCHECK result. Check whether the unglobbed path
@@ -1576,6 +1588,10 @@ sink_sftp(int argc, char *dst, const char *src, struct sftp_conn *conn)
 			err = -1;
 			goto out;
 		}
+
+		/* Special handling for destination of '..' */
+		if (strcmp(filename, "..") == 0)
+			filename = "."; /* Download to dest, not dest/.. */
 
 		if (dst_is_dir)
 			abs_dst = sftp_path_append(dst, filename);
@@ -1640,8 +1656,10 @@ sink(int argc, char **argv, const char *src)
 
 	setimes = targisdir = 0;
 	mask = umask(0);
-	if (!pflag)
+	if (!pflag) {
+		mask |= 07000;
 		(void) umask(mask);
+	}
 	if (argc != 1) {
 		run_err("ambiguous target");
 		exit(1);
@@ -1845,7 +1863,7 @@ bad:			run_err("%s: %s", np, strerror(errno));
 		/*
 		 * NB. do not use run_err() unless immediately followed by
 		 * exit() below as it may send a spurious reply that might
-		 * desyncronise us from the peer. Use note_err() instead.
+		 * desynchronise us from the peer. Use note_err() instead.
 		 */
 		statbytes = 0;
 		if (showprogress)
@@ -1970,7 +1988,7 @@ throughlocal_sftp(struct sftp_conn *from, struct sftp_conn *to,
 	}
 
 	/* Did we actually get any matches back from the glob? */
-	if (g.gl_matchc == 0 && g.gl_pathc == 1 && g.gl_pathv[0] != 0) {
+	if (g.gl_matchc == 0 && g.gl_pathc == 1 && g.gl_pathv[0] != NULL) {
 		/*
 		 * If nothing matched but a path returned, then it's probably
 		 * a GLOB_NOCHECK result. Check whether the unglobbed path
@@ -2179,7 +2197,7 @@ allocbuf(BUF *bp, int fd, int blksize)
 
 	if (fstat(fd, &stb) == -1) {
 		run_err("fstat: %s", strerror(errno));
-		return (0);
+		return (NULL);
 	}
 	size = ROUNDUP(stb.st_blksize, blksize);
 	if (size == 0)

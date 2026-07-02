@@ -1,4 +1,4 @@
-/*	$NetBSD: test-milter.c,v 1.3 2020/03/18 19:05:17 christos Exp $	*/
+/*	$NetBSD: test-milter.c,v 1.5 2026/05/09 18:49:17 christos Exp $	*/
 
 /*++
 /* NAME
@@ -18,7 +18,7 @@
 /*	to maintain compatibility between successive versions.
 /*
 /*	Arguments (multiple alternatives are separated by "\fB|\fR"):
-/* .IP "\fB-a accept|tempfail|reject|discard|skip|\fIddd x.y.z text\fR"
+/* .IP "\fB-a accept|tempfail|reject|discard|skip|quarantine \fItext\fR|\fIddd x.y.z text\fR"
 /*	Specifies a non-default reply for the MTA command specified
 /*	with \fB-c\fR. The default is \fBtempfail\fR. The \fItext\fR
 /*	is repeated once, to produce multi-line reply text.
@@ -89,6 +89,7 @@
 #include <unistd.h>
 #include <string.h>
 
+#define SM_CONF_STDBOOL_H	1
 #include "libmilter/mfapi.h"
 #include "libmilter/mfdef.h"
 
@@ -110,7 +111,7 @@ static int test_body_reply = SMFIS_CONTINUE;
 static int test_eom_reply = SMFIS_CONTINUE;
 
 #if SMFI_VERSION > 2
-static int test_unknown_reply = SMFIS_CONTINUE;
+static int test_unknown_reply = SMFIS_REJECT;
 
 #endif
 static int test_close_reply = SMFIS_CONTINUE;
@@ -140,6 +141,8 @@ static const struct command_map command_map[] = {
 #endif
     0, 0,
 };
+
+static char *quarantine_reason;
 
 static char *reply_code;
 static char *reply_dsn;
@@ -229,7 +232,7 @@ static int test_reply(SMFICTX *ctx, int code)
     }
 }
 
-static sfsistat test_connect(SMFICTX *ctx, char *name, struct sockaddr * sa)
+static sfsistat test_connect(SMFICTX *ctx, char *name, struct sockaddr *sa)
 {
     const char *print_addr;
     char    buf[BUFSIZ];
@@ -302,7 +305,7 @@ static sfsistat test_rcpt(SMFICTX *ctx, char **argv)
 }
 
 
-sfsistat test_header(SMFICTX *ctx, char *name, char *value)
+static sfsistat test_header(SMFICTX *ctx, char *name, char *value)
 {
     printf("test_header \"%s\" \"%s\"\n", name, value);
     return (test_reply(ctx, test_header_reply));
@@ -341,7 +344,7 @@ static sfsistat test_eom(SMFICTX *ctx)
 		len = strcspn(buf, "\n");
 		buf[len + 0] = '\r';
 		buf[len + 1] = '\n';
-		if (smfi_replacebody(ctx, buf, len + 2) == MI_FAILURE) {
+		if (smfi_replacebody(ctx, (unsigned char *) buf, len + 2) == MI_FAILURE) {
 		    fprintf(stderr, "body replace failure\n");
 		    exit(1);
 		}
@@ -386,6 +389,11 @@ static sfsistat test_eom(SMFICTX *ctx)
 	for (count = 0; count < del_rcpt_count; count++)
 	    if (smfi_delrcpt(ctx, del_rcpt[count]) == MI_FAILURE)
 		fprintf(stderr, "smfi_delrcpt `%s' failed\n", del_rcpt[count]);
+    }
+    if (quarantine_reason) {
+	if (smfi_quarantine(ctx, quarantine_reason) == MI_FAILURE)
+	    fprintf(stderr, "smfi_quarantine failed\n");
+	printf("quarantine '%s'\n", quarantine_reason);
     }
     return (test_reply(ctx, test_eom_reply));
 }
@@ -447,7 +455,7 @@ static struct smfiDesc smfilter =
 {
     "test-milter",
     SMFI_VERSION,
-    SMFIF_ADDRCPT | SMFIF_DELRCPT | SMFIF_ADDHDRS | SMFIF_CHGHDRS | SMFIF_CHGBODY | SMFIF_CHGFROM,
+    SMFIF_ADDRCPT | SMFIF_DELRCPT | SMFIF_ADDHDRS | SMFIF_CHGHDRS | SMFIF_CHGBODY | SMFIF_CHGFROM | SMFIF_QUARANTINE,
     test_connect,
     test_helo,
     test_mail,
@@ -485,7 +493,7 @@ static const char *macro_states[] = {
 static int set_macro_state;
 static char *set_macro_list;
 
-typedef sfsistat (*FILTER_ACTION) ();
+typedef sfsistat (*FILTER_ACTION) (SMFICTX *, unsigned char *, size_t);
 
 struct noproto_map {
     const char *name;
@@ -496,15 +504,15 @@ struct noproto_map {
 };
 
 static const struct noproto_map noproto_map[] = {
-    "connect", SMFIP_NOCONNECT, SMFIP_NR_CONN, &test_connect_reply, &smfilter.xxfi_connect,
-    "helo", SMFIP_NOHELO, SMFIP_NR_HELO, &test_helo_reply, &smfilter.xxfi_helo,
-    "mail", SMFIP_NOMAIL, SMFIP_NR_MAIL, &test_mail_reply, &smfilter.xxfi_envfrom,
-    "rcpt", SMFIP_NORCPT, SMFIP_NR_RCPT, &test_rcpt_reply, &smfilter.xxfi_envrcpt,
-    "data", SMFIP_NODATA, SMFIP_NR_DATA, &test_data_reply, &smfilter.xxfi_data,
-    "header", SMFIP_NOHDRS, SMFIP_NR_HDR, &test_header_reply, &smfilter.xxfi_header,
-    "eoh", SMFIP_NOEOH, SMFIP_NR_EOH, &test_eoh_reply, &smfilter.xxfi_eoh,
-    "body", SMFIP_NOBODY, SMFIP_NR_BODY, &test_body_reply, &smfilter.xxfi_body,
-    "unknown", SMFIP_NOUNKNOWN, SMFIP_NR_UNKN, &test_connect_reply, &smfilter.xxfi_unknown,
+    "connect", SMFIP_NOCONNECT, SMFIP_NR_CONN, &test_connect_reply, (FILTER_ACTION *) & smfilter.xxfi_connect,
+    "helo", SMFIP_NOHELO, SMFIP_NR_HELO, &test_helo_reply, (FILTER_ACTION *) & smfilter.xxfi_helo,
+    "mail", SMFIP_NOMAIL, SMFIP_NR_MAIL, &test_mail_reply, (FILTER_ACTION *) & smfilter.xxfi_envfrom,
+    "rcpt", SMFIP_NORCPT, SMFIP_NR_RCPT, &test_rcpt_reply, (FILTER_ACTION *) & smfilter.xxfi_envrcpt,
+    "data", SMFIP_NODATA, SMFIP_NR_DATA, &test_data_reply, (FILTER_ACTION *) & smfilter.xxfi_data,
+    "header", SMFIP_NOHDRS, SMFIP_NR_HDR, &test_header_reply, (FILTER_ACTION *) & smfilter.xxfi_header,
+    "eoh", SMFIP_NOEOH, SMFIP_NR_EOH, &test_eoh_reply, (FILTER_ACTION *) & smfilter.xxfi_eoh,
+    "body", SMFIP_NOBODY, SMFIP_NR_BODY, &test_body_reply, (FILTER_ACTION *) & smfilter.xxfi_body,
+    "unknown", SMFIP_NOUNKNOWN, SMFIP_NR_UNKN, &test_unknown_reply, (FILTER_ACTION *) & smfilter.xxfi_unknown,
     0,
 };
 
@@ -572,7 +580,10 @@ int     main(int argc, char **argv)
     while ((ch = getopt(argc, argv, "a:A:b:c:C:d:D:f:h:i:lm:M:n:N:p:rv")) > 0) {
 	switch (ch) {
 	case 'a':
-	    action = optarg;
+	    if (action != 0)
+		fprintf(stderr, "ignoring extra -a option\n");
+	    else
+		action = optarg;
 	    break;
 	case 'A':
 	    if (add_rcpt_count >= MAX_RCPT) {
@@ -760,6 +771,13 @@ int     main(int argc, char **argv)
 	    cp->reply[0] = SMFIS_ACCEPT;
 	} else if (strcmp(action, "discard") == 0) {
 	    cp->reply[0] = SMFIS_DISCARD;
+	} else if (strncmp(action, "quarantine ", 11) == 0) {
+	    if (strcmp(command, "eom") != 0) {
+		fprintf(stderr, "quarantine action requires '-c eom'\n");
+		exit(1);
+	    }
+	    quarantine_reason = action + 11;
+	    quarantine_reason += strspn(quarantine_reason, " ");
 #ifdef SMFIS_SKIP
 	} else if (strcmp(action, "skip") == 0) {
 	    cp->reply[0] = SMFIS_SKIP;
@@ -795,6 +813,8 @@ int     main(int argc, char **argv)
 		printf("reply code %s dsn %s message %s\n",
 		       reply_code, reply_dsn ? reply_dsn : "(null)",
 		       reply_message ? reply_message : "(null)");
+	    if (quarantine_reason)
+		printf("quarantine reason %s\n", quarantine_reason);
 	}
     }
 #if SMFI_VERSION > 5

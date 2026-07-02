@@ -1,4 +1,4 @@
-# $NetBSD: Makefile,v 1.21 2023/06/03 09:09:04 lukem Exp $
+# $NetBSD: Makefile,v 1.23 2025/09/19 05:09:10 mrg Exp $
 
 .include <bsd.own.mk>
 
@@ -32,6 +32,7 @@ term.c \
 term_ascii.c \
 term_ps.c \
 term_tab.c \
+term_tag.c \
 tree.c
 
 .ifndef HOSTPROG
@@ -47,5 +48,6 @@ SRCS+=		${SRCS.libmandoc} compat_strtonum.c
 COPTS.man_term.c+= -Wno-error=array-bounds
 
 COPTS.tbl_term.c+=	${CC_WNO_FORMAT_TRUNCATION}
+COPTS.tree.c+=		${CC_WNO_FORMAT_OVERFLOW}
 
 .include <bsd.prog.mk>

@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile.inc,v 1.49 2024/04/22 14:41:26 nia Exp $
+#	$NetBSD: Makefile.inc,v 1.52 2026/04/26 13:31:47 martin Exp $
 #
 # Makefile for sysinst
 
@@ -32,6 +32,14 @@ LANGUAGES?=	de en es fr pl
 MENUS_MI=	menus.mi
 MENUS_MI+=	${NOPARTMAN:D:Umenus.pm}
 
+# Provide a timestamp when this binary was build for TODR sanity checking
+.if ${MKREPRO_TIMESTAMP:Uno} != "no"
+CPPFLAGS+=	-DBUILD_TIMESTAMP=${MKREPRO_TIMESTAMP}
+.else
+BUILD_TS!=	${TOOL_DATE} -u '+%s'
+CPPFLAGS+=	-DBUILD_TIMESTAMP=${BUILD_TS}
+.endif
+
 .if ${NO_GPT:Uno} != "yes"
 CPPFLAGS+=	-DHAVE_GPT
 GPT_DIR=${.CURDIR}/../../../../sbin/gpt
@@ -42,6 +50,7 @@ CPPFLAGS.gpt.c+=	-I${GPT_DIR}
 .if ${NO_MBR:Uyes} != "yes"
 CPPFLAGS+=	-DHAVE_MBR
 SRCS+=	mbr.c
+COPTS.mbr.c+=	${CC_WNO_MAYBE_UNINITIALIZED}
 .endif
 .if ${NO_CLONES:Uno} == "yes"
 CPPFLAGS+=	-DNO_CLONES
@@ -154,6 +163,7 @@ O0TRACKING=	-fvar-tracking-assignments -fvar-tracking
 .endif
 CPPFLAGS+=-DDEBUG
 DBG +=-g -O0 ${O0TRACKING}
+COPTS.net.c	+= ${CC_WNO_MAYBE_UNINITIALIZED}
 .else
 .if defined(SMALLPROG)
 COPTS += -Os

@@ -1,4 +1,4 @@
-/*	$NetBSD: postdrop.c,v 1.4 2022/10/08 16:12:47 christos Exp $	*/
+/*	$NetBSD: postdrop.c,v 1.6 2026/05/09 18:49:18 christos Exp $	*/
 
 /*++
 /* NAME
@@ -41,12 +41,13 @@
 /* .fi
 /* .IP MAIL_CONFIG
 /*	Directory with the \fBmain.cf\fR file. In order to avoid exploitation
-/*	of set-group ID privileges, a non-standard directory is allowed only
+/*	of set-group ID privileges, a non-default directory is allowed only
 /*	if:
 /* .RS
 /* .IP \(bu
-/*	The name is listed in the standard \fBmain.cf\fR file with the
-/*	\fBalternate_config_directories\fR configuration parameter.
+/*	The name is listed in the default \fBmain.cf\fR file with the
+/*	\fBalternate_config_directories\fR or
+/*	\fBmulti_instance_directories\fR configuration parameter.
 /* .IP \(bu
 /*	The command is invoked by the super-user.
 /* .RE
@@ -66,7 +67,7 @@
 /*	The default location of the Postfix main.cf and master.cf
 /*	configuration files.
 /* .IP "\fBimport_environment (see 'postconf -d' output)\fR"
-/*	The list of environment parameters that a privileged Postfix
+/*	The list of environment variables that a privileged Postfix
 /*	process will import from a non-Postfix parent process, or name=value
 /*	environment overrides.
 /* .IP "\fBqueue_directory (see 'postconf -d' output)\fR"

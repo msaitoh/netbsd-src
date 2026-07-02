@@ -1,4 +1,4 @@
-/*	$NetBSD: riscv_machdep.c,v 1.38 2024/08/15 07:03:57 skrll Exp $	*/
+/*	$NetBSD: riscv_machdep.c,v 1.50 2026/04/08 04:06:41 thorpej Exp $	*/
 
 /*-
  * Copyright (c) 2014, 2019, 2022 The NetBSD Foundation, Inc.
@@ -35,7 +35,7 @@
 #include "opt_riscv_debug.h"
 
 #include <sys/cdefs.h>
-__RCSID("$NetBSD: riscv_machdep.c,v 1.38 2024/08/15 07:03:57 skrll Exp $");
+__RCSID("$NetBSD: riscv_machdep.c,v 1.50 2026/04/08 04:06:41 thorpej Exp $");
 
 #include <sys/param.h>
 
@@ -57,19 +57,27 @@ __RCSID("$NetBSD: riscv_machdep.c,v 1.38 2024/08/15 07:03:57 skrll Exp $");
 #include <sys/systm.h>
 
 #include <dev/cons.h>
+#ifdef __HAVE_MM_MD_KERNACC
+#include <dev/mm.h>
+#endif
+
 #include <uvm/uvm_extern.h>
 
+#include <riscv/cpufunc.h>
 #include <riscv/frame.h>
 #include <riscv/locore.h>
 #include <riscv/machdep.h>
 #include <riscv/pte.h>
 #include <riscv/sbi.h>
+#include <riscv/userret.h>
 
 #include <libfdt.h>
 #include <dev/fdt/fdtvar.h>
 #include <dev/fdt/fdt_boot.h>
+#include <dev/fdt/fdt_console.h>
 #include <dev/fdt/fdt_memory.h>
 #include <dev/fdt/fdt_private.h>
+#include <dev/fdt/fdt_platform.h>
 
 int cpu_printfataltraps = 1;
 char machine[] = MACHINE;
@@ -135,16 +143,6 @@ SYSCTL_SETUP(sysctl_machdep_setup, "sysctl machdep subtree setup")
 	    NULL, 0, NULL, 0,
 	    CTL_MACHDEP, CTL_EOL);
 }
-
-#ifdef MODULAR
-/*
- * Push any modules loaded by the boot loader.
- */
-void
-module_init_md(void)
-{
-}
-#endif /* MODULAR */
 
 /*
  * Set registers on exec.
@@ -446,6 +444,11 @@ cpu_reboot(int howto, char *bootstr)
 	DISABLE_INTERRUPTS();
 
 	if (howto & RB_HALT) {
+		if (howto & RB_POWERDOWN) {
+			printf("power off...\n");
+			sbi_system_reset(SBI_RESET_TYPE_SHUTDOWN,
+					 SBI_RESET_REASON_NONE);
+		} /* FALLTHRU */
 		printf("\n");
 		printf("The operating system has halted.\n");
 		printf("Please press any key to reboot.\n\n");
@@ -566,6 +569,7 @@ cpu_kernel_vm_init(paddr_t memory_start, paddr_t memory_end)
 	fdt_memory_remove_range(kernstart_phys,
 	    kernend_phys - kernstart_phys);
 
+#if 0
 	/*
 	 * Don't give these pages to UVM.
 	 *
@@ -585,6 +589,7 @@ cpu_kernel_vm_init(paddr_t memory_start, paddr_t memory_end)
 		    " end %#" PRIxPADDR "\n", __func__, spa, epa);
 		fdt_memory_remove_range(spa, epa - spa);
 	}
+#endif
 
 #ifdef _LP64
 	paddr_t pa = memory_start & ~XSEGOFSET;
@@ -602,8 +607,10 @@ cpu_kernel_vm_init(paddr_t memory_start, paddr_t memory_end)
 	const size_t eidx = (eva >> vshift) & pdetab_mask;
 
 	/* Allocate gigapages covering all physical memory in the direct map. */
+	pt_entry_t pbmt_flag = pte_enter_flags_to_pbmt(0);
 	for (size_t i = sidx; i < eidx && pa < memory_end; i++, pa += inc) {
-		l2_pte[i] = PA_TO_PTE(pa) | PTE_KERN | PTE_HARDWIRED | PTE_RW;
+		l2_pte[i] = PA_TO_PTE(pa) | PTE_KERN | PTE_HARDWIRED | PTE_RW |
+		    pbmt_flag;
 		VPRINTF("dm:   %p :  %#" PRIxPADDR "\n", &l2_pte[i], l2_pte[i]);
 	}
 #endif
@@ -709,6 +716,11 @@ init_riscv(register_t hartid, paddr_t dtb)
 	VPRINTF("FDT<%p>\n", fdt_data);
 
 	boot_args = fdt_get_bootargs();
+
+	/* Heads up ... Setup the CPU / MMU / TLB functions. */
+	VPRINTF("cpufunc\n");
+	if (set_cpufuncs())
+		panic("cpu not recognized!");
 
 	VPRINTF("devmap %p\n", plat->fp_devmap());
 	pmap_devmap_bootstrap(0, plat->fp_devmap());
@@ -889,7 +901,6 @@ init_riscv(register_t hartid, paddr_t dtb)
 	/* Finish setting up lwp0 on our end before we call main() */
 	riscv_init_lwp0_uarea();
 
-
 	error = 0;
 	if ((boothowto & RB_MD1) == 0) {
 		VPRINTF("mpstart\n");
@@ -899,6 +910,44 @@ init_riscv(register_t hartid, paddr_t dtb)
 	if (error)
 		printf("AP startup problems\n");
 }
+
+
+#ifdef __HAVE_MM_MD_KERNACC
+
+#define IN_RANGE_P(addr, start, end)	(start) <= (addr) && (addr) < (end)
+#ifdef _LP64
+#define IN_DIRECTMAP_P(va) \
+	IN_RANGE_P(va, RISCV_DIRECTMAP_START, RISCV_DIRECTMAP_END)
+#else
+#define IN_DIRECTMAP_P(va) false
+#endif
+
+int
+mm_md_kernacc(void *ptr, vm_prot_t prot, bool *handled)
+{
+	extern char __kernel_text[];
+	extern char _end[];
+	extern char __data_start[];
+
+	const vaddr_t kernstart = trunc_page((vaddr_t)__kernel_text);
+	const vaddr_t kernend = round_page((vaddr_t)_end);
+	const vaddr_t data_start = (vaddr_t)__data_start;
+
+	const vaddr_t va = (vaddr_t)ptr;
+
+	*handled = false;
+	if (IN_RANGE_P(va, kernstart, kernend)) {
+		*handled = true;
+		if (va < data_start && (prot & VM_PROT_WRITE) != 0) {
+			return EFAULT;
+		}
+	} else if (IN_DIRECTMAP_P(va)) {
+		*handled = true;
+	}
+
+	return 0;
+}
+#endif
 
 
 #ifdef _LP64

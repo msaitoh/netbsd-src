@@ -1,4 +1,4 @@
-/*	$NetBSD: param.h,v 1.88 2021/05/31 14:38:55 simonb Exp $	*/
+/*	$NetBSD: param.h,v 1.91 2026/05/10 16:07:56 thorpej Exp $	*/
 
 /*-
  * Copyright (c) 1990 The Regents of the University of California.
@@ -65,6 +65,14 @@
 #define ALIGNED_POINTER(p,t)		1
 #define ALIGNED_POINTER_LOAD(q,p,t)	memcpy((q), (p), sizeof(t))
 
+/*
+ * Stack alignment is 4-byte, following the traditional i386 SysV ABI
+ * published by SCO.  Note: Parts of the Linux world have altered the
+ * ABI to guarantee 16-byte alignment, which is convenient for SSE2,
+ * but an incompatible ABI change which we do not follow.
+ */
+#define	STACK_ALIGNBYTES	(4 - 1)
+
 #define	PGSHIFT		12		/* LOG2(NBPG) */
 #define	NBPG		(1 << PGSHIFT)	/* bytes/page */
 #define	PGOFSET		(NBPG-1)	/* byte offset into page */
@@ -90,10 +98,6 @@
 #endif
 
 #define	KERNTEXTOFF	(KERNBASE + 0x100000) /* start of kernel text */
-#define	BTOPKERNBASE	(KERNBASE >> PGSHIFT)
-
-#define	SSIZE		1		/* initial stack size/NBPG */
-#define	SINCR		1		/* increment of stack/NBPG */
 
 #ifndef UPAGES
 # ifdef DIAGNOSTIC

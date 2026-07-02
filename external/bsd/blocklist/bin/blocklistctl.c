@@ -1,4 +1,4 @@
-/*	$NetBSD: blocklistctl.c,v 1.2 2022/06/11 19:23:26 christos Exp $	*/
+/*	$NetBSD: blocklistctl.c,v 1.5 2025/10/25 16:56:10 christos Exp $	*/
 
 /*-
  * Copyright (c) 2015 The NetBSD Foundation, Inc.
@@ -32,8 +32,10 @@
 #include "config.h"
 #endif
 
+#ifdef HAVE_SYS_CDEFS_H
 #include <sys/cdefs.h>
-__RCSID("$NetBSD: blocklistctl.c,v 1.2 2022/06/11 19:23:26 christos Exp $");
+#endif
+__RCSID("$NetBSD: blocklistctl.c,v 1.5 2025/10/25 16:56:10 christos Exp $");
 
 #include <stdio.h>
 #include <time.h>
@@ -63,7 +65,8 @@ usage(int c)
 		warnx("Missing/unknown command");
 	else if (c != '?')
 		warnx("Unknown option `%c'", (char)c);
-	fprintf(stderr, "Usage: %s dump [-abdnrw]\n", getprogname());
+	fprintf(stderr,
+	    "Usage: %s dump [-abdnrw] [-D dbname]\n", getprogname());
 	exit(EXIT_FAILURE);
 }
 
@@ -132,7 +135,7 @@ main(int argc, char *argv[])
 	clock_gettime(CLOCK_REALTIME, &ts);
 	wide = wide ? 8 * 4 + 7 : 4 * 3 + 3;
 	if (!noheader)
-		printf("%*.*s/ma:port\tid\tnfail\t%s\n", wide, wide,
+		printf("rulename\t%*.*s/ma:port\tid\tnfail\t%s\n", wide, wide,
 		    "address", remain ? "remaining time" : "last access");
 	for (i = 1; state_iterate(db, &c, &dbi, i) != 0; i = 0) {
 		char buf[BUFSIZ];
@@ -147,7 +150,7 @@ main(int argc, char *argv[])
 			}
 		}
 		sockaddr_snprintf(buf, sizeof(buf), "%a", (void *)&c.c_ss);
-		printf("%*.*s/%s:%s\t", wide, wide, buf,
+		printf("%s\t%*.*s/%s:%s\t", c.c_name, wide, wide, buf,
 		    star(mbuf, sizeof(mbuf), c.c_lmask),
 		    star(pbuf, sizeof(pbuf), c.c_port));
 		if (c.c_duration == -1) {

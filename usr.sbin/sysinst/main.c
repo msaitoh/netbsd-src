@@ -1,4 +1,4 @@
-/*	$NetBSD: main.c,v 1.33 2024/02/21 20:31:57 martin Exp $	*/
+/*	$NetBSD: main.c,v 1.36 2026/04/26 13:31:47 martin Exp $	*/
 
 /*
  * Copyright 1997 Piermont Information Systems Inc.
@@ -98,6 +98,9 @@ static void ttysighandler(int);
 static void cleanup(void);
 static void process_f_flag(char *);
 static bool no_openssl_trust_anchors_available(void);
+#ifdef BUILD_TIMESTAMP
+static void check_todr_sanity(void);
+#endif
 
 static int exit_cleanly = 0;	/* Did we finish nicely? */
 FILE *logfp;			/* log file */
@@ -110,7 +113,7 @@ const char *err_outofmem;
 extern int log_flip(void);
 #endif
 
-/* Definion for colors */
+/* Definition for colors */
 
 struct {
 	unsigned int bg;
@@ -208,7 +211,7 @@ init_lang(void)
 int
 main(int argc, char **argv)
 {
-	int ch;
+	int ch, no_https = 0;
 	const char *msg_cat_dir = NULL;
 
 	init();
@@ -266,8 +269,10 @@ main(int argc, char **argv)
 	partitions_init();
 
 	/* do we need to tell ftp(1) to avoid checking certificate chains? */
-	if (no_openssl_trust_anchors_available())
+	if (no_openssl_trust_anchors_available()) {
 		setenv("FTPSSLNOVERIFY", "1", 1);
+		no_https = 1;
+	}
 
 	/* initialize message window */
 	if (menu_init()) {
@@ -308,9 +313,15 @@ main(int argc, char **argv)
 	get_kb_encoding();
 	init_lang();
 
+#ifdef BUILD_TIMESTAMP
+	check_todr_sanity();
+#endif
+
 	/* remove some invalid menu entries */
 	if (!has_colors())
 		remove_color_options();
+	if (no_https)
+		remove_https_options();
 
 	/* Menu processing */
 	if (partman_go)
@@ -685,3 +696,17 @@ no_openssl_trust_anchors_available(void)
 
 	return cnt < 2;
 }
+
+#ifdef BUILD_TIMESTAMP
+static void
+check_todr_sanity(void)
+{
+	time_t now = time(NULL);
+
+	if (now >= BUILD_TIMESTAMP - 2*86400)
+		return;
+
+	do_time_and_date_setup(MSG_todr_old);
+}
+#endif
+

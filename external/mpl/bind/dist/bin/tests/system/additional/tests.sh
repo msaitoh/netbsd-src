@@ -268,7 +268,7 @@ minimal=yes
 dotests
 
 echo_i "reconfiguring server: minimal-responses no"
-copy_setports ns1/named2.conf.in ns1/named.conf
+cp ns1/named2.conf ns1/named.conf
 rndc_reconfig ns1 10.53.0.1
 
 echo_i "testing with 'minimal-responses no;'"
@@ -279,14 +279,14 @@ n=$((n + 1))
 echo_i "testing with 'minimal-any no;' ($n)"
 ret=0
 $DIG $DIGOPTS -t ANY www.rt.example @10.53.0.1 >dig.out.$n || ret=1
-grep "ANSWER: 3, AUTHORITY: 2, ADDITIONAL: 2" dig.out.$n >/dev/null || ret=1
+grep "ANSWER: 3, AUTHORITY: 2, ADDITIONAL: 1" dig.out.$n >/dev/null || ret=1
 if [ $ret -eq 1 ]; then
   echo_i "failed"
   status=$((status + 1))
 fi
 
 echo_i "reconfiguring server: minimal-any yes"
-copy_setports ns1/named3.conf.in ns1/named.conf
+cp ns1/named3.conf ns1/named.conf
 rndc_reconfig ns1 10.53.0.1
 
 n=$((n + 1))
@@ -324,7 +324,7 @@ minimal=no-auth
 dotests
 
 echo_i "reconfiguring server: minimal-responses no-auth-recursive"
-copy_setports ns1/named4.conf.in ns1/named.conf
+cp ns1/named4.conf ns1/named.conf
 rndc_reconfig ns1 10.53.0.1
 
 echo_i "testing with 'minimal-responses no-auth-recursive;'"
@@ -356,7 +356,7 @@ if [ $ret -eq 1 ]; then
 fi
 
 echo_i "reconfiguring server: minimal-responses no"
-copy_setports ns1/named2.conf.in ns1/named.conf
+cp ns1/named2.conf ns1/named.conf
 rndc_reconfig ns1 10.53.0.1
 
 n=$((n + 1))

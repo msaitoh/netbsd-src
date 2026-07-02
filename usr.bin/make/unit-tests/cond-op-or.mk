@@ -1,4 +1,4 @@
-# $NetBSD: cond-op-or.mk,v 1.13 2024/08/06 18:00:17 rillig Exp $
+# $NetBSD: cond-op-or.mk,v 1.15 2025/06/28 22:39:28 rillig Exp $
 #
 # Tests for the || operator in .if conditions.
 
@@ -32,15 +32,15 @@
 # Test combinations of outer '&&' with inner '||', to ensure that the operands
 # of the inner '||' are only evaluated if necessary.
 DEF=	defined
-# expect+1: Malformed conditional '1 && (!${DEF} || ${UNDEF})'
+# expect+1: Variable "UNDEF" is undefined
 .if 1 && (!${DEF} || ${UNDEF})
 .endif
 .if 1 && (${DEF} || ${UNDEF})
 .endif
-# expect+1: Malformed conditional '1 && (!${UNDEF} || ${UNDEF})'
+# expect+1: Variable "UNDEF" is undefined
 .if 1 && (!${UNDEF} || ${UNDEF})
 .endif
-# expect+1: Malformed conditional '1 && (${UNDEF} || ${UNDEF})'
+# expect+1: Variable "UNDEF" is undefined
 .if 1 && (${UNDEF} || ${UNDEF})
 .endif
 .if 0 && (!${DEF} || ${UNDEF})
@@ -56,25 +56,25 @@ DEF=	defined
 # The || operator may be abbreviated as |.  This is not widely known though
 # and is also not documented in the manual page.
 
-# expect+1: Unknown operator '|'
+# expect+1: Unknown operator "|"
 .if 0 | 0
 .  error
 .else
 .  error
 .endif
-# expect+1: Unknown operator '|'
+# expect+1: Unknown operator "|"
 .if !(1 | 0)
 .  error
 .else
 .  error
 .endif
-# expect+1: Unknown operator '|'
+# expect+1: Unknown operator "|"
 .if !(0 | 1)
 .  error
 .else
 .  error
 .endif
-# expect+1: Unknown operator '|'
+# expect+1: Unknown operator "|"
 .if !(1 | 1)
 .  error
 .else
@@ -83,7 +83,7 @@ DEF=	defined
 
 # There is no operator '|||'.  The first two '||' form an operator, the third
 # '|' forms the next (incomplete) token.
-# expect+1: Unknown operator '|'
+# expect+1: Unknown operator "|"
 .if 0 ||| 0
 .  error
 .else

@@ -1,4 +1,4 @@
-/* $NetBSD: lint1.h,v 1.228 2024/09/28 15:51:40 rillig Exp $ */
+/* $NetBSD: lint1.h,v 1.241 2026/06/16 05:27:57 rillig Exp $ */
 
 /*
  * Copyright (c) 1996 Christopher G. Demetriou.  All Rights Reserved.
@@ -53,6 +53,21 @@ typedef struct memory_pool {
 	size_t	cap;
 } memory_pool;
 
+/*
+ * By default, all expressions are fully evaluated. In some cases such as the
+ * sizeof operator, only the type of an expression is needed, but not its
+ * value. In yet other cases such as a _Generic expression, not even the type
+ * is needed, so just parsing the expression suffices.
+ */
+typedef enum {
+	/* Only parse expressions, don't determine their type. */
+	EM_PARSE,
+	/* Determine the type of the expressions, but don't evaluate them. */
+	EM_TYPE,
+	/* Fully evaluate expressions. */
+	EM_EVAL,
+} evaluation_mode;
+
 /* See saved_lwarn in cgram.y. */
 #define LWARN_ALL	(-2)
 #define LWARN_NONE	(-1)
@@ -80,6 +95,8 @@ typedef struct {
 
 typedef struct {
 	bool used;
+	bool noreturn;
+	unsigned bit_width;
 } type_attributes;
 
 /* A bool, integer or floating-point value. */
@@ -134,7 +151,9 @@ struct lint1_type {
 	bool	t_const:1;
 	bool	t_volatile:1;
 	bool	t_proto:1;	/* function prototype (u.params valid) */
+	bool	t_identifier_params:1;	/* if FUNC and not t_proto */
 	bool	t_vararg:1;	/* prototype with '...' */
+	bool	t_noreturn:1;	/* function never returns normally */
 	bool	t_typedef:1;	/* type defined with typedef */
 	bool	t_typeof:1;	/* type defined with GCC's __typeof__ */
 	bool	t_bitfield:1;
@@ -249,6 +268,11 @@ struct sym {
 		} s_keyword;
 		sym_t	*s_old_style_params;	/* parameters in an old-style
 						 * function definition */
+		/*
+		 * Only for string initializers with automatic size.
+		 * Does not take '\0' characters in the middle into account.
+		 */
+		size_t s_array_nonnull_dimension;
 	} u;
 	sym_t	*s_symtab_next;	/* next symbol in the same symtab bucket */
 	sym_t	**s_symtab_ref;	/* pointer to s_symtab_next of the previous
@@ -306,10 +330,11 @@ struct tnode {
 	} u;
 };
 
-struct generic_association {
-	type_t *ga_arg;		/* NULL means default or error */
-	tnode_t *ga_result;	/* NULL means error */
-	struct generic_association *ga_prev;
+struct generic_selection {
+	const type_t *expr_type;
+	tnode_t *fallback;
+	tnode_t *matched;
+	bool assoc_matched;
 };
 
 typedef struct {
@@ -366,6 +391,7 @@ typedef struct decl_level {
 	bool	d_asm:1;	/* set if d_ctx == AUTO and asm() present */
 	bool	d_packed:1;
 	bool	d_used:1;
+	bool	d_noreturn:1;	/* function never returns normally */
 	type_t	*d_tag_type;	/* during a member or enumerator declaration,
 				 * the tag type to which the member belongs */
 	sym_t	*d_func_params;	/* during a function declaration, the
@@ -377,6 +403,8 @@ typedef struct decl_level {
 	sym_t	*d_func_proto_syms;	/* symbols defined in prototype, such
 					 * as tagged types or parameter names,
 					 * may overlap d_func_params */
+	bool	d_finished;	/* the declaration-specifiers are complete,
+				 * the declarator is being parsed */
 	struct decl_level *d_enclosing; /* the enclosing declaration level */
 } decl_level;
 
@@ -385,6 +413,8 @@ typedef struct {
 	bool	vararg:1;
 	bool	prototype:1;
 	bool	used:1;
+	bool	noreturn:1;
+	bool	identifier:1;
 } parameter_list;
 
 /*
@@ -490,7 +520,6 @@ typedef struct designation {
 typedef enum {
 	LC_ARGSUSED,
 	LC_BITFIELDTYPE,
-	LC_CONSTCOND,
 	LC_FALLTHROUGH,
 	LC_LINTLIBRARY,
 	LC_LINTED,
@@ -596,7 +625,7 @@ check_printf(const char *fmt, ...)
 
 #  define wrap_check_printf(func, cond, msgid, args...)			\
 	({								\
-		if (/* CONSTCOND */cond)				\
+		if (cond)						\
 			debug_step("%s:%d: %s %d '%s' in %s",		\
 			    __FILE__, __LINE__,	#func, msgid,		\
 			    __CONCAT(MSG_, msgid), __func__);		\
@@ -744,4 +773,20 @@ set_sym_kind(symbol_kind kind)
 		debug_step("%s: %s -> %s", __func__,
 		    symbol_kind_name(sym_kind), symbol_kind_name(kind));
 	sym_kind = kind;
+}
+
+static inline type_attributes
+merge_type_attributes(type_attributes a, type_attributes b)
+{
+	return (type_attributes){
+		.used = a.used || b.used,
+		.noreturn = a.noreturn || b.noreturn,
+		.bit_width = b.bit_width > 0 ? b.bit_width : a.bit_width,
+	};
+}
+
+static inline type_attributes
+no_type_attributes(void)
+{
+	return (type_attributes){ .used = false };
 }

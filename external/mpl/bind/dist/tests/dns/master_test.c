@@ -1,4 +1,4 @@
-/*	$NetBSD: master_test.c,v 1.2 2024/02/21 22:52:50 christos Exp $	*/
+/*	$NetBSD: master_test.c,v 1.4 2026/04/08 00:16:17 christos Exp $	*/
 
 /*
  * Copyright (C) Internet Systems Consortium, Inc. ("ISC")
@@ -27,7 +27,6 @@
 #include <cmocka.h>
 
 #include <isc/dir.h>
-#include <isc/print.h>
 #include <isc/string.h>
 #include <isc/util.h>
 
@@ -66,16 +65,18 @@ static void
 rawdata_callback(dns_zone_t *zone, dns_masterrawheader_t *header);
 
 static isc_result_t
-add_callback(void *arg, const dns_name_t *owner, dns_rdataset_t *dataset) {
+add_callback(void *arg, const dns_name_t *owner, dns_rdataset_t *dataset,
+	     dns_diffop_t op DNS__DB_FLARG) {
 	char buf[BIGBUFLEN];
 	isc_buffer_t target;
 	isc_result_t result;
 
 	UNUSED(arg);
+	UNUSED(op);
 
 	isc_buffer_init(&target, buf, BIGBUFLEN);
 	result = dns_rdataset_totext(dataset, owner, false, false, &target);
-	return (result);
+	return result;
 }
 
 static void
@@ -105,11 +106,11 @@ setup_master(void (*warn)(struct dns_rdatacallbacks *, const char *, ...),
 	result = dns_name_fromtext(&dns_origin, &source, dns_rootname, 0,
 				   &target);
 	if (result != ISC_R_SUCCESS) {
-		return (result);
+		return result;
 	}
 
 	dns_rdatacallbacks_init_stdio(&callbacks);
-	callbacks.add = add_callback;
+	callbacks.update = add_callback;
 	callbacks.rawdata = rawdata_callback;
 	callbacks.zone = NULL;
 	if (warn != NULL) {
@@ -119,7 +120,7 @@ setup_master(void (*warn)(struct dns_rdatacallbacks *, const char *, ...),
 		callbacks.error = error;
 	}
 	headerset = false;
-	return (result);
+	return result;
 }
 
 static isc_result_t
@@ -131,11 +132,11 @@ test_master(const char *workdir, const char *testfile,
 
 	result = setup_master(warn, error);
 	if (result != ISC_R_SUCCESS) {
-		return (result);
+		return result;
 	}
 
 	dns_rdatacallbacks_init_stdio(&callbacks);
-	callbacks.add = add_callback;
+	callbacks.update = add_callback;
 	callbacks.rawdata = rawdata_callback;
 	callbacks.zone = NULL;
 	if (warn != NULL) {
@@ -148,7 +149,7 @@ test_master(const char *workdir, const char *testfile,
 	if (workdir != NULL) {
 		result = isc_dir_chdir(workdir);
 		if (result != ISC_R_SUCCESS) {
-			return (result);
+			return result;
 		}
 	}
 
@@ -156,7 +157,7 @@ test_master(const char *workdir, const char *testfile,
 				     dns_rdataclass_in, true, 0, &callbacks,
 				     NULL, NULL, mctx, format, 0);
 
-	return (result);
+	return result;
 }
 
 static void
@@ -399,8 +400,7 @@ ISC_RUN_TEST_IMPL(totext) {
 	rdatalist.covers = dns_rdatatype_none;
 
 	dns_rdataset_init(&rdataset);
-	result = dns_rdatalist_tordataset(&rdatalist, &rdataset);
-	assert_int_equal(result, ISC_R_SUCCESS);
+	dns_rdatalist_tordataset(&rdatalist, &rdataset);
 
 	isc_buffer_init(&target, buf, BIGBUFLEN);
 	result = dns_master_rdatasettotext(dns_rootname, &rdataset,
@@ -475,8 +475,9 @@ ISC_RUN_TEST_IMPL(dumpraw) {
 				   &target);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
-	result = dns_db_create(mctx, "rbt", &dnsorigin, dns_dbtype_zone,
-			       dns_rdataclass_in, 0, NULL, &db);
+	result = dns_db_create(mctx, ZONEDB_DEFAULT, &dnsorigin,
+			       dns_dbtype_zone, dns_rdataclass_in, 0, NULL,
+			       &db);
 	assert_int_equal(result, ISC_R_SUCCESS);
 
 	result = isc_dir_chdir(SRCDIR);

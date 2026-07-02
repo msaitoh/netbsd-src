@@ -1,4 +1,4 @@
-/*	$NetBSD: gemini_start.S,v 1.9 2013/10/01 07:48:35 skrll Exp $	*/
+/*	$NetBSD: gemini_start.S,v 1.11 2025/12/19 13:03:52 nia Exp $	*/
 
 /*
  * Machine dependent startup code for GEMINI boards.
@@ -67,9 +67,6 @@
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
- * 3. All advertising materials mentioning features or use of this software
- *    must display the following acknowledgement:
- *	This product includes software developed by Microsoft
  *
  * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR IMPLIED
  * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
@@ -91,7 +88,7 @@
 #include <arm/armreg.h>
 #include "assym.h"
 
-RCSID("$NetBSD: gemini_start.S,v 1.9 2013/10/01 07:48:35 skrll Exp $")
+RCSID("$NetBSD: gemini_start.S,v 1.11 2025/12/19 13:03:52 nia Exp $")
 
 
 #if defined(VERBOSE_INIT_ARM)
@@ -376,7 +373,7 @@ mmu_init_table:
 		1,
 		L1_S_PROTO | L1_S_AP_KRW)
 
-	/* Map Gemini LPC Host Controlr Space */
+	/* Map Gemini LPC Host Controller Space */
 	MMU_INIT(GEMINI_LPCHC_VBASE, GEMINI_LPCHC_BASE,
 		1,
 		L1_S_PROTO | L1_S_AP_KRW)

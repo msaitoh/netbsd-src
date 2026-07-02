@@ -1,5 +1,5 @@
-/*	$NetBSD: ssh_api.c,v 1.18 2024/09/24 21:32:19 christos Exp $	*/
-/* $OpenBSD: ssh_api.c,v 1.31 2024/09/09 02:39:57 djm Exp $ */
+/*	$NetBSD: ssh_api.c,v 1.20 2026/04/08 18:58:41 christos Exp $	*/
+/* $OpenBSD: ssh_api.c,v 1.34 2026/03/03 09:57:25 dtucker Exp $ */
 
 /*
  * Copyright (c) 2012 Markus Friedl.  All rights reserved.
@@ -18,7 +18,7 @@
  */
 
 #include "includes.h"
-__RCSID("$NetBSD: ssh_api.c,v 1.18 2024/09/24 21:32:19 christos Exp $");
+__RCSID("$NetBSD: ssh_api.c,v 1.20 2026/04/08 18:58:41 christos Exp $");
 
 #include <sys/types.h>
 
@@ -95,9 +95,6 @@ ssh_init(struct ssh **sshp, int is_server, struct kex_params *kex_params)
 	int r;
 
 	if (!called) {
-#ifdef WITH_OPENSSL
-		OpenSSL_add_all_algorithms();
-#endif
 		called = 1;
 	}
 
@@ -254,7 +251,7 @@ int
 ssh_packet_next(struct ssh *ssh, u_char *typep)
 {
 	int r;
-	u_int32_t seqnr;
+	uint32_t seqnr;
 	u_char type;
 
 	/*
@@ -531,7 +528,7 @@ _ssh_order_hostkeyalgs(struct ssh *ssh)
 	char *orig, *avail, *oavail = NULL, *alg, *replace = NULL;
 	char **proposal;
 	size_t maxlen;
-	int ktype, r;
+	int ktype, nid, r;
 
 	/* XXX we de-serialize ssh->kex->my, modify it, and change it */
 	if ((r = kex_buf2prop(ssh->kex->my, NULL, &proposal)) != 0)
@@ -550,15 +547,20 @@ _ssh_order_hostkeyalgs(struct ssh *ssh)
 	while ((alg = strsep(&avail, ",")) && *alg != '\0') {
 		if ((ktype = sshkey_type_from_name(alg)) == KEY_UNSPEC)
 			continue;
+		nid = sshkey_ecdsa_nid_from_name(alg);
 		TAILQ_FOREACH(k, &ssh->public_keys, next) {
-			if (k->key->type == ktype ||
-			    (sshkey_is_cert(k->key) && k->key->type ==
-			    sshkey_type_plain(ktype))) {
-				if (*replace != '\0')
-					strlcat(replace, ",", maxlen);
-				strlcat(replace, alg, maxlen);
-				break;
-			}
+			if (k->key->type != ktype &&
+			    (!sshkey_is_cert(k->key) ||
+			    k->key->type != sshkey_type_plain(ktype)))
+				continue;
+			if (sshkey_type_plain(k->key->type) == KEY_ECDSA &&
+			    k->key->ecdsa_nid != nid)
+				continue;
+			/* Candidate */
+			if (*replace != '\0')
+				strlcat(replace, ",", maxlen);
+			strlcat(replace, alg, maxlen);
+			break;
 		}
 	}
 	if (*replace != '\0') {

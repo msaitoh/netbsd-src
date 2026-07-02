@@ -1,4 +1,7 @@
-#	$NetBSD: Makefile,v 1.1 2024/01/14 07:39:25 skrll Exp $
+#	$NetBSD: Makefile,v 1.4 2026/03/31 20:24:23 yurix Exp $
+
+# Important: Regenerate dtb set lists by running 'make update-sets' in
+# sys/arch/dtb after changing this file.
 
 DTSSUBDIR=	starfive
 DTSMAKEVARS=	CONFIG_ARCH_STARFIVE=y

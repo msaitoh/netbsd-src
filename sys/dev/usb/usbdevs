@@ -1,4 +1,4 @@
-$NetBSD: usbdevs,v 1.817 2024/10/02 17:15:10 tsutsui Exp $
+$NetBSD: usbdevs,v 1.827 2026/03/18 05:54:44 mrg Exp $
 
 /*-
  * Copyright (c) 1998-2004 The NetBSD Foundation, Inc.
@@ -371,6 +371,7 @@ vendor TOSHIBA		0x0930	Toshiba
 vendor PIXART		0x093a	PixArt
 vendor PLEXTOR		0x093b	Plextor
 vendor INTREPIDCS	0x093c	Intrepid
+vendor KORG		0x0944	KORG Incorporated
 vendor YANO		0x094f	Yano
 vendor KINGSTON		0x0951	Kingston Technology
 vendor BLUEWATER	0x0956	BlueWater Systems
@@ -557,6 +558,7 @@ vendor QUANTA		0x1a32	Quanta
 vendor TERMINUS		0x1a40	Terminus Technology
 vendor QINHENG		0x1a86	QinHeng Electronics
 vendor OVISLINK		0x1b75	OvisLink
+vendor SIGMACHIP	0x1c4f	Sigma Chip
 vendor LONGCHEER	0x1c9e	Longcheer Technology
 vendor MPMAN		0x1cae	MPMan
 vendor PEGATRON		0x1d4d	Pegatron
@@ -834,6 +836,7 @@ product AMBIT NTL_250		0x6098	NTL 250 cable modem
 
 /* AMD product */
 product AMD TV_WONDER_600_USB	0xb002	TV Wonder 600 USB
+product AMD ROOT_HUB		0x7900	USB Root Hub
 
 /* Amigo products */
 product AMIGO RT2870_1		0x9031	RT2870
@@ -963,6 +966,8 @@ product ASUSTEK RTL8192CU	0x17ab	RTL8192CU
 product ASUSTEK USBN66		0x17ad	USB-N66
 product ASUSTEK USBN10NANO	0x17ba	USB-N10 Nano
 product ASUSTEK RTL8192CU_3	0x17c0	RTL8192CU_3
+product ASUSTEK USBAC53_NANO	0x184c	USB-AC53 Nano
+product ASUSTEK USBN10NANO_B1	0x18f0	USB-N10 Nano B1
 product ASUSTEK AURALED		0x18f3	AURA LED
 product ASUSTEK MYPAL_A730	0x4202	MyPal A730
 product ASUSTEK2 USBN11		0x0b05	USB-N11
@@ -1471,7 +1476,9 @@ product DLINK DWM157_CD		0xa707	DWM-157 CD-ROM Mode
 product DLINK DWM157		0x7d02	DWM-157 LTE
 product DLINK DWM157E		0x7d0e	DWM-157 LTE
 product DLINK DWM222_CD		0xab00	DWM-222 CD-ROM Mode
+product DLINK DWM222_CD_2	0xab01	DWM-222 CD-ROM Mode
 product DLINK DWM222		0x7e35	DWM-222 LTE
+product DLINK DWM222_2		0x7e3d	DWM-222 LTE
 product DLINK DWR510_CD		0xa805	DWR-510 CD-ROM Mode
 product DLINK DWR510		0x7e12	DWR-510 LTE
 
@@ -1967,6 +1974,7 @@ product INTEL TESTBOARD		0x9890	82930 test board
 
 product INTEL2 RMH		0x0020	Rate Matching Hub
 product INTEL2 RMH2		0x0024	Rate Matching Hub
+product INTEL2 GPBT54		0x0036	Gale Peak Bluetooth 5.4
 product INTEL2 RMH3		0x8000	Rate Matching Hub
 product INTEL2 RMH4		0x8001	Rate Matching Hub
 product INTEL2 RMH5		0x8002	Rate Matching Hub
@@ -2102,6 +2110,10 @@ product KINGSTON DT100_G2	0x6544	DT 100 G2
 
 /* KingSun products */
 product KINGSUN IRDA		0x4200	KingSun/DonShine IrDA
+
+/* KORG Incorporated products */
+product KORG MINILOGUE_XD	0x0142	minilogue xd
+product KORG MICROKORG_XL	0x010b	microKORG XL
 
 /* Kodak products */
 product KODAK DC220		0x0100	Digital Science DC220
@@ -2360,6 +2372,8 @@ product MSI BLUETOOTH_3		0xa97a	Bluetooth
 product MICROCHIP PICKIT1	0x0032	PICkit(TM) 1 FLASH Starter Kit
 product MICROCHIP PICKIT2	0x0033	PICkit 2 Microcontroller Programmer
 product MICROCHIP PICKIT3	0x900a	PICkit 3 Microcontroller Programmer
+product MICROCHIP MCP2221	0x00dd	USB to I2C/UART Protocol Converter
+product MICROCHIP MCP2210	0x00de	USB to SPI Protocol Converter
 
 /* Microdia / Sonix Technology Co., Ltd. products */
 product MICRODIA YUREX		0x1010	YUREX
@@ -2664,6 +2678,9 @@ product OTI FLASHDISK		0x6828	Flash Disk 128M
 product OVISLINK RT3071		0x3071	RT3071
 product OVISLINK RT3072		0x3072	RT3072
 
+/* Sigma Chip */
+product SIGMACHIP USBMOUSE	0x0048	USB Mouse
+
 /* Palm Computing, Inc. product */
 product PALM SERIAL		0x0080	USB Serial Adaptor
 product PALM M500		0x0001	Palm m500
@@ -2699,8 +2716,12 @@ product PEGATRON RT3072		0x0011	RT3072
 
 /* Future Bits products */
 product FUTUREBITS 4PI		0x6019	4Pi reprap
+product FUTUREBITS CDL_CAN	0x606f	candleLight USB CAN interfaces
 /* Moonbase Otago share vendor ID with Future Bits products */
 product	FUTUREBITS ONERNG	0x6086	OneRNG Random Number Generator
+
+/* candleLight uses INTERBIO vendor id ? */
+product INTERBIO CDL_CAN	0x2323	candleLight USB CAN interfaces
 
 /* Pen Driver */
 product PEN USBDISKPRO		0x0120	USB Disk Pro
@@ -3191,6 +3212,7 @@ product SILABS LIPOWSKY_HARP	0x8218	Lipowsky HARP-1
 product SILABS2 DCU11CLONE	0xaa26	DCU-11 clone
 product SILABS CP210X_1		0xea60	CP210x Serial
 product SILABS CP210X_2		0xea61	CP210x Serial
+product SILABS CP210X_3		0xea70	CP210x Serial
 product SILABS EC3		0x8044	EC3 USB Debug Adapter
 
 /* Silicon Portals Inc. */

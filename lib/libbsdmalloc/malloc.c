@@ -1,4 +1,4 @@
-/*	$NetBSD: malloc.c,v 1.10 2023/07/08 04:09:26 simonb Exp $	*/
+/*	$NetBSD: malloc.c,v 1.13 2026/04/28 13:02:10 riastradh Exp $	*/
 
 /*
  * Copyright (c) 1983, 1993
@@ -34,7 +34,7 @@
 #if 0
 static char sccsid[] = "@(#)malloc.c	8.1 (Berkeley) 6/4/93";
 #else
-__RCSID("$NetBSD: malloc.c,v 1.10 2023/07/08 04:09:26 simonb Exp $");
+__RCSID("$NetBSD: malloc.c,v 1.13 2026/04/28 13:02:10 riastradh Exp $");
 #endif
 #endif /* LIBC_SCCS and not lint */
 
@@ -197,8 +197,7 @@ malloc(size_t nbytes)
 			n += pagesz;
 		if (n) {
 			if (sbrk((int)n) == (void *)-1) {
-				mutex_unlock(&malloc_mutex);
-				return (NULL);
+				goto out;
 			}
 		}
 		bucket = 0;
@@ -230,7 +229,7 @@ malloc(size_t nbytes)
 	while (nbytes > amt + n) {
 		amt <<= 1;
 		if (amt == 0)
-			return (NULL);
+			goto out;
 		bucket++;
 	}
 	/*
@@ -240,8 +239,7 @@ malloc(size_t nbytes)
   	if ((op = nextf[bucket]) == NULL) {
   		morecore(bucket);
   		if ((op = nextf[bucket]) == NULL) {
-			mutex_unlock(&malloc_mutex);
-  			return (NULL);
+			goto out;
 		}
 	}
 	/* remove from linked list */
@@ -262,6 +260,9 @@ malloc(size_t nbytes)
   	*(u_short *)((caddr_t)(op + 1) + op->ov_size) = RMAGIC;
 #endif
   	return ((void *)(op + 1));
+out:
+	mutex_unlock(&malloc_mutex);
+	return (NULL);
 }
 
 /*
@@ -535,7 +536,7 @@ aligned_alloc(size_t alignment, size_t size)
 		return NULL;
 	}
 	p = malloc(size < alignment ? alignment : size);
-	if (__predict_false(p == NULL))
+	if (__predict_true(p != NULL))
 		ASSERT((uintptr_t)p % alignment == 0);
 	return p;
 }
@@ -598,5 +599,5 @@ void
 _malloc_postfork_child(void)
 {
 
-	mutex_unlock(&malloc_mutex);
+	mutex_init(&malloc_mutex, NULL);
 }

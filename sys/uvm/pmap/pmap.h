@@ -1,4 +1,4 @@
-/*	$NetBSD: pmap.h,v 1.27 2024/04/18 12:16:23 skrll Exp $	*/
+/*	$NetBSD: pmap.h,v 1.30 2026/06/15 12:05:58 skrll Exp $	*/
 
 /*
  * Copyright (c) 1992, 1993
@@ -80,7 +80,10 @@
 
 #include <sys/rwlock.h>
 #include <uvm/uvm_object.h>
+#include <uvm/uvm_pmap.h>
 #include <uvm/uvm_stat.h>
+
+#ifdef _KERNEL
 
 #ifdef UVMHIST
 UVMHIST_DECL(pmapexechist);
@@ -106,9 +109,9 @@ static __inline int
 pmap_direct_process(paddr_t pa, voff_t pgoff, size_t len,
     int (*process)(void *, size_t, void *), void *arg)
 {
-        vaddr_t va = pmap_md_direct_map_paddr(pa);
+	vaddr_t va = pmap_md_direct_map_paddr(pa);
 
-        return process((void *)(va + pgoff), len, arg);
+	return process((void *)(va + pgoff), len, arg);
 }
 #endif
 #endif
@@ -132,6 +135,8 @@ pmap_direct_process(paddr_t pa, voff_t pgoff, size_t len,
  * Each ptpage maps a "segment" worth of address space.  That is
  * NPTEPG * PAGE_SIZE.
  */
+
+#endif /* _KERNEL */
 
 typedef struct {
 	pt_entry_t ppg_ptes[NPTEPG];
@@ -243,6 +248,13 @@ pmap_unlock(struct pmap *pm)
 {
 
 	rw_exit(pm->pm_lock);
+}
+
+static inline bool
+pmap_trylock(struct pmap *pm)
+{
+
+	return rw_tryenter(pm->pm_lock, RW_WRITER);
 }
 
 struct pmap_kernel {

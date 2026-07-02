@@ -33,11 +33,14 @@
 __FBSDID("$FreeBSD: src/sbin/gpt/add.c,v 1.14 2006/06/22 22:05:28 marcel Exp $");
 #endif
 #ifdef __RCSID
-__RCSID("$NetBSD: resizedisk.c,v 1.21 2024/02/06 20:25:11 christos Exp $");
+__RCSID("$NetBSD: resizedisk.c,v 1.23 2025/12/17 15:56:06 nia Exp $");
 #endif
 
 #include <sys/bootblock.h>
 #include <sys/types.h>
+#if defined(HAVE_SYS_ENDIAN_H) || ! defined(HAVE_NBTOOL_CONFIG_H)
+#include <sys/endian.h>
+#endif
 
 #include <err.h>
 #include <stdbool.h>
@@ -58,7 +61,7 @@ static const char *resizediskhelp[] = {
 	"[-s size] [-q]",
 };
 
-struct gpt_cmd c_resizedisk = {
+const struct gpt_cmd c_resizedisk = {
 	"resizedisk",
 	cmd_resizedisk,
 	resizediskhelp, __arraycount(resizediskhelp),
@@ -79,7 +82,7 @@ struct gpt_cmd c_resizedisk = {
  * - when shrinking, verify that table fits
  */
 static int 
-resizedisk(gpt_t gpt, off_t sector, off_t size, bool quiet)
+resizedisk(gpt_t gpt, off_t sector, off_t size __unused, bool quiet)
 {
 	map_t mbrmap;
 	struct gpt_hdr *hdr;
@@ -222,7 +225,7 @@ resizedisk(gpt_t gpt, off_t sector, off_t size, bool quiet)
 		mbr->mbr_part[0].part_size_hi = htole16(0xffff);
 	} else {
 		mbr->mbr_part[0].part_size_lo = htole16((uint16_t)last);
-		mbr->mbr_part[0].part_size_hi = htole16((uint16_t)(last >> 16));
+		mbr->mbr_part[0].part_size_hi = htole16((uint16_t)((uint64_t)last >> 16));
 	}
 	if (gpt_write(gpt, mbrmap) == -1) {
 		gpt_warnx(gpt, "Error writing PMBR");

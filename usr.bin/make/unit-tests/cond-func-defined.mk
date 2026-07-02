@@ -1,4 +1,4 @@
-# $NetBSD: cond-func-defined.mk,v 1.13 2024/08/06 17:46:01 rillig Exp $
+# $NetBSD: cond-func-defined.mk,v 1.15 2025/06/28 22:39:28 rillig Exp $
 #
 # Tests for the defined() function in .if conditions.
 
@@ -20,7 +20,7 @@ ${:UA B}=	variable name with spaces
 .endif
 
 # The argument of a function must not directly contain whitespace.
-# expect+1: Missing ')' after argument 'A' for 'defined'
+# expect+1: Missing ")" after argument "A" for "defined"
 .if !defined(A B)
 .  error
 .endif
@@ -30,7 +30,7 @@ ${:UA B}=	variable name with spaces
 .  error
 .endif
 
-# expect+1: Missing ')' after argument 'DEF' for 'defined'
+# expect+1: Missing ")" after argument "DEF" for "defined"
 .if defined(DEF
 .  error
 .else
@@ -48,6 +48,11 @@ ${:UA B}=	variable name with spaces
 # the makefiles looks like it.
 .  endif
 .endfor
+
+# Expressions in the argument of a function call don't have to be defined.
+.if defined(${UNDEF})
+.  error
+.endif
 
 # Neither of the conditions is true.  Before July 2020, the right-hand
 # condition was evaluated even though it was irrelevant.

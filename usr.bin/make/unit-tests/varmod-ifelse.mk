@@ -1,4 +1,4 @@
-# $NetBSD: varmod-ifelse.mk,v 1.34 2024/08/29 20:20:36 rillig Exp $
+# $NetBSD: varmod-ifelse.mk,v 1.41 2025/06/29 11:27:21 rillig Exp $
 #
 # Tests for the ${cond:?then:else} variable modifier, which evaluates either
 # the then-expression or the else-expression, depending on the condition.
@@ -24,8 +24,7 @@
 # Evaluating the variable name lazily would require additional code in
 # Var_Parse and ParseVarname, it would be more useful and predictable
 # though.
-# expect+2: Bad condition
-# expect+1: Malformed conditional '${${:Ubare words} == "literal":?bad:bad}'
+# expect+1: Bad condition
 .if ${${:Ubare words} == "literal":?bad:bad}
 .  error
 .else
@@ -39,13 +38,12 @@
 # expect+1: Bad condition
 COND:=	${${UNDEF} == "":?bad-assign:bad-assign}
 
-# In a condition, undefined variables generate a "Malformed conditional"
-# error.  That error message is wrong though.  In lint mode, the correct
-# "Undefined variable" error message is generated.
-# The difference to the ':=' variable assignment is the additional
-# "Malformed conditional" error message.
-# expect+2: Bad condition
-# expect+1: Malformed conditional '${${UNDEF} == "":?bad-cond:bad-cond}'
+# In a conditional directive, undefined variables are reported as such.  In a
+# ':?' modifier, though, the "variable name" is expanded first, and in that
+# context, an undefined expression is not an error. The "variable name" then
+# becomes the condition, in this case ' == ""', which is malformed because the
+# left-hand side looks empty.
+# expect+1: Bad condition
 .if ${${UNDEF} == "":?bad-cond:bad-cond}
 .  error
 .else
@@ -68,17 +66,16 @@ COND:=	${${UNDEF} == "":?bad-assign:bad-assign}
 # conditional therefore returns a parse error from Var_Parse, and this parse
 # error propagates to CondEvalExpression, where the "Malformed conditional"
 # comes from.
-# expect+2: Bad condition
-# expect+1: Malformed conditional '${1 == == 2:?yes:no} != ""'
+# expect+1: Bad condition
 .if ${1 == == 2:?yes:no} != ""
 .  error
 .else
 .  error
 .endif
 
-# If the "Bad conditional expression" appears in a quoted string literal, the
+# If the "Bad condition" appears in a quoted string literal, the
 # error message "Malformed conditional" is not printed, leaving only the "Bad
-# conditional expression".
+# condition".
 #
 # XXX: The left-hand side is enclosed in quotes.  This results in Var_Parse
 # being called without VARE_EVAL_DEFINED.  When ApplyModifier_IfElse
@@ -97,8 +94,7 @@ COND:=	${${UNDEF} == "":?bad-assign:bad-assign}
 .if "${1 == == 2:?yes:no}" != ""
 .  error
 .else
-# expect+1: warning: Oops, the parse error should have been propagated.
-.  warning Oops, the parse error should have been propagated.
+.  error
 .endif
 .MAKEFLAGS: -d0
 
@@ -161,8 +157,7 @@ STRING=		string
 NUMBER=		no		# not really a number
 # expect+1: no.
 .info ${${STRING} == "literal" && ${NUMBER} >= 10:?yes:no}.
-# expect+3: Comparison with '>=' requires both operands 'no' and '10' to be numeric
-# expect+2: Bad condition
+# expect+2: Comparison with ">=" requires both operands "no" and "10" to be numeric
 # expect+1: .
 .info ${${STRING} == "literal" || ${NUMBER} >= 10:?yes:no}.
 
@@ -313,7 +308,14 @@ BOTH=	<${YES}> <${NO}>
 .endif
 
 
-# expect+2: Unknown modifier "X-then"
-# expect+1: Unknown modifier "X-else"
+# expect+2: Unknown modifier ":X-then"
+# expect+1: Unknown modifier ":X-else"
 .if ${1:?${:X-then}:${:X-else}}
 .endif
+
+
+# expect+4: Bad condition
+# expect+3: Unknown modifier ":Z1"
+# expect+2: Unknown modifier ":Z2"
+# expect+1: <>
+.info <${ < 0 :?${:Z1}:${:Z2}}>

@@ -1,4 +1,4 @@
-/*	$NetBSD: if_igc.c,v 1.16 2024/07/05 04:31:51 rin Exp $	*/
+/*	$NetBSD: if_igc.c,v 1.25 2026/06/10 21:02:49 wiz Exp $	*/
 /*	$OpenBSD: if_igc.c,v 1.13 2023/04/28 10:18:57 bluhm Exp $	*/
 /*-
  * SPDX-License-Identifier: BSD-2-Clause
@@ -30,7 +30,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_igc.c,v 1.16 2024/07/05 04:31:51 rin Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_igc.c,v 1.25 2026/06/10 21:02:49 wiz Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_if_igc.h"
@@ -54,6 +54,7 @@ __KERNEL_RCSID(0, "$NetBSD: if_igc.c,v 1.16 2024/07/05 04:31:51 rin Exp $");
 #include <sys/socket.h>
 #include <sys/workqueue.h>
 #include <sys/xcall.h>
+#include <sys/module.h>
 
 #include <net/bpf.h>
 #include <net/if.h>
@@ -195,7 +196,8 @@ static int	igc_ioctl(struct ifnet *, u_long, void *);
 static int	igc_rxrinfo(struct igc_softc *, struct if_rxrinfo *);
 #endif
 static void	igc_rxfill(struct rx_ring *);
-static void	igc_rxrefill(struct rx_ring *, int);
+static bool	igc_rxrefill(struct rx_ring *);
+static void	igc_rxrefill_callout(void *);
 static bool	igc_rxeof(struct rx_ring *, u_int);
 static int	igc_rx_checksum(struct igc_queue *, uint64_t, uint32_t,
 		    uint32_t);
@@ -207,9 +209,7 @@ static int	igc_ifflags_cb(struct ethercom *);
 static void	igc_set_filter(struct igc_softc *);
 static void	igc_update_link_status(struct igc_softc *);
 static int	igc_get_buf(struct rx_ring *, int, bool);
-static int	igc_tx_ctx_setup(struct tx_ring *, struct mbuf *, int,
-		    uint32_t *, uint32_t *);
-static int	igc_tso_setup(struct tx_ring *, struct mbuf *, int,
+static bool	igc_tx_ctx_setup(struct tx_ring *, struct mbuf *, int,
 		    uint32_t *, uint32_t *);
 
 static void	igc_configure_queues(struct igc_softc *);
@@ -389,7 +389,7 @@ igc_attach(device_t parent, device_t self, void *aux)
 	if (igc_allocate_pci_resources(sc)) {
 		aprint_error_dev(sc->sc_dev,
 		    "unable to allocate PCI resources\n");
-		goto err_pci;
+		goto err;
 	}
 
 	if (igc_allocate_interrupts(sc)) {
@@ -490,11 +490,12 @@ igc_attach(device_t parent, device_t self, void *aux)
 
  err_late:
 	igc_release_hw_control(sc);
+	kmem_free(sc->mta, IGC_MTA_LEN);
  err_alloc_intr:
 	igc_free_interrupts(sc);
  err_pci:
 	igc_free_pci_resources(sc);
-	kmem_free(sc->mta, IGC_MTA_LEN);
+ err:	return;
 }
 
 /*********************************************************************
@@ -692,6 +693,9 @@ igc_allocate_queues(struct igc_softc *sc)
 #ifdef OPENBSD
 		timeout_set(&rxr->rx_refill, igc_rxrefill, rxr);
 #endif
+		callout_init(&rxr->rx_refill, CALLOUT_MPSAFE);
+		callout_setfunc(&rxr->rx_refill, igc_rxrefill_callout, rxr);
+
 		if (igc_dma_malloc(sc, rsize, &rxr->rxdma)) {
 			aprint_error_dev(dev,
 			    "unable to allocate RX descriptor\n");
@@ -1037,7 +1041,7 @@ igc_detach_counters(struct igc_softc *sc)
 		evcnt_detach(&sc->sc_global_evcnts[cnt]);
 
 	kmem_free(sc->sc_global_evcnts,
-	    IGC_GLOBAL_COUNTERS * sizeof(sc->sc_global_evcnts));
+	    IGC_GLOBAL_COUNTERS * sizeof(sc->sc_global_evcnts[0]));
 
 	/* Driver counters */
 	for (int iq = 0; iq < sc->sc_nqueues; iq++) {
@@ -1051,7 +1055,7 @@ igc_detach_counters(struct igc_softc *sc)
 		evcnt_detach(&sc->sc_driver_evcnts[cnt]);
 
 	kmem_free(sc->sc_driver_evcnts,
-	    IGC_DRIVER_COUNTERS * sizeof(sc->sc_driver_evcnts));
+	    IGC_DRIVER_COUNTERS * sizeof(sc->sc_driver_evcnts[0]));
 
 	/* Queue counters */
 	for (int iq = 0; iq < sc->sc_nqueues; iq++) {
@@ -1447,9 +1451,7 @@ igc_setup_interface(struct igc_softc *sc)
 	ifp->if_init = igc_init;
 	ifp->if_stop = igc_stop;
 
-#if 0 /* notyet */
 	ifp->if_capabilities = IFCAP_TSOv4 | IFCAP_TSOv6;
-#endif
 
 	ifp->if_capabilities |=
 	    IFCAP_CSUM_IPv4_Tx  | IFCAP_CSUM_IPv4_Rx  |
@@ -1717,9 +1719,6 @@ igc_tx_common_locked(struct ifnet *ifp, struct tx_ring *txr, int caller)
 			continue;
 		}
 
-		bus_dmamap_sync(txr->txdma.dma_tag, map, 0,
-		    map->dm_mapsize, BUS_DMASYNC_PREWRITE);
-
 		uint32_t ctx_cmd_type_len = 0, olinfo_status = 0;
 		if (igc_tx_ctx_setup(txr, m, prod, &ctx_cmd_type_len,
 		    &olinfo_status)) {
@@ -1728,6 +1727,10 @@ igc_tx_common_locked(struct ifnet *ifp, struct tx_ring *txr, int caller)
 			prod = igc_txdesc_incr(sc, prod);
 			free--;
 		}
+
+		bus_dmamap_sync(txr->txdma.dma_tag, map, 0,
+		    map->dm_mapsize, BUS_DMASYNC_PREWRITE);
+
 		for (int i = 0; i < map->dm_nsegs; i++) {
 			union igc_adv_tx_desc *txdesc = &txr->tx_base[prod];
 
@@ -1920,6 +1923,7 @@ igc_stop_locked(struct igc_softc *sc)
 	for (int iq = 0; iq < sc->sc_nqueues; iq++) {
 		struct rx_ring *rxr = &sc->rx_rings[iq];
 
+		callout_halt(&rxr->rx_refill, &rxr->rxr_lock);
 		igc_clear_receive_status(rxr);
 	}
 
@@ -2045,25 +2049,41 @@ igc_rxfill(struct rx_ring *rxr)
 	rxr->next_to_check = 0;
 }
 
-static void
-igc_rxrefill(struct rx_ring *rxr, int end)
+static bool
+igc_rxrefill(struct rx_ring *rxr)
 {
 	struct igc_softc *sc = rxr->sc;
 	int id;
+	const int start = igc_rxdesc_incr(sc, rxr->last_desc_filled);
+	bool progress = false;
 
-	for (id = rxr->next_to_check; id != end; id = igc_rxdesc_incr(sc, id)) {
-		if (igc_get_buf(rxr, id, true)) {
-			/* XXXRO */
-			panic("%s: msix=%d id=%d\n", __func__, rxr->me, id);
-		}
+	for (id = start; id != rxr->next_to_check; id = igc_rxdesc_incr(sc, id)) {
+		if (igc_get_buf(rxr, id, true))
+			break;
+		progress = true;
 	}
 
-	id = igc_rxdesc_decr(sc, id);
-	DPRINTF(RX, "%s RDT %d id %d\n",
-	    rxr->last_desc_filled == id ? "same" : "diff",
-	    rxr->last_desc_filled, id);
-	rxr->last_desc_filled = id;
-	IGC_WRITE_REG(&sc->hw, IGC_RDT(rxr->me), id);
+	if (progress) {
+		int last = igc_rxdesc_decr(sc, id);
+		DPRINTF(RX, "%s RDT %d last%d\n",
+			rxr->last_desc_filled == last ? "same" : "diff",
+			rxr->last_desc_filled, last);
+		rxr->last_desc_filled = last;
+		IGC_WRITE_REG(&sc->hw, IGC_RDT(rxr->me), last);
+	}
+
+	return id != rxr->next_to_check;
+}
+
+static void
+igc_rxrefill_callout(void *callout_arg)
+{
+	struct rx_ring *rxr = callout_arg;
+
+	mutex_enter(&rxr->rxr_lock);
+	if (igc_rxrefill(rxr))
+		callout_schedule(&rxr->rx_refill, 1);
+	mutex_exit(&rxr->rxr_lock);
 }
 
 /*********************************************************************
@@ -2218,13 +2238,14 @@ igc_rxeof(struct rx_ring *rxr, u_int limit)
 		id = igc_rxdesc_incr(sc, id);
 	}
 
-	DPRINTF(RX, "fill queue[%d]\n", rxr->me);
-	igc_rxrefill(rxr, id);
-
 	DPRINTF(RX, "%s n2c %d id %d\n",
 	    rxr->next_to_check == id ? "same" : "diff",
 	    rxr->next_to_check, id);
 	rxr->next_to_check = id;
+
+	DPRINTF(RX, "fill queue[%d]\n", rxr->me);
+	if (igc_rxrefill(rxr))
+		callout_schedule(&rxr->rx_refill, 1);
 
 #ifdef OPENBSD
 	if (!(staterr & IGC_RXD_STAT_DD))
@@ -2596,6 +2617,7 @@ igc_get_buf(struct rx_ring *rxr, int id, bool strict)
 		IGC_QUEUE_EVENT(q, rx_no_mbuf, 1);
 		return ENOBUFS;
 	}
+	MCLAIM(m, &sc->sc_ec.ec_rx_mowner);
 
 	MCLGET(m, M_DONTWAIT);
 	if (__predict_false(!(m->m_flags & M_EXT))) {
@@ -3174,46 +3196,48 @@ igc_withdraw_transmit_packets(struct tx_ring *txr, bool destroy)
  *
  **********************************************************************/
 
-static int
+static bool
 igc_tx_ctx_setup(struct tx_ring *txr, struct mbuf *mp, int prod,
     uint32_t *cmd_type_len, uint32_t *olinfo_status)
 {
 	struct ether_vlan_header *evl;
-	uint32_t type_tucmd_mlhl = 0;
+	struct tcphdr *th = NULL /* XXXGCC */;
 	uint32_t vlan_macip_lens = 0;
+	uint32_t type_tucmd_mlhl = 0;
+	uint32_t mss_l4len_idx = 0;
 	uint32_t ehlen, iphlen;
 	uint16_t ehtype;
-	int off = 0;
 
 	const int csum_flags = mp->m_pkthdr.csum_flags;
-
-	/* First check if TSO is to be used */
-	if ((csum_flags & (M_CSUM_TSOv4 | M_CSUM_TSOv6)) != 0) {
-		return igc_tso_setup(txr, mp, prod, cmd_type_len,
-		    olinfo_status);
-	}
-
 	const bool v4 = (csum_flags &
-	    (M_CSUM_IPv4 | M_CSUM_TCPv4 | M_CSUM_UDPv4)) != 0;
-	const bool v6 = (csum_flags & (M_CSUM_UDPv6 | M_CSUM_TCPv6)) != 0;
+	    (M_CSUM_IPv4 | M_CSUM_TCPv4 | M_CSUM_UDPv4 | M_CSUM_TSOv4)) != 0;
+	const bool v6 = (csum_flags &
+	    (M_CSUM_UDPv6 | M_CSUM_TCPv6 | M_CSUM_TSOv6)) != 0;
+	const bool tso = (csum_flags & (M_CSUM_TSOv4 | M_CSUM_TSOv6)) != 0;
+	const bool tcp = tso ||
+	    (csum_flags & (M_CSUM_TCPv4 | M_CSUM_TCPv6)) != 0;
+	const bool udp = (csum_flags & (M_CSUM_UDPv4 | M_CSUM_UDPv6)) != 0;
 
 	/* Indicate the whole packet as payload when not doing TSO */
-	*olinfo_status |= mp->m_pkthdr.len << IGC_ADVTXD_PAYLEN_SHIFT;
+	if (!tso) {
+		*olinfo_status |= mp->m_pkthdr.len << IGC_ADVTXD_PAYLEN_SHIFT;
+	} else {
+		/* Set L4 payload length later... */
+	}
 
+#if NVLAN > 0
 	/*
 	 * In advanced descriptors the vlan tag must
 	 * be placed into the context descriptor. Hence
 	 * we need to make one even if not doing offloads.
 	 */
-#if NVLAN > 0
 	if (vlan_has_tag(mp)) {
 		vlan_macip_lens |= (uint32_t)vlan_get_tag(mp)
 		    << IGC_ADVTXD_VLAN_SHIFT;
-		off = 1;
 	} else
 #endif
 	if (!v4 && !v6)
-		return 0;
+		return false;
 
 	KASSERT(mp->m_len >= sizeof(struct ether_header));
 	evl = mtod(mp, struct ether_vlan_header *);
@@ -3226,230 +3250,97 @@ igc_tx_ctx_setup(struct tx_ring *txr, struct mbuf *mp, int prod,
 		ehtype = evl->evl_encap_proto;
 	}
 
-	vlan_macip_lens |= ehlen << IGC_ADVTXD_MACLEN_SHIFT;
-
-#ifdef IGC_DEBUG
-	/*
-	 * For checksum offloading, L3 headers are not mandatory.
-	 * We use these only for consistency checks.
-	 */
-	struct ip *ip;
-	struct ip6_hdr *ip6;
-	uint8_t ipproto;
-	char *l3d;
-
-	if (mp->m_len == ehlen && mp->m_next != NULL)
-		l3d = mtod(mp->m_next, char *);
-	else
-		l3d = mtod(mp, char *) + ehlen;
-#endif
-
 	switch (ntohs(ehtype)) {
 	case ETHERTYPE_IP:
 		iphlen = M_CSUM_DATA_IPv4_IPHL(mp->m_pkthdr.csum_data);
 		type_tucmd_mlhl |= IGC_ADVTXD_TUCMD_IPV4;
 
-		if ((csum_flags & M_CSUM_IPv4) != 0) {
+		if ((csum_flags & (M_CSUM_IPv4 | M_CSUM_TSOv4)) != 0)
 			*olinfo_status |= IGC_TXD_POPTS_IXSM << 8;
-			off = 1;
-		}
-#ifdef IGC_DEBUG
-		KASSERT(!v6);
-		ip = (void *)l3d;
-		ipproto = ip->ip_p;
-		KASSERT(iphlen == ip->ip_hl << 2);
-		KASSERT((mp->m_pkthdr.csum_flags & M_CSUM_IPv4) == 0 ||
-		    ip->ip_sum == 0);
-#endif
+
+		if (!tso)
+			break;
+
+		struct ip *ip;
+		KASSERT(mp->m_len >= ehlen + sizeof(*ip));
+		ip = (void *)(mtod(mp, char *) + ehlen);
+		ip->ip_len = 0;
+
+		KASSERT(mp->m_len >= ehlen + iphlen + sizeof(*th));
+		th = (void *)((char *)ip + iphlen);
+		th->th_sum = in_cksum_phdr(ip->ip_src.s_addr,
+		    ip->ip_dst.s_addr, htons(IPPROTO_TCP));
 		break;
 	case ETHERTYPE_IPV6:
 		iphlen = M_CSUM_DATA_IPv6_IPHL(mp->m_pkthdr.csum_data);
 		type_tucmd_mlhl |= IGC_ADVTXD_TUCMD_IPV6;
-#ifdef IGC_DEBUG
-		KASSERT(!v4);
-		ip6 = (void *)l3d;
-		ipproto = ip6->ip6_nxt;	/* XXX */
-		KASSERT(iphlen == sizeof(struct ip6_hdr));
-#endif
+
+		if (!tso)
+			break;
+
+		struct ip6_hdr *ip6;
+		KASSERT(mp->m_len >= ehlen + sizeof(*ip6));
+		ip6 = (void *)(mtod(mp, char *) + ehlen);
+		ip6->ip6_plen = 0;
+
+		KASSERT(mp->m_len >= ehlen + iphlen + sizeof(*th));
+		th = (void *)((char *)ip6 + iphlen);
+		th->th_sum = in6_cksum_phdr(&ip6->ip6_src, &ip6->ip6_dst, 0,
+		    htonl(IPPROTO_TCP));
 		break;
 	default:
 		/*
 		 * Unknown L3 protocol. Clear L3 header length and proceed for
 		 * LAN as done by Linux driver.
 		 */
-		iphlen = 0;
-#ifdef IGC_DEBUG
 		KASSERT(!v4 && !v6);
-		ipproto = 0;
-#endif
+		iphlen = 0;
 		break;
 	}
-
-	vlan_macip_lens |= iphlen;
-
-	const bool tcp = (csum_flags & (M_CSUM_TCPv4 | M_CSUM_TCPv6)) != 0;
-	const bool udp = (csum_flags & (M_CSUM_UDPv4 | M_CSUM_UDPv6)) != 0;
 
 	if (tcp) {
-#ifdef IGC_DEBUG
-		KASSERTMSG(ipproto == IPPROTO_TCP, "ipproto = %d", ipproto);
-#endif
 		type_tucmd_mlhl |= IGC_ADVTXD_TUCMD_L4T_TCP;
 		*olinfo_status |= IGC_TXD_POPTS_TXSM << 8;
-		off = 1;
 	} else if (udp) {
-#ifdef IGC_DEBUG
-		KASSERTMSG(ipproto == IPPROTO_UDP, "ipproto = %d", ipproto);
-#endif
 		type_tucmd_mlhl |= IGC_ADVTXD_TUCMD_L4T_UDP;
 		*olinfo_status |= IGC_TXD_POPTS_TXSM << 8;
-		off = 1;
 	}
 
-	if (off == 0)
-		return 0;
+	if (tso) {
+		const uint32_t tcphlen = th->th_off << 2;
+		const uint32_t paylen =
+		    mp->m_pkthdr.len - ehlen - iphlen - tcphlen;
 
-	type_tucmd_mlhl |= IGC_ADVTXD_DCMD_DEXT | IGC_ADVTXD_DTYP_CTXT;
+		mss_l4len_idx |= mp->m_pkthdr.segsz << IGC_ADVTXD_MSS_SHIFT;
+		mss_l4len_idx |= tcphlen << IGC_ADVTXD_L4LEN_SHIFT;
 
-	/* Now ready a context descriptor */
-	struct igc_adv_tx_context_desc *txdesc =
-	    (struct igc_adv_tx_context_desc *)&txr->tx_base[prod];
+		*cmd_type_len |= IGC_ADVTXD_DCMD_TSE;
 
-	/* Now copy bits into descriptor */
-	igc_txdesc_sync(txr, prod,
-	    BUS_DMASYNC_POSTREAD | BUS_DMASYNC_POSTWRITE);
-	htolem32(&txdesc->vlan_macip_lens, vlan_macip_lens);
-	htolem32(&txdesc->type_tucmd_mlhl, type_tucmd_mlhl);
-	htolem32(&txdesc->seqnum_seed, 0);
-	htolem32(&txdesc->mss_l4len_idx, 0);
-	igc_txdesc_sync(txr, prod,
-	    BUS_DMASYNC_PREREAD | BUS_DMASYNC_PREWRITE);
-
-	return 1;
-}
-
-/*********************************************************************
- *
- *  Advanced Context Descriptor setup for TSO
- *
- *  XXX XXXRO
- *	Not working. Some packets are sent with correct csums, but
- *	others aren't. th->th_sum may be adjusted.
- *
- **********************************************************************/
-
-static int
-igc_tso_setup(struct tx_ring *txr, struct mbuf *mp, int prod,
-    uint32_t *cmd_type_len, uint32_t *olinfo_status)
-{
-#if 1 /* notyet */
-	return 0;
-#else
-	struct ether_vlan_header *evl;
-	struct ip *ip;
-	struct ip6_hdr *ip6;
-	struct tcphdr *th;
-	uint32_t type_tucmd_mlhl = 0;
-	uint32_t vlan_macip_lens = 0;
-	uint32_t mss_l4len_idx = 0;
-	uint32_t ehlen, iphlen, tcphlen, paylen;
-	uint16_t ehtype;
-
-	/*
-	 * In advanced descriptors the vlan tag must
-	 * be placed into the context descriptor. Hence
-	 * we need to make one even if not doing offloads.
-	 */
-#if NVLAN > 0
-	if (vlan_has_tag(mp)) {
-		vlan_macip_lens |= (uint32_t)vlan_get_tag(mp)
-		    << IGC_ADVTXD_VLAN_SHIFT;
+		*olinfo_status |= paylen << IGC_ADVTXD_PAYLEN_SHIFT;
 	}
-#endif
-
-	KASSERT(mp->m_len >= sizeof(struct ether_header));
-	evl = mtod(mp, struct ether_vlan_header *);
-	if (evl->evl_encap_proto == htons(ETHERTYPE_VLAN)) {
-		KASSERT(mp->m_len >= sizeof(struct ether_vlan_header));
-		ehlen = ETHER_HDR_LEN + ETHER_VLAN_ENCAP_LEN;
-		ehtype = evl->evl_proto;
-	} else {
-		ehlen = ETHER_HDR_LEN;
-		ehtype = evl->evl_encap_proto;
-	}
-
-	vlan_macip_lens |= ehlen << IGC_ADVTXD_MACLEN_SHIFT;
-
-	switch (ntohs(ehtype)) {
-	case ETHERTYPE_IP:
-		iphlen = M_CSUM_DATA_IPv4_IPHL(mp->m_pkthdr.csum_data);
-		type_tucmd_mlhl |= IGC_ADVTXD_TUCMD_IPV4;
-		*olinfo_status |= IGC_TXD_POPTS_IXSM << 8;
-
-		KASSERT(mp->m_len >= ehlen + sizeof(*ip));
-		ip = (void *)(mtod(mp, char *) + ehlen);
-		ip->ip_len = 0;
-		KASSERT(iphlen == ip->ip_hl << 2);
-		KASSERT(ip->ip_sum == 0);
-		KASSERT(ip->ip_p == IPPROTO_TCP);
-
-		KASSERT(mp->m_len >= ehlen + iphlen + sizeof(*th));
-		th = (void *)((char *)ip + iphlen);
-		th->th_sum = in_cksum_phdr(ip->ip_src.s_addr, ip->ip_dst.s_addr,
-		    htons(IPPROTO_TCP));
-		break;
-	case ETHERTYPE_IPV6:
-		iphlen = M_CSUM_DATA_IPv6_IPHL(mp->m_pkthdr.csum_data);
-		type_tucmd_mlhl |= IGC_ADVTXD_TUCMD_IPV6;
-
-		KASSERT(mp->m_len >= ehlen + sizeof(*ip6));
-		ip6 = (void *)(mtod(mp, char *) + ehlen);
-		ip6->ip6_plen = 0;
-		KASSERT(iphlen == sizeof(struct ip6_hdr));
-		KASSERT(ip6->ip6_nxt == IPPROTO_TCP);
-
-		KASSERT(mp->m_len >= ehlen + iphlen + sizeof(*th));
-		th = (void *)((char *)ip6 + iphlen);
-		tcphlen = th->th_off << 2;
-		paylen = mp->m_pkthdr.len - ehlen - iphlen - tcphlen;
-		th->th_sum = in6_cksum_phdr(&ip6->ip6_src, &ip6->ip6_dst, 0,
-		    htonl(IPPROTO_TCP));
-		break;
-	default:
-		panic("%s", __func__);
-	}
-
-	tcphlen = th->th_off << 2;
-	paylen = mp->m_pkthdr.len - ehlen - iphlen - tcphlen;
 
 	vlan_macip_lens |= iphlen;
+	vlan_macip_lens |= ehlen << IGC_ADVTXD_MACLEN_SHIFT;
 
 	type_tucmd_mlhl |= IGC_ADVTXD_DCMD_DEXT | IGC_ADVTXD_DTYP_CTXT;
-	type_tucmd_mlhl |= IGC_ADVTXD_TUCMD_L4T_TCP;
-
-	mss_l4len_idx |= mp->m_pkthdr.segsz << IGC_ADVTXD_MSS_SHIFT;
-	mss_l4len_idx |= tcphlen << IGC_ADVTXD_L4LEN_SHIFT;
 
 	/* Now ready a context descriptor */
 	struct igc_adv_tx_context_desc *txdesc =
 	    (struct igc_adv_tx_context_desc *)&txr->tx_base[prod];
 
-	/* Now copy bits into descriptor */
 	igc_txdesc_sync(txr, prod,
 	    BUS_DMASYNC_POSTREAD | BUS_DMASYNC_POSTWRITE);
+
+	/* Now copy bits into descriptor */
 	htolem32(&txdesc->vlan_macip_lens, vlan_macip_lens);
 	htolem32(&txdesc->type_tucmd_mlhl, type_tucmd_mlhl);
 	htolem32(&txdesc->seqnum_seed, 0);
 	htolem32(&txdesc->mss_l4len_idx, mss_l4len_idx);
+
 	igc_txdesc_sync(txr, prod,
 	    BUS_DMASYNC_PREREAD | BUS_DMASYNC_PREWRITE);
 
-	*cmd_type_len |= IGC_ADVTXD_DCMD_TSE;
-	*olinfo_status |= IGC_TXD_POPTS_TXSM << 8;
-	*olinfo_status |= paylen << IGC_ADVTXD_PAYLEN_SHIFT;
-
 	return 1;
-#endif /* notyet */
 }
 
 /*********************************************************************
@@ -3686,6 +3577,9 @@ igc_free_receive_buffers(struct rx_ring *rxr)
 {
 	struct igc_softc *sc = rxr->sc;
 
+	callout_halt(&rxr->rx_refill, &rxr->rxr_lock);
+	callout_destroy(&rxr->rx_refill);
+
 	if (rxr->rx_buffers != NULL) {
 		for (int id = 0; id < sc->num_rx_desc; id++) {
 			struct igc_rx_buf *rxbuf = &rxr->rx_buffers[id];
@@ -3880,4 +3774,35 @@ igc_print_devinfo(struct igc_softc *sc)
 	    "NVM image version %x.%02x, EtrackID %04hx%04hx\n",
 	    (nvm_ver & NVM_VERSION_MAJOR) >> NVM_VERSION_MAJOR_SHIFT,
 	    nvm_ver & NVM_VERSION_MINOR, etk_hi, etk_lo);
+}
+
+/* Module interface */
+
+MODULE(MODULE_CLASS_DRIVER, if_igc, "pci");
+ 
+#ifdef _MODULE
+#include "ioconf.c"
+#endif
+ 
+static int
+if_igc_modcmd(modcmd_t cmd, void *opaque) 
+{
+	int error = 0;
+ 
+	switch (cmd) { 
+	case MODULE_CMD_INIT:
+#ifdef _MODULE
+		error = config_init_component(cfdriver_ioconf_igc,
+		    cfattach_ioconf_igc, cfdata_ioconf_igc);
+#endif
+		return error;
+	case MODULE_CMD_FINI:
+#ifdef _MODULE
+		error = config_fini_component(cfdriver_ioconf_igc,
+		    cfattach_ioconf_igc, cfdata_ioconf_igc);
+#endif
+		return error;
+	default:
+		return ENOTTY;
+	}
 }

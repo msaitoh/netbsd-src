@@ -9,19 +9,11 @@
 # See the COPYRIGHT file distributed with this work for additional
 # information regarding copyright ownership.
 
-import pytest
-
-pytest.importorskip("dns")
-import dns.message
-import dns.query
-import dns.rcode
+import isctest
 
 
-def test_async_hook(named_port):
-    msg = dns.message.make_query(
-        "example.com.",
-        "A",
-    )
-    ans = dns.query.udp(msg, "10.53.0.1", timeout=10, port=named_port)
+def test_async_hook():
+    msg = isctest.query.create("example.com.", "A")
+    res = isctest.query.udp(msg, "10.53.0.1")
     # the test-async plugin changes the status of any positive answer to NOTIMP
-    assert ans.rcode() == dns.rcode.NOTIMP
+    isctest.check.notimp(res)

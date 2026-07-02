@@ -1,4 +1,4 @@
-/*	$NetBSD: rtadvd.c,v 1.82 2021/03/23 18:13:07 christos Exp $	*/
+/*	$NetBSD: rtadvd.c,v 1.84 2026/06/10 21:30:06 andvar Exp $	*/
 /*	$KAME: rtadvd.c,v 1.92 2005/10/17 14:40:02 suz Exp $	*/
 
 /*
@@ -1191,7 +1191,7 @@ done:
 	free_ndopts(&ndopts);
 }
 
-/* return a non-zero value if the received prefix is inconsitent with ours */
+/* return a non-zero value if the received prefix is inconsistent with ours */
 static int
 prefix_check(struct nd_opt_prefix_info *pinfo,
 	     struct rainfo *rai, struct sockaddr_in6 *from)
@@ -1683,7 +1683,7 @@ ra_output(struct rainfo *rai, bool solicited)
 			free(sol);
 		}
 
-		/* reset waiting conter */
+		/* reset waiting counter */
 		rai->waiting = 0;
 
 		/* disable timer */

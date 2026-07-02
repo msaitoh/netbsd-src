@@ -237,7 +237,7 @@ static const struct tty_feature tty_feature_sync = {
 
 /* Terminal supports extended keys. */
 static const char *const tty_feature_extkeys_capabilities[] = {
-	"Eneks=\\E[>4;1m",
+	"Eneks=\\E[>4;2m",
 	"Dseks=\\E[>4m",
 	NULL
 };
@@ -487,6 +487,10 @@ tty_default_features(int *feat, const char *name, u_int version)
 		{ .name = "iTerm2",
 		  .features = TTY_FEATURES_BASE_MODERN_XTERM
 			      ",cstyle,extkeys,margins,usstyle,sync,osc7,hyperlinks"
+		},
+		{ .name = "foot",
+		  .features = TTY_FEATURES_BASE_MODERN_XTERM
+		              ",cstyle,extkeys"
 		},
 		{ .name = "XTerm",
 		  /*

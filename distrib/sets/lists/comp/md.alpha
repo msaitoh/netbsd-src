@@ -1,4 +1,4 @@
-# $NetBSD: md.alpha,v 1.82 2024/07/11 20:41:07 riastradh Exp $
+# $NetBSD: md.alpha,v 1.87 2026/02/12 04:26:11 kre Exp $
 #
 ./usr/include/alpha				comp-c-include
 ./usr/include/alpha/_G_config.h			comp-obsolete		obsolete
@@ -42,6 +42,7 @@
 ./usr/include/alpha/kcore.h			comp-c-include
 ./usr/include/alpha/limits.h			comp-c-include
 ./usr/include/alpha/lock.h			comp-c-include
+./usr/include/alpha/lwp_private.h		comp-c-include
 ./usr/include/alpha/math.h			comp-c-include
 ./usr/include/alpha/mcontext.h			comp-c-include
 ./usr/include/alpha/mutex.h			comp-c-include
@@ -71,6 +72,7 @@
 ./usr/include/alpha/wchar_limits.h		comp-c-include
 ./usr/include/alpha/wsconsio.h			comp-obsolete		obsolete
 ./usr/include/alpha/z8530var.h			comp-c-include
+./usr/include/gcc-10/tgmath.h			comp-obsolete		obsolete
 ./usr/include/gcc-4.5/tgmath.h			comp-obsolete		obsolete
 ./usr/include/gcc-4.8/tgmath.h			comp-obsolete		obsolete
 ./usr/include/gcc-5/tgmath.h			comp-obsolete		obsolete
@@ -78,8 +80,6 @@
 ./usr/include/gcc-7/tgmath.h			comp-obsolete		obsolete
 ./usr/include/gcc-8/tgmath.h			comp-obsolete		obsolete
 ./usr/include/gcc-9/tgmath.h			comp-obsolete		obsolete
-./usr/include/gcc-10/tgmath.h			comp-c-include		gcc=10
-./usr/include/gcc-10/tgmath.h			comp-obsolete		obsolete,gcc=12
 ./usr/include/ieeefp.h				comp-c-include
 ./usr/lib/crtfm.o				comp-c-lib
 ./usr/lib/libalpha.a				comp-c-lib

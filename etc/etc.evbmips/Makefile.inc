@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile.inc,v 1.29 2024/07/11 13:46:45 rin Exp $
+#	$NetBSD: Makefile.inc,v 1.32 2025/03/22 09:25:14 hgutch Exp $
 #
 #	etc.evbmips/Makefile.inc -- evbmips-specific etc Makefile targets
 #
@@ -63,10 +63,15 @@ __mkimage: .USE
 	TOOL_PAX=${TOOL_PAX} \
 	TOOL_MKUBOOTIMAGE=${TOOL_MKUBOOTIMAGE} \
 	TOOL_MTREE=${TOOL_MTREE} \
+	TOOL_SED=${TOOL_SED} \
+	TOOL_PWD_MKDB=${TOOL_PWD_MKDB} \
 	HOST_SH=${HOST_SH} \
 	KERNOBJDIR=${KERNOBJDIR} \
 	MACHINE=${MACHINE} \
 	MKDTB=${MKDTB} \
+	MKPOSTFIX=${MKPOSTFIX} \
+	CKSUM=${CKSUM} \
+	IMAGEDIR=${IMAGE.dir} \
 	${HOST_SH} ${MKIMAGE} -h ${.TARGET:S/smp_//} -D ${DESTDIR} \
             -S ${NETBSDSRCDIR} -B ${IMAGEENDIAN} ${MKI_OPTS.${.TARGET}} \
             ${IMAGE.dir}/${.TARGET:S/smp_//}.img.gz

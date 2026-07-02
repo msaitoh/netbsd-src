@@ -1,4 +1,4 @@
-/*	$NetBSD: etsecreg.h,v 1.11 2024/02/26 20:20:01 andvar Exp $	*/
+/*	$NetBSD: etsecreg.h,v 1.13 2026/06/11 03:59:16 andvar Exp $	*/
 /*-
  * Copyright (c) 2010, 2011 The NetBSD Foundation, Inc.
  * All rights reserved.
@@ -67,7 +67,7 @@ struct txbd {
 #define	TXFCB_TUP	0x1000	/* Layer 4 is TCP or UDP */
 #define	TXFCB_UDP	0x0800	/* UDP at layer 4 */
 #define	TXFCB_CIP	0x0400	/* Checksum IP header enable */
-#define	TXFCB_CTU	0x0200	/* Checksum TCP or UCP header enable */
+#define	TXFCB_CTU	0x0200	/* Checksum TCP or UDP header enable */
 #define	TXFCB_NPH	0x0100	/* No std Pseudo-Header checksum, use phcs */
 
 struct txfcb {
@@ -350,7 +350,7 @@ struct rxfcb {
 #define RQFAR		0x334 /* Receive queue filing table address register [TSEC3] */
 #define RQFCR		0x338 /* Receive queue filing table control register [TSEC3] */
 #define RQFCR_GPI	__PPCBIT(0) /* General purpose interrupt */
-#define RQFCR_HASHTBL	__PPCBITS(12,14) /* Select between filer Q value and RIR fileds. */
+#define RQFCR_HASHTBL	__PPCBITS(12,14) /* Select between filer Q value and RIR fields. */
 #define RQFCR_HASHTBL_Q	__SHIFTIN(0,RQFCR_HASHTBL)
 #define RQFCR_HASHTBL_0	__SHIFTIN(1,RQFCR_HASHTBL)
 #define RQFCR_HASHTBL_1	__SHIFTIN(2,RQFCR_HASHTBL)

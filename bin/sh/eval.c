@@ -1,4 +1,4 @@
-/*	$NetBSD: eval.c,v 1.194 2024/10/21 15:31:34 kre Exp $	*/
+/*	$NetBSD: eval.c,v 1.199 2026/05/20 00:50:00 kre Exp $	*/
 
 /*-
  * Copyright (c) 1993
@@ -37,7 +37,7 @@
 #if 0
 static char sccsid[] = "@(#)eval.c	8.9 (Berkeley) 6/8/95";
 #else
-__RCSID("$NetBSD: eval.c,v 1.194 2024/10/21 15:31:34 kre Exp $");
+__RCSID("$NetBSD: eval.c,v 1.199 2026/05/20 00:50:00 kre Exp $");
 #endif
 #endif /* not lint */
 
@@ -658,7 +658,7 @@ evalredir(union node *n, int flags)
 
 		handler = savehandler;
 		e = exception;
-		popredir();
+		popredir(POPREDIR_UNDO);
 		if (PS4 != NULL) {
 			outxstr(PS4);
 			/* { */ outxstr("} failed\n");
@@ -681,7 +681,7 @@ evalredir(union node *n, int flags)
 	}
 	INTOFF;
 	handler = savehandler;
-	popredir();
+	popredir(POPREDIR_UNDO);
 	INTON;
 
 	if (PS4 != NULL) {
@@ -869,7 +869,7 @@ parse_command_args(int argc, char **argv, int *use_syspath)
 	return sv_argc - argc;
 }
 
-int vforked = 0;
+volatile int vforking = 0;
 
 /*
  * Execute a simple command.
@@ -906,7 +906,7 @@ evalcommand(union node *cmd, int flgs, struct backcmd *backcmd)
 	const int savefuncabs = funclineabs;
 	volatile int cmd_flags = 0;
 
-	vforked = 0;
+	vforking = 0;
 	/* First expand the arguments. */
 	CTRACE(DBG_EVAL, ("evalcommand(%p, %d) called [%s]\n", cmd, flags,
 	    cmd->ncmd.args ? cmd->ncmd.args->narg.text : ""));
@@ -1123,21 +1123,29 @@ evalcommand(union node *cmd, int flgs, struct backcmd *backcmd)
 		    (!cmd->ncmd.backgnd || cmd->ncmd.redirect == NULL)) {
 			pid_t	pid;
 			int serrno;
+			sigset_t block_all, olds;
 
+			(void)sigfillset(&block_all);
 			savelocalvars = localvars;
 			localvars = NULL;
-			vforked = 1;
+
+			/* see jobs.c:forkshell() for explanation */
+			(void)sigprocmask(SIG_BLOCK, &block_all, &olds);
+			vforking = 1;
 	VFORK_BLOCK
 			switch (pid = vfork()) {
 			case -1:
 				serrno = errno;
+				vforking = 0;
+				(void)sigprocmask(SIG_SETMASK, &olds, NULL);
 				VTRACE(DBG_EVAL, ("vfork() failed, errno=%d\n",
 				    serrno));
 				INTON;
 				error("Cannot vfork (%s)", strerror(serrno));
 				break;
 			case 0:
-				/* Make sure that exceptions only unwind to
+				/*
+				 * Make sure that exceptions only unwind to
 				 * after the vfork(2)
 				 */
 				SHELL_FORKED();
@@ -1151,11 +1159,11 @@ evalcommand(union node *cmd, int flgs, struct backcmd *backcmd)
 					if (exception == EXSHELLPROC) {
 						/*
 						 * We can't progress with the
-						 * vfork, so, set vforked = 2
+						 * vfork, so, set vforking = 2
 						 * so the parent knows,
 						 * and _exit();
 						 */
-						vforked = 2;
+						vforking = 2;
 						_exit(0);
 					} else {
 						_exit(exception == EXEXIT ?
@@ -1166,33 +1174,51 @@ evalcommand(union node *cmd, int flgs, struct backcmd *backcmd)
 				handler = &jmploc;
 				listmklocal(varlist.list,
 				    VDOEXPORT | VEXPORT | VNOFUNC);
-				forkchild(jp, cmd, mode, vforked);
+				forkchild(jp, cmd, mode, vforking, &olds);
 				break;
 			default:
 				VFORK_UNDO();
 						/* restore from vfork(2) */
-				CTRACE(DBG_PROCS|DBG_CMDS,
-				    ("parent after vfork - vforked=%d\n",
-				      vforked));
-				handler = savehandler;
-				poplocalvars();
-				localvars = savelocalvars;
-				if (vforked == 2) {
-					vforked = 0;
+				/*
+				 * We need to know what happened to the
+				 * vfork() (currently in vforking) but
+				 * we need to restore signals asap, and
+				 * vforking cannot remain set after that.
+				 * so ...
+				 */
+				{
+				    int vforkresult = vforking;
+				
+				    vforking = 0;
+				    (void)sigprocmask(SIG_SETMASK, &olds, NULL);
+				
+				    CTRACE(DBG_PROCS|DBG_CMDS,
+					("parent after vfork - vforking=%d\n",
+					  vforkresult));
 
+				    handler = savehandler;
+				    poplocalvars();
+				    localvars = savelocalvars;
+				    if (vforkresult == 2) {
+					/*
+					 * obliterate the deceased zombie
+					 * (known to have exited already)
+					 */
 					(void)waitpid(pid, NULL, 0);
+
 					/*
 					 * We need to progress in a
 					 * normal fork fashion
 					 */
 					goto normal_fork;
+				    }
 				}
+
 				/*
 				 * Here the child has left home,
 				 * getting on with its life, so
 				 * so must we...
 				 */
-				vforked = 0;
 				forkparent(jp, cmd, mode, pid);
 				goto parent;
 			}
@@ -1209,7 +1235,7 @@ evalcommand(union node *cmd, int flgs, struct backcmd *backcmd)
 		}
 #endif
 		if (flags & EV_BACKCMD) {
-			if (!vforked) {
+			if (!vforking) {
 				FORCEINTON;
 			}
 			close(pip[0]);
@@ -1218,18 +1244,23 @@ evalcommand(union node *cmd, int flgs, struct backcmd *backcmd)
 		flags |= EV_EXIT;
 	}
 
-	/* This is the child process if a fork occurred. */
-	/* Execute the command. */
+	/*
+	 * This is the child process if a fork occurred.
+	 * (or "the" process if there was no fork at all)
+	 *
+	 * Execute the command.
+	 */
+
 	switch (cmdentry.cmdtype) {
 		volatile int saved;
 		struct funcdef * volatile savefunc;
 		const char * volatile savectx;
 
 	case CMDFUNCTION:
-		VXTRACE(DBG_EVAL, ("Shell function%s:  ",vforked?" VF":""),
+		VXTRACE(DBG_EVAL, ("Shell function%s:  ",vforking?" VF":""),
 		    trargs(argv));
-		redirect(cmd->ncmd.redirect, saved =
-			!(flags & EV_EXIT) || have_traps() ? REDIR_PUSH : 0);
+		redirect(cmd->ncmd.redirect, REDIR_KEEP | (saved =
+			!(flags & EV_EXIT) || have_traps() ? REDIR_PUSH : 0));
 		saveparam = shellparam;
 		shellparam.malloc = 0;
 		shellparam.reset = 1;
@@ -1251,7 +1282,7 @@ evalcommand(union node *cmd, int flgs, struct backcmd *backcmd)
 				shellparam = saveparam;
 			}
 			if (saved)
-				popredir();
+				popredir(POPREDIR_UNDO);
 			unreffunc(savefunc);
 			poplocalvars();
 			localvars = savelocalvars;
@@ -1296,7 +1327,7 @@ evalcommand(union node *cmd, int flgs, struct backcmd *backcmd)
 		shellparam = saveparam;
 		handler = savehandler;
 		if (saved)
-			popredir();
+			popredir(POPREDIR_UNDO);
 		INTON;
 		if (evalskip == SKIPFUNC) {
 			evalskip = SKIPNONE;
@@ -1310,19 +1341,101 @@ evalcommand(union node *cmd, int flgs, struct backcmd *backcmd)
 		VTRACE(DBG_EVAL, ("special "));
 	case CMDBUILTIN:
 		VXTRACE(DBG_EVAL, ("builtin command [%d]%s:  ", argc,
-		    vforked ? " VF" : ""), trargs(argv));
-		mode = (cmdentry.u.bltin == execcmd) ? 0 : REDIR_PUSH;
+		    vforking ? " VF" : ""), trargs(argv));
+
+		if (cmdentry.u.bltin == execcmd) {
+			char **ap;
+
+			/*
+			 * Work out how we should process redirections
+			 * on the "exec" command.   We need REDIR_KEEP
+			 * if we must not set close-on-exec, and REDIR_PUSH
+			 * if we need to be able to undo them (in the
+			 * exec command, only on  some kind of error).
+			 *
+			 * Skip "exec" (argv[0]) then examine args.
+			 *
+			 * This must be done manually, as nextopt()
+			 * hasn't been init'd for this command yet.
+			 * And it won't be until after redirections are done.
+			 *
+			 * "exec" currently takes no options (except "--"),
+			 * but might one day, and this needs to keep working,
+			 * so do it, kind of, properly.
+			 *
+			 * Note in the common cases argv[1] will be NULL
+			 * (for exec just setting up redirectons) or will
+			 * not start with a '-' ("exec cmd") so normally
+			 * this loop will either never start or will break
+			 * at the first test of the first iteration.
+			 */
+			for (ap = argv + 1; *ap != NULL; ap++) {
+
+				if (ap[0][0] != '-')
+					break;
+
+				if (ap[0][1] == '\0')	/* "exec -" */
+					break;		/* or continue ?? */
+
+				if (ap[0][1] == '-' && ap[0][2] == '\0') {
+					ap++;
+					break;
+				}
+
+#if defined(DUMMY_EXAMPLE_CODE) && 0
+				/*
+				 * if options are added to "exec" then
+				 * any which take an arg (like the common
+				 * in other shells "-a cmdname") need to
+				 * be recognised here, lest "cmdname" be
+				 * thought to be the cmd to exec
+				 */
+
+				for (char *op = ap[0] + 1; *op; op++) {
+					switch (*op) {
+					case 'a':
+					case any others similar:
+						/* options needing an optarg */
+						if (op[1] == '\0' && ap[1])
+							ap++;
+						break;
+
+					default:
+						/* options with no optarg */
+						continue;
+					}
+					break;
+				}
+#endif /* DUMMY EXAMPLE CODE */
+			}
+
+			if (*ap != NULL)
+				mode = REDIR_KEEP;	/* exec cmd <... */
+			else
+				mode = 0;		/* exec < .... */
+
+			/*
+			 * always save old fd setup in case of error()
+			 * execcmd() will undo this if no error occurs
+			 * (that is, in the case the shell has not vanished)
+			 */
+			mode |= REDIR_PUSH;
+		} else			/* any builtin execpt "exec" */
+			mode = REDIR_PUSH | REDIR_KEEP;
+
 		if (flags == EV_BACKCMD) {
 			memout.nleft = 0;
 			memout.nextc = memout.buf;
 			memout.bufsize = 64;
 			mode |= REDIR_BACKQ;
 		}
+
 		e = -1;
 		savecmdname = commandname;
 		savetopfile = getcurrentfile();
 		savehandler = handler;
 		temp_path = 0;
+
 		if (!setjmp(jmploc.loc)) {
 			handler = &jmploc;
 
@@ -1395,8 +1508,10 @@ evalcommand(union node *cmd, int flgs, struct backcmd *backcmd)
 			popfilesupto(savetopfile);
 			FORCEINTON;
 		}
+
 		if (cmdentry.u.bltin != execcmd)
-			popredir();
+			popredir(POPREDIR_UNDO);
+
 		if (flags == EV_BACKCMD) {
 			backcmd->buf = memout.buf;
 			backcmd->nleft = memout.nextc - memout.buf;
@@ -1405,15 +1520,15 @@ evalcommand(union node *cmd, int flgs, struct backcmd *backcmd)
 		break;
 
 	default:
-		VXTRACE(DBG_EVAL, ("normal command%s:  ", vforked?" VF":""),
+		VXTRACE(DBG_EVAL, ("normal command%s:  ", vforking?" VF":""),
 		    trargs(argv));
 		redirect(cmd->ncmd.redirect,
-		    (vforked ? REDIR_VFORK : 0) | REDIR_KEEP);
-		if (!vforked)
+		    (vforking ? REDIR_VFORK : 0) | REDIR_KEEP);
+		if (!vforking)
 			for (sp = varlist.list ; sp ; sp = sp->next)
 				setvareq(sp->text, VDOEXPORT|VEXPORT|VSTACK);
 		envp = environment();
-		shellexec(argv, envp, path, cmdentry.u.index, vforked);
+		shellexec(argv, envp, path, cmdentry.u.index, vforking);
 		break;
 	}
 	goto out;
@@ -1699,7 +1814,13 @@ truecmd(int argc, char **argv)
 int
 execcmd(int argc, char **argv)
 {
-	(void) nextopt(NULL);		/* ignore a leading "--" */
+	/*
+	 * BEWARE: if any options are added here, they must
+	 * also be added in evalcommand(), look for "DUMMY_EXAMPLE_CODE"
+	 * for example code for there.   Here the options would be
+	 * processed completely normally.
+	 */
+	(void) nextopt("");		/* ignore a leading "--" */
 
 	if (*argptr) {
 		struct strlist *sp;
@@ -1710,7 +1831,9 @@ execcmd(int argc, char **argv)
 		for (sp = cmdenviron; sp; sp = sp->next)
 			setvareq(sp->text, VDOEXPORT|VEXPORT|VSTACK);
 		shellexec(argptr, environment(), pathval(), 0, 0);
+		/* NOTREACHED */
 	}
+	popredir(POPREDIR_PERMANENT);	/* make any redirections permanent */
 	return 0;
 }
 

@@ -1,4 +1,4 @@
-/* $NetBSD: hypervisor.c,v 1.96 2022/06/23 14:32:16 bouyer Exp $ */
+/* $NetBSD: hypervisor.c,v 1.101 2025/10/19 20:35:03 thorpej Exp $ */
 
 /*
  * Copyright (c) 2005 Manuel Bouyer.
@@ -53,7 +53,7 @@
 
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: hypervisor.c,v 1.96 2022/06/23 14:32:16 bouyer Exp $");
+__KERNEL_RCSID(0, "$NetBSD: hypervisor.c,v 1.101 2025/10/19 20:35:03 thorpej Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -190,9 +190,11 @@ union start_info_union start_info_union __aligned(PAGE_SIZE);
 struct hvm_start_info *hvm_start_info;
 
 static int xen_hvm_vec = 0;
+
 #endif
 
 int xen_version;
+bool pvh_boot = false;
 
 /* power management, for save/restore */
 static bool hypervisor_suspend(device_t, const pmf_qual_t *);
@@ -234,17 +236,30 @@ xen_init_hypercall_page(void)
 	wrmsr(descs[1], (uintptr_t)&hypercall_page - KERNBASE);
 }
 
-uint32_t hvm_start_paddr;
-
 void init_xen_early(void);
 void
 init_xen_early(void)
 {
 	const char *cmd_line;
+	if (!vm_guest_is_pvh())
+		return;
+
+	pvh_boot = true;
+
+	if (hvm_start_info->cmdline_paddr != 0) {
+		cmd_line =
+		    (void *)((uintptr_t)hvm_start_info->cmdline_paddr + KERNBASE);
+		strlcpy(xen_start_info.cmd_line, cmd_line,
+		    sizeof(xen_start_info.cmd_line));
+	} else {
+		xen_start_info.cmd_line[0] = '\0';
+	}
+	xen_start_info.flags = hvm_start_info->flags;
+
 	if (vm_guest != VM_GUEST_XENPVH)
 		return;
+
 	xen_init_hypercall_page();
-	hvm_start_info = (void *)((uintptr_t)hvm_start_paddr + KERNBASE);
 
 	HYPERVISOR_shared_info = (void *)((uintptr_t)HYPERVISOR_shared_info_pa + KERNBASE);
 	struct xen_add_to_physmap xmap = {
@@ -262,15 +277,6 @@ init_xen_early(void)
 	}
 	delay_func = x86_delay = xen_delay;
 	x86_initclock_func = xen_initclocks;
-	if (hvm_start_info->cmdline_paddr != 0) {
-		cmd_line =
-		    (void *)((uintptr_t)hvm_start_info->cmdline_paddr + KERNBASE);
-		strlcpy(xen_start_info.cmd_line, cmd_line,
-		    sizeof(xen_start_info.cmd_line));
-	} else {
-		xen_start_info.cmd_line[0] = '\0';
-	}
-	xen_start_info.flags = hvm_start_info->flags;
 }
 
 
@@ -756,8 +762,7 @@ hypervisor_attach(device_t parent, device_t self, void *aux)
 		hac.hac_iba.iba_memt = x86_bus_space_mem;
 		hac.hac_iba.iba_dmat = &isa_bus_dma_tag;
 		hac.hac_iba.iba_ic = NULL; /* No isa DMA yet */
-		config_found(self, &hac.hac_iba, isabusprint,
-		    CFARGS(.iattr = "isabus"));
+		isabus_attach(self, &hac.hac_iba);
 	}
 #endif /* NISA */
 #endif /* NPCI */

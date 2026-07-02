@@ -1,4 +1,4 @@
-/*	$NetBSD: adb_direct.c,v 1.72 2024/03/05 20:58:05 andvar Exp $	*/
+/*	$NetBSD: adb_direct.c,v 1.75 2026/06/14 02:03:57 thorpej Exp $	*/
 
 /* From: adb_direct.c 2.02 4/18/97 jpw */
 
@@ -62,7 +62,7 @@
 #ifdef __NetBSD__
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: adb_direct.c,v 1.72 2024/03/05 20:58:05 andvar Exp $");
+__KERNEL_RCSID(0, "$NetBSD: adb_direct.c,v 1.75 2026/06/14 02:03:57 thorpej Exp $");
 
 #include "opt_adb.h"
 
@@ -790,6 +790,11 @@ switch_start:
 			adbBusState = ADB_BUS_IDLE;
 			adbActionState = ADB_ACTION_IDLE;
 			ADB_SET_STATE_IDLE_II();
+			/*
+			 * delay required after idle transition
+			 * so ADB uC recognizes transition.
+			 */
+			delay(ADB_DELAY);
 			break;
 		}
 		adbInputBuffer[0] = 1;
@@ -1177,7 +1182,7 @@ adb_guess_next_device(void)
 			adbLastDevice = 1;
 	} else {
 		/* find the next device using the device table */
-		if (adbLastDevice < 1 || adbLastDevice > 15)	/* let's be parinoid */
+		if (adbLastDevice < 1 || adbLastDevice > 15)	/* let's be paranoid */
 			adbLastDevice = 2;
 		last = 1;	/* default index location */
 

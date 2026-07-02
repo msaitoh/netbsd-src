@@ -1,4 +1,4 @@
-/*	$NetBSD: cleanup.h,v 1.10 2022/10/08 16:12:45 christos Exp $	*/
+/*	$NetBSD: cleanup.h,v 1.12 2026/05/09 18:49:15 christos Exp $	*/
 
 /*++
 /* NAME
@@ -14,6 +14,7 @@
   * System library.
   */
 #include <sys/time.h>
+#include <stdint.h>			/* C99 uint64_t */
 
  /*
   * Utility library.
@@ -50,6 +51,7 @@ typedef struct CLEANUP_STATE {
     VSTRING *attr_buf;			/* storage for named attribute */
     VSTRING *temp1;			/* scratch buffer, local use only */
     VSTRING *temp2;			/* scratch buffer, local use only */
+    VSTRING *temp3;			/* scratch buffer, local use only */
     VSTRING *stripped_buf;		/* character stripped input */
     VSTREAM *src;			/* current input stream */
     VSTREAM *dst;			/* current output stream */
@@ -70,7 +72,7 @@ typedef struct CLEANUP_STATE {
     int     qmgr_opts;			/* qmgr processing options */
     int     errs;			/* any badness experienced */
     int     err_mask;			/* allowed badness */
-    int     headers_seen;		/* which headers were seen */
+    uint64_t headers_seen;		/* which headers were seen */
     int     hop_count;			/* count of received: headers */
     char   *resent;			/* any resent- header seen */
     BH_TABLE *dups;			/* recipient dup filter */
@@ -96,6 +98,7 @@ typedef struct CLEANUP_STATE {
     char   *hdr_rewrite_context;	/* header rewrite context */
     char   *filter;			/* from header/body patterns */
     char   *redirect;			/* from header/body patterns */
+    char   *message_id;			/* from Message-ID header */
     char   *dsn_envid;			/* DSN envelope ID */
     int     dsn_ret;			/* DSN full/hdrs */
     int     dsn_notify;			/* DSN never/delay/fail/success */
@@ -129,9 +132,10 @@ typedef struct CLEANUP_STATE {
     struct CLEANUP_REGION *curr_body_region;
 
     /*
-     * Internationalization.
+     * Internationalization, RequireTLS, etc.
      */
-    int     smtputf8;			/* what support is desired */
+    int     sendopts;			/* what support is desired */
+    int     reqtls_esmtp_hdr_seen;	/* valid Require-TLS-ESMTP header */
 } CLEANUP_STATE;
 
  /*
@@ -140,6 +144,11 @@ typedef struct CLEANUP_STATE {
 #define CLEANUP_FLAG_INRCPT	(1<<16)	/* Processing recipient records */
 #define CLEANUP_FLAG_WARN_SEEN	(1<<17)	/* REC_TYPE_WARN record seen */
 #define CLEANUP_FLAG_END_SEEN	(1<<18)	/* REC_TYPE_END record seen */
+
+ /*
+  * Bit mask for the CLEANUP_STATE.headers_seen member.
+  */
+#define HDRS_SEEN_MASK(hval)		((uint64_t) 1 << (hval))
 
  /*
   * Mappings.
@@ -220,6 +229,7 @@ extern void cleanup_pre_jail(char *, char **);
 extern void cleanup_post_jail(char *, char **);
 extern const CONFIG_INT_TABLE cleanup_int_table[];
 extern const CONFIG_BOOL_TABLE cleanup_bool_table[];
+extern const CONFIG_NBOOL_TABLE cleanup_nbool_table[];
 extern const CONFIG_STR_TABLE cleanup_str_table[];
 extern const CONFIG_TIME_TABLE cleanup_time_table[];
 
@@ -355,6 +365,16 @@ extern void cleanup_body_edit_free(CLEANUP_STATE *);
   */
 extern int cleanup_hfrom_format;
 
+ /*
+  * How to handle garbage at end of the primary message header.
+  */
+#define NON_EMPTY_EOH_CODE_ERROR	-1	/* sentinel */
+#define NON_EMPTY_EOH_CODE_FIX_QUIETLY	0
+#define NON_EMPTY_EOH_CODE_ADD_HDR	1
+#define NON_EMPTY_EOH_CODE_REJECT	2
+
+extern int cleanup_non_empty_eoh_action;
+
 /* LICENSE
 /* .ad
 /* .fi
@@ -369,4 +389,7 @@ extern int cleanup_hfrom_format;
 /*	Google, Inc.
 /*	111 8th Avenue
 /*	New York, NY 10011, USA
+/*
+/*	Wietse Venema
+/*	porcupine.org
 /*--*/

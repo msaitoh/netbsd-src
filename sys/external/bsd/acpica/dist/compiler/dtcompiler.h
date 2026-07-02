@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2023, Intel Corp.
+ * Copyright (C) 2000 - 2026, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -502,7 +502,15 @@ DtCompileDrtm (
     void                    **PFieldList);
 
 ACPI_STATUS
+DtCompileDtpr (
+    void                    **PFieldList);
+
+ACPI_STATUS
 DtCompileEinj (
+    void                    **PFieldList);
+
+ACPI_STATUS
+DtCompileErdt (
     void                    **PFieldList);
 
 ACPI_STATUS
@@ -534,6 +542,10 @@ DtCompileIort (
     void                    **PFieldList);
 
 ACPI_STATUS
+DtCompileIovt (
+    void                    **List);
+
+ACPI_STATUS
 DtCompileIvrs (
     void                    **PFieldList);
 
@@ -555,6 +567,10 @@ DtCompileMpam (
 
 ACPI_STATUS
 DtCompileMpst (
+    void                    **PFieldList);
+
+ACPI_STATUS
+DtCompileMrrm (
     void                    **PFieldList);
 
 ACPI_STATUS
@@ -602,6 +618,10 @@ DtCompileRhct (
     void                    **PFieldList);
 
 ACPI_STATUS
+DtCompileRimt (
+    void                    **PFieldList);
+
+ACPI_STATUS
 DtCompileRsdt (
     void                    **PFieldList);
 
@@ -631,6 +651,10 @@ DtCompileStao (
 
 ACPI_STATUS
 DtCompileSvkl (
+    void                    **PFieldList);
+
+ACPI_STATUS
+DtCompileSwft (
     void                    **PFieldList);
 
 ACPI_STATUS
@@ -691,8 +715,10 @@ extern const unsigned char  TemplateDbg2[];
 extern const unsigned char  TemplateDbgp[];
 extern const unsigned char  TemplateDmar[];
 extern const unsigned char  TemplateDrtm[];
+extern const unsigned char  TemplateDtpr[];
 extern const unsigned char  TemplateEcdt[];
 extern const unsigned char  TemplateEinj[];
+extern const unsigned char  TemplateErdt[];
 extern const unsigned char  TemplateErst[];
 extern const unsigned char  TemplateFadt[];
 extern const unsigned char  TemplateFpdt[];
@@ -701,6 +727,7 @@ extern const unsigned char  TemplateHest[];
 extern const unsigned char  TemplateHmat[];
 extern const unsigned char  TemplateHpet[];
 extern const unsigned char  TemplateIort[];
+extern const unsigned char  TemplateIovt[];
 extern const unsigned char  TemplateIvrs[];
 extern const unsigned char  TemplateLpit[];
 extern const unsigned char  TemplateMadt[];
@@ -708,6 +735,7 @@ extern const unsigned char  TemplateMcfg[];
 extern const unsigned char  TemplateMchi[];
 extern const unsigned char  TemplateMpam[];
 extern const unsigned char  TemplateMpst[];
+extern const unsigned char  TemplateMrrm[];
 extern const unsigned char  TemplateMsct[];
 extern const unsigned char  TemplateMsdm[];
 extern const unsigned char  TemplateNfit[];
@@ -721,6 +749,7 @@ extern const unsigned char  TemplateRasf[];
 extern const unsigned char  TemplateRas2[];
 extern const unsigned char  TemplateRgrt[];
 extern const unsigned char  TemplateRhct[];
+extern const unsigned char  TemplateRimt[];
 extern const unsigned char  TemplateRsdt[];
 extern const unsigned char  TemplateS3pt[];
 extern const unsigned char  TemplateSbst[];
@@ -733,6 +762,7 @@ extern const unsigned char  TemplateSpmi[];
 extern const unsigned char  TemplateSrat[];
 extern const unsigned char  TemplateStao[];
 extern const unsigned char  TemplateSvkl[];
+extern const unsigned char  TemplateSwft[];
 extern const unsigned char  TemplateTcpa[];
 extern const unsigned char  TemplateTdel[];
 extern const unsigned char  TemplateTpm2[];

@@ -1,4 +1,4 @@
-/*	$NetBSD: if_wg.c,v 1.132 2024/10/08 02:29:40 riastradh Exp $	*/
+/*	$NetBSD: if_wg.c,v 1.135 2024/12/27 16:42:28 riastradh Exp $	*/
 
 /*
  * Copyright (C) Ryota Ozaki <ozaki.ryota@gmail.com>
@@ -43,7 +43,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_wg.c,v 1.132 2024/10/08 02:29:40 riastradh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_wg.c,v 1.135 2024/12/27 16:42:28 riastradh Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_altq_enabled.h"
@@ -785,8 +785,8 @@ static void	wg_clear_states(struct wg_session *);
 static void	wg_get_peer(struct wg_peer *, struct psref *);
 static void	wg_put_peer(struct wg_peer *, struct psref *);
 
-static int	wg_send_so(struct wg_peer *, struct mbuf *);
-static int	wg_send_udp(struct wg_peer *, struct mbuf *);
+static int	wg_send_hs(struct wg_peer *, struct mbuf *);
+static int	wg_send_data(struct wg_peer *, struct mbuf *);
 static int	wg_output(struct ifnet *, struct mbuf *,
 			   const struct sockaddr *, const struct rtentry *);
 static void	wg_input(struct ifnet *, struct mbuf *, const int);
@@ -814,8 +814,8 @@ struct wg_ops {
 };
 
 struct wg_ops wg_ops_rumpkernel = {
-	.send_hs_msg	= wg_send_so,
-	.send_data_msg	= wg_send_udp,
+	.send_hs_msg	= wg_send_hs,
+	.send_data_msg	= wg_send_data,
 	.input		= wg_input,
 	.bind_port	= wg_bind_port,
 };
@@ -824,13 +824,14 @@ struct wg_ops wg_ops_rumpkernel = {
 static bool	wg_user_mode(struct wg_softc *);
 static int	wg_ioctl_linkstr(struct wg_softc *, struct ifdrv *);
 
-static int	wg_send_user(struct wg_peer *, struct mbuf *);
+static int	wg_send_hs_user(struct wg_peer *, struct mbuf *);
+static int	wg_send_data_user(struct wg_peer *, struct mbuf *);
 static void	wg_input_user(struct ifnet *, struct mbuf *, const int);
 static int	wg_bind_port_user(struct wg_softc *, const uint16_t);
 
 struct wg_ops wg_ops_rumpuser = {
-	.send_hs_msg	= wg_send_user,
-	.send_data_msg	= wg_send_user,
+	.send_hs_msg	= wg_send_hs_user,
+	.send_data_msg	= wg_send_data_user,
 	.input		= wg_input_user,
 	.bind_port	= wg_bind_port_user,
 };
@@ -1898,7 +1899,7 @@ wg_put_sa(struct wg_peer *wgp, struct wg_sockaddr *wgsa, struct psref *psref)
 }
 
 static int
-wg_send_so(struct wg_peer *wgp, struct mbuf *m)
+wg_send_hs(struct wg_peer *wgp, struct mbuf *m)
 {
 	int error;
 	struct socket *so;
@@ -1906,6 +1907,11 @@ wg_send_so(struct wg_peer *wgp, struct mbuf *m)
 	struct wg_sockaddr *wgsa;
 
 	wgsa = wg_get_endpoint_sa(wgp, &psref);
+#ifdef WG_DEBUG_LOG
+	char addr[128];
+	sockaddr_format(wgsatosa(wgsa), addr, sizeof(addr));
+	WG_DLOG("send handshake msg to %s\n", addr);
+#endif
 	so = wg_get_so_by_peer(wgp, wgsa);
 	error = sosend(so, wgsatosa(wgsa), NULL, m, NULL, 0, curlwp);
 	wg_put_sa(wgp, wgsa, &psref);
@@ -3386,11 +3392,12 @@ wg_task_retry_handshake(struct wg_softc *wg, struct wg_peer *wgp)
 	WG_TRACE("WGP_TASK_RETRY_HANDSHAKE");
 
 	KASSERT(mutex_owned(wgp->wgp_lock));
-	KASSERT(wgp->wgp_handshake_start_time != 0);
 
 	wgs = wgp->wgp_session_unstable;
 	if (wgs->wgs_state != WGS_STATE_INIT_ACTIVE)
 		return;
+
+	KASSERT(wgp->wgp_handshake_start_time != 0);
 
 	/*
 	 * XXX no real need to assign a new index here, but we do need
@@ -4398,7 +4405,7 @@ out0:	m_freem(m);
 }
 
 static int
-wg_send_udp(struct wg_peer *wgp, struct mbuf *m)
+wg_send_data(struct wg_peer *wgp, struct mbuf *m)
 {
 	struct psref psref;
 	struct wg_sockaddr *wgsa;
@@ -5451,7 +5458,7 @@ wg_ioctl_linkstr(struct wg_softc *wg, struct ifdrv *ifd)
 }
 
 static int
-wg_send_user(struct wg_peer *wgp, struct mbuf *m)
+wg_send_user(struct wg_peer *wgp, struct mbuf *m, bool handshake)
 {
 	int error;
 	struct psref psref;
@@ -5460,6 +5467,14 @@ wg_send_user(struct wg_peer *wgp, struct mbuf *m)
 	struct iovec iov[1];
 
 	wgsa = wg_get_endpoint_sa(wgp, &psref);
+
+#ifdef WG_DEBUG_LOG
+	if (handshake) {
+		char addr[128];
+		sockaddr_format(wgsatosa(wgsa), addr, sizeof(addr));
+		WG_DLOG("send handshake msg to %s\n", addr);
+	}
+#endif
 
 	iov[0].iov_base = mtod(m, void *);
 	iov[0].iov_len = m->m_len;
@@ -5472,6 +5487,20 @@ wg_send_user(struct wg_peer *wgp, struct mbuf *m)
 	m_freem(m);
 
 	return error;
+}
+
+static int
+wg_send_hs_user(struct wg_peer *wgp, struct mbuf *m)
+{
+
+	return wg_send_user(wgp, m, /*handshake*/true);
+}
+
+static int
+wg_send_data_user(struct wg_peer *wgp, struct mbuf *m)
+{
+
+	return wg_send_user(wgp, m, /*handshake*/false);
 }
 
 static void
