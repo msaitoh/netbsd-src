@@ -1,4 +1,4 @@
-/*	$NetBSD: amcc460ex.h,v 1.2 2026/06/17 15:08:54 rkujawa Exp $	*/
+/*	$NetBSD: amcc460ex.h,v 1.4 2026/06/22 12:34:20 rkujawa Exp $	*/
 
 /*
  * Copyright (c) 2012, 2014, 2024, 2026 The NetBSD Foundation, Inc.
@@ -87,8 +87,16 @@
 
 #define	AMCC460EX_PCIE_CFG_PA_HIGH	0xd	/* ERPN of config windows */
 #define	AMCC460EX_PCIE0_CFG_PLBA	0x30000000
-#define	AMCC460EX_PCIE1_CFG_PLBA	0x38000000
-#define	AMCC460EX_PCIE_CFG_SIZE		0x01000000	/* buses 0-15 */
+/*
+ * The PCIe core - port's local config
+ * XCFG: PECFG inbound BAR/PIM at cfg-region-base + 0x10000000
+ */
+#define	AMCC460EX_PCIE1_CFG_PLBA	0x40000000
+#define	AMCC460EX_PCIE_CFG_SIZE		0x01000000	/* ECAM: buses 0-15 */
+#define	AMCC460EX_PCIE_CFG_REGION_SIZE	0x20000000	/* PEGPL region: 512MB */
+#define	AMCC460EX_PCIE_XCFG_OFFSET	0x10000000	/* local cfg vs region base */
+#define	AMCC460EX_PCIE1_XCFG_PLBA	(AMCC460EX_PCIE1_CFG_PLBA + \
+					    AMCC460EX_PCIE_XCFG_OFFSET)
 
 #define	AMCC460EX_PCIE_MEM_PA_HIGH	0xe	/* ERPN of memory windows */
 #define	AMCC460EX_PCIE0_MEM_PLBA	0x10000000
@@ -96,12 +104,8 @@
 #define	AMCC460EX_PCIE_MEM_BASE		0xa0000000	/* PCI-side base */
 #define	AMCC460EX_PCIE_MEM_SIZE		0x01000000
 
-/* INTA-INTD, flat irq numbers (UIC3 bits 12-15 and 16-19) */
-#define	AMCC460EX_PCIE0_INTA_IRQ	108
-#define	AMCC460EX_PCIE1_INTA_IRQ	112
-
 /*
- * AHB peripherals (USB). 
+ * AHB peripherals (USB).
  */
 #define	AMCC460EX_AHB_PA_HIGH		0x4	/* ERPN */
 #define	AMCC460EX_AHB_BASE		0xbf000000
@@ -154,5 +158,48 @@
 #define	AMCC460EX_USB_OHCI_IRQ		94	/* UIC2 bit 30 */
 #define	AMCC460EX_SATA_IRQ		96	/* UIC3 bit 0 */
 #define	AMCC460EX_SATA_DMA_IRQ		101	/* UIC3 bit 5: AHB DMAC */
+
+/*
+ * L2 cache controller (L2C0) device control registers.
+ */
+#define	DCR_L2C0_CFG		0x030	/* L2 cache configuration */
+#define	  L2C_CFG_L2M		0x80000000	/* SRAM array used as L2 */
+#define	  L2C_CFG_ICU		0x40000000	/* I-cache uses L2 */
+#define	  L2C_CFG_DCU		0x20000000	/* D-cache uses L2 */
+#define	  L2C_CFG_FRAN		0x00200000	/* fast read ack (best perf) */
+#define	  L2C_CFG_SS_256KB	0x00000000	/* SRAM size 256KB (only) */
+#define	  L2C_CFG_SNPCI		0x00000020	/* snoop cache-inhibit writes */
+#define	  L2C_CFG_RDBW		0x00000008	/* read byte write (required) */
+#define	DCR_L2C0_CMD		0x031	/* L2 cache command */
+#define	  L2C_CMD_INV		0x20000000	/* invalidate at L2C0_ADDR */
+#define	  L2C_CMD_CCP		0x10000000	/* clear cache parity error */
+#define	  L2C_CMD_CTE		0x08000000	/* clear tag error */
+#define	  L2C_CMD_HCC		0x00800000	/* hardware clear whole cache */
+#define	DCR_L2C0_ADDR		0x032	/* L2 cache address */
+#define	DCR_L2C0_DATA		0x033	/* L2 cache data */
+#define	DCR_L2C0_SR		0x034	/* L2 cache status */
+#define	  L2C_SR_CC		0x80000000	/* command complete */
+#define	DCR_L2C0_REVID		0x035	/* L2 cache revision id */
+#define	DCR_L2C0_SNP0		0x036	/* L2 snoop region 0 */
+#define	DCR_L2C0_SNP1		0x037	/* L2 snoop region 1 */
+#define	  L2C_SNP_SSR_SHIFT	12	/* size field (bits 16:19) shift */
+#define	  L2C_SNP_ESR		0x00000800	/* enable snoop region */
+
+/* Internal SRAM0 bank config registers; zeroed to free the array for L2. */
+#define	DCR_SRAM0_SB0CR		0x020
+#define	DCR_SRAM0_SB1CR		0x021
+#define	DCR_SRAM0_SB2CR		0x022
+#define	DCR_SRAM0_SB3CR		0x023
+
+/*
+ * AHB-to-PLB bridge CSRs
+ */
+#define	DCR_AHB_REV		0x0a0	/* revision id */
+#define	DCR_AHB_TOP		0x0a4	/* PLB2AHB top address */
+#define	DCR_AHB_BOT		0x0a5	/* PLB2AHB bottom address */
+#define	DCR_AHB_ATT		0x0a6	/* PLB2AHB attribute */
+#define	DCR_AHB_CR		0x0a7	/* AHB2PLB control (PUOA in [6:3]) */
+#define	  AHB_CR_PUOA_MASK	0x00000078	/* PLB upper order address */
+#define	  AHB_CR_PUOA_SHIFT	3
 
 #endif	/* _IBM4XX_AMCC460EX_H_ */

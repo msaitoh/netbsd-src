@@ -1,4 +1,4 @@
-/*	$NetBSD: pmap.c,v 1.105 2026/06/15 12:05:58 skrll Exp $	*/
+/*	$NetBSD: pmap.c,v 1.108 2026/08/03 15:52:35 skrll Exp $	*/
 
 /*-
  * Copyright (c) 1998, 2001 The NetBSD Foundation, Inc.
@@ -67,7 +67,7 @@
 
 #include <sys/cdefs.h>
 
-__KERNEL_RCSID(0, "$NetBSD: pmap.c,v 1.105 2026/06/15 12:05:58 skrll Exp $");
+__KERNEL_RCSID(0, "$NetBSD: pmap.c,v 1.108 2026/08/03 15:52:35 skrll Exp $");
 
 /*
  *	Manages physical address maps.
@@ -941,6 +941,18 @@ pmap_deactivate(struct lwp *l)
 	    l->l_lid, 0, 0);
 }
 
+static void
+pmap_shootdown(struct pmap *pmap)
+{
+#if defined(MULTIPROCESSOR) && defined(PMAP_TLB_NEED_SHOOTDOWN)
+	KASSERT(kpreempt_disabled());
+
+	u_int pending = atomic_swap_uint(&pmap->pm_shootdown_pending, 0);
+	if (pending && pmap_tlb_shootdown_bystanders(pmap))
+		PMAP_COUNT(shootdown_ipis);
+#endif
+}
+
 void
 pmap_update(struct pmap *pmap)
 {
@@ -949,11 +961,9 @@ pmap_update(struct pmap *pmap)
 	PMAP_COUNT(update);
 
 	kpreempt_disable();
-#if defined(MULTIPROCESSOR) && defined(PMAP_TLB_NEED_SHOOTDOWN)
-	u_int pending = atomic_swap_uint(&pmap->pm_shootdown_pending, 0);
-	if (pending && pmap_tlb_shootdown_bystanders(pmap))
-		PMAP_COUNT(shootdown_ipis);
-#endif
+
+	pmap_shootdown(pmap);
+
 	pmap_tlb_miss_lock_enter();
 #if defined(DEBUG) && !defined(MULTIPROCESSOR)
 	pmap_tlb_check(pmap, pmap_md_tlb_check_entry);
@@ -985,8 +995,6 @@ void
 pmap_page_remove(struct vm_page_md *mdpg)
 {
 	kpreempt_disable();
-
-restart:
 	VM_PAGEMD_PVLIST_LOCK(mdpg);
 	pmap_pvlist_check(mdpg);
 
@@ -1055,33 +1063,8 @@ restart:
 			continue;
 		}
 #endif
-		/*
-		 * We have to seamlessly get a hold on the pmap's lock
-		 * while holding the PV head lock, to know that the
-		 * mapping is still in place and we can operate on it.
-		 * If that can't be had, drop the PV head lock, wait
-		 * for the pmap's lock to become available, and then
-		 * try again.
-		 */
 		const pmap_t pmap = pv->pv_pmap;
 		vaddr_t va = trunc_page(pv->pv_va);
-		UVMHIST_LOG(maphist, "... pm %#jx va %#jx... removing",
-			(uintptr_t)pmap, va, 0, 0);
-
-		pmap_reference(pmap);
-		bool locked = pmap_trylock(pmap);
-		if (!locked) {
-			VM_PAGEMD_PVLIST_UNLOCK(mdpg);
-			pmap_lock(pmap);
-			/* nothing */
-			pmap_unlock(pmap);
-			pmap_destroy(pmap);
-
-			UVMHIST_LOG(maphist, "... failed lock", 0, 0, 0,
-				0);
-			goto restart;
-		}
-
 		pt_entry_t * const ptep = pmap_pte_lookup(pmap, va);
 
 		KASSERTMSG(ptep != NULL, "%#"PRIxVADDR " %#"PRIxVADDR, va,
@@ -1132,13 +1115,6 @@ restart:
 			pv->pv_pmap = NULL;
 			pv->pv_next = NULL;
 		}
-
-		VM_PAGEMD_PVLIST_UNLOCK(mdpg);
-		pmap_unlock(pmap);
-		pmap_destroy(pmap);
-		UVMHIST_LOG(maphist, "... removed", 0, 0, 0, 0);
-
-		goto restart;
 	}
 
 	pmap_pvlist_check(mdpg);
@@ -1303,7 +1279,7 @@ pmap_page_protect(struct vm_page *pg, vm_prot_t prot)
 				    VM_PAGEMD_PVLIST_UNLOCK(mdpg);
 				pmap_protect(pmap, va, va + PAGE_SIZE, prot);
 				KASSERT(pv->pv_pmap == pmap);
-				pmap_update(pmap);
+			        pmap_shootdown(pmap);
 				if (gen != VM_PAGEMD_PVLIST_READLOCK(mdpg)) {
 					pv = &mdpg->mdpg_first;
 				} else {
@@ -1350,7 +1326,7 @@ pmap_pte_protect(pmap_t pmap, vaddr_t sva, vaddr_t eva, pt_entry_t *ptep,
 			struct vm_page_md * const mdpg = VM_PAGE_TO_MD(pg);
 
 			pmap_page_set_attributes(mdpg, VM_PAGEMD_MODIFIED);
-			if (VM_PAGEMD_EXECPAGE_P(mdpg) || (prot & VM_PROT_EXECUTE)) {
+			if (VM_PAGEMD_EXECPAGE_P(mdpg)) {
 				KASSERT(!VM_PAGEMD_PVLIST_EMPTY_P(mdpg));
 #ifdef PMAP_VIRTUAL_CACHE_ALIASES
 				if (VM_PAGEMD_CACHED_P(mdpg)) {
@@ -1997,7 +1973,7 @@ pmap_clear_attribute(struct vm_page *pg,
 		pte_set(ptep, npte);
 		pmap_tlb_invalidate_addr(pmap, va);
 		pmap_tlb_miss_lock_exit();
-		pmap_update(pmap);
+	        pmap_shootdown(pmap);
 		if (__predict_false(gen != VM_PAGEMD_PVLIST_READLOCK(mdpg))) {
 			/*
 			 * The list changed!  So restart from the beginning.

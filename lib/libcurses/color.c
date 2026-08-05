@@ -1,4 +1,4 @@
-/*	$NetBSD: color.c,v 1.48 2024/07/11 07:13:41 blymn Exp $	*/
+/*	$NetBSD: color.c,v 1.50 2026/08/04 07:36:08 blymn Exp $	*/
 
 /*
  * Copyright (c) 2000 The NetBSD Foundation, Inc.
@@ -31,7 +31,7 @@
 
 #include <sys/cdefs.h>
 #ifndef lint
-__RCSID("$NetBSD: color.c,v 1.48 2024/07/11 07:13:41 blymn Exp $");
+__RCSID("$NetBSD: color.c,v 1.50 2026/08/04 07:36:08 blymn Exp $");
 #endif				/* not lint */
 
 #include "curses.h"
@@ -603,6 +603,7 @@ __unset_color(WINDOW *win)
 		if (orig_pair != NULL) {
 			tputs(orig_pair, 0, __cputchar);
 			win->wattr &= __mask_op;
+			curscr->wattr &= __mask_op;
 		}
 		break;
 	case COLOR_HP:

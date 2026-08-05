@@ -1,4 +1,4 @@
-# $NetBSD: mi,v 1.1420 2026/06/18 09:26:45 yamaguchi Exp $
+# $NetBSD: mi,v 1.1424 2026/07/09 02:05:45 riastradh Exp $
 #
 # Note: don't delete entries from here - mark them as "obsolete" instead.
 ./etc/mtree/set.tests					tests-sys-root
@@ -2424,6 +2424,7 @@
 ./usr/tests/kernel/t_ksem				tests-kernel-tests	atf
 ./usr/tests/kernel/t_lock				tests-kernel-tests	compattestfile,atf
 ./usr/tests/kernel/t_lockf				tests-kernel-tests	compattestfile,atf
+./usr/tests/kernel/t_lua				tests-kernel-tests	compattestfile,atf
 ./usr/tests/kernel/t_lwpctl				tests-obsolete		obsolete
 ./usr/tests/kernel/t_magic_symlinks			tests-kernel-tests	compattestfile,atf
 ./usr/tests/kernel/t_memfd_create			tests-kernel-tests	compattestfile,atf
@@ -2452,6 +2453,7 @@
 ./usr/tests/kernel/t_rnd				tests-kernel-tests	atf,rump
 ./usr/tests/kernel/t_semtimedop				tests-kernel-tests	compattestfile,atf
 ./usr/tests/kernel/t_sigaction				tests-obsolete		obsolete
+./usr/tests/kernel/t_signal_and_fpu			tests-kernel-tests	compattestfile,atf
 ./usr/tests/kernel/t_signal_and_sp			tests-kernel-tests	compattestfile,atf
 ./usr/tests/kernel/t_simplehook				tests-kernel-tests	atf,rump
 ./usr/tests/kernel/t_subr_prf				tests-kernel-tests	compattestfile,atf
@@ -3257,6 +3259,7 @@
 ./usr/tests/lib/libc/locale/t_ctype2			tests-obsolete		obsolete
 ./usr/tests/lib/libc/locale/t_digittoint		tests-lib-tests		compattestfile,atf
 ./usr/tests/lib/libc/locale/t_ducet			tests-lib-tests		compattestfile,atf
+./usr/tests/lib/libc/locale/t_iconv			tests-lib-tests		compattestfile,atf
 ./usr/tests/lib/libc/locale/t_io			tests-lib-tests		compattestfile,atf
 ./usr/tests/lib/libc/locale/t_mbrtoc16			tests-lib-tests		compattestfile,atf
 ./usr/tests/lib/libc/locale/t_mbrtoc32			tests-lib-tests		compattestfile,atf
@@ -4548,6 +4551,7 @@
 ./usr/tests/net/if_pppoe/t_pppoe_ipcp			tests-net-tests		atf,rump
 ./usr/tests/net/if_pppoe/t_pppoe_ipv6cp			tests-net-tests		atf,rump
 ./usr/tests/net/if_pppoe/t_pppoe_keepalive		tests-net-tests		atf,rump
+./usr/tests/net/if_pppoe/t_pppoe_ondemand		tests-net-tests		atf,rump
 ./usr/tests/net/if_pppoe/t_pppoe_tags			tests-net-tests		atf,rump
 ./usr/tests/net/if_pppoe/t_pppoe_unnumbered		tests-net-tests		atf,rump
 ./usr/tests/net/if_shmif				tests-net-tests		compattestfile,atf

@@ -1,4 +1,4 @@
-/*	$NetBSD: pmap_68k.c,v 1.72 2026/05/19 21:39:08 andvar Exp $	*/
+/*	$NetBSD: pmap_68k.c,v 1.76 2026/07/16 14:15:15 thorpej Exp $	*/
 
 /*-     
  * Copyright (c) 2025 The NetBSD Foundation, Inc.
@@ -220,10 +220,12 @@
  * - PROFIT!
  */
 
+#include "opt_ddb.h"
+#include "opt_kgdb.h"
 #include "opt_m68k_arch.h"
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: pmap_68k.c,v 1.72 2026/05/19 21:39:08 andvar Exp $");
+__KERNEL_RCSID(0, "$NetBSD: pmap_68k.c,v 1.76 2026/07/16 14:15:15 thorpej Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -1543,10 +1545,8 @@ static pt_entry_t *kernel_ptes;
  *	access adjacent PTEs up until the address indicated by
  *	virtual_end!  That means, "pte++" is totally fine until you
  *	get to the current limit of the kernel virtual address space!
- *
- *	XXX This is exported because db_memrw.c needs it.
  */
-pt_entry_t *
+static pt_entry_t *
 pmap_kernel_pte(vaddr_t va)
 {
 	/*
@@ -2804,7 +2804,7 @@ pmap_enter(pmap_t pmap, vaddr_t va, paddr_t pa, vm_prot_t prot, u_int flags)
 		 * XXX hit the ATC after setting the new PTE anyway.
 		 */
 		pmap_evcnt(enter_pa_change);
-		pmap_remove_mapping(pmap, va, ptep, pt, pg,
+		pmap_remove_mapping(pmap, va, ptep, pt, NULL,
 		    PRM_TFLUSH|PRM_CFLUSH, &pc);
 	}
 
@@ -2944,9 +2944,14 @@ pmap_kenter_pa(vaddr_t va, paddr_t pa, vm_prot_t prot, u_int flags)
 #endif
 	}
 
+	/* There must not be a valid PTE here. */
+	KASSERT(! pte_valid_p(pte_load(ptep)));
+
 	/* Set the new PTE. */
-	const pt_entry_t opte = pte_load(ptep);
 	pte_store(ptep, npte);
+
+	pmap_stat_update(pmap, resident_count, 1);
+	pmap_stat_update(pmap, wired_count, 1);
 
 	/*
 	 * See comments in pmap_pv_enter() as for why we hit the ATC here.
@@ -2955,26 +2960,6 @@ pmap_kenter_pa(vaddr_t va, paddr_t pa, vm_prot_t prot, u_int flags)
 	 * VA, but we're erring on the side of caution for now.
 	 */
 	TBIS(va);
-
-	/*
-	 * There should not have been anything here, previously,
-	 * so we can skip ATC invalidation in the common case.
-	 */
-	if (__predict_false(pte_valid_p(opte))) {
-		if (__predict_false(pte_managed_p(opte))) {
-			/*
-			 * Can't handle this case and it's a legitimate
-			 * error if it happens.
-			 */
-			panic("%s: old mapping was managed", __func__);
-		}
-		if (__predict_false(! pte_wired_p(opte))) {
-			pmap_stat_update(pmap, wired_count, 1);
-		}
-	} else {
-		pmap_stat_update(pmap, resident_count, 1);
-		pmap_stat_update(pmap, wired_count, 1);
-	}
 }
 
 /*
@@ -3681,6 +3666,66 @@ pmap_procwr(struct proc *p, vaddr_t va, size_t len)
 	 */
 	(void)cachectl1(0x80000004, va, len, p);
 }
+
+#if defined(DDB) || defined(KGDB)
+/*
+ * pmap_db_write_text_enter:
+ *
+ *	Temporarily map a page of kernel text read-write for the
+ *	kernel debugger.
+ */
+bool
+pmap_db_write_text_enter(vaddr_t pgva, struct pmap_db_write_text_context *ctx)
+{
+	pt_entry_t *pte = pmap_kernel_pte(pgva);
+
+#ifdef M68K_MMU_HP
+	/*
+	 * Flush the supervisor side of the VAC to prevent
+	 * a cache hit on the old, read-only PTE.
+	 *
+	 * XXX Is this really necessary?
+	 */
+	if (MMU_IS_HP_CLASS) {
+		DCIS();
+	}
+#endif
+
+	pt_entry_t opte = pte_load(pte);
+	if (! pte_valid_p(opte)) {
+		return false;
+	}
+
+	/*
+	 * N.B. we use the 68851 PTE bit names here, but in
+	 * the case of the kernel text, it all works out vis
+	 * a vis the 68040 PTE bits.
+	 *
+	 * Note the mapping is cache-inhibited to save hair.
+	 */
+	pt_entry_t npte = (opte & ~PTE51_WP) | PTE51_CI;
+	pte_store(pte, npte);
+	TBIS(pgva);
+
+	ctx->pgva = pgva;
+	ctx->ptep = pte;
+	ctx->opte = opte;
+
+	return true;
+}
+
+/*
+ * pmap_db_write_text_exit:
+ *
+ *	Undo the effects of pmap_db_write_text_enter().
+ */
+void
+pmap_db_write_text_exit(struct pmap_db_write_text_context *ctx)
+{
+	pte_store(ctx->ptep, ctx->opte);
+	TBIS(ctx->pgva);
+}
+#endif /* DDB || KGDB */
 
 static paddr_t kernel_reloc_offset;
 static vaddr_t kernel_reloc_end;

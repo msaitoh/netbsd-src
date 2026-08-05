@@ -1,4 +1,4 @@
-/* $NetBSD: armreg.h,v 1.74 2026/03/29 11:15:03 skrll Exp $ */
+/* $NetBSD: armreg.h,v 1.78 2026/07/31 13:48:31 skrll Exp $ */
 
 /*-
  * Copyright (c) 2014 The NetBSD Foundation, Inc.
@@ -652,7 +652,7 @@ AARCH64REG_WRITEIMM_INLINE(daifset)
 #define	DAIF_A			__BIT(8)	// SError Abort Mask
 #define	DAIF_I			__BIT(7)	// IRQ Mask
 #define	DAIF_F			__BIT(6)	// FIQ Mask
-#define	DAIF_SETCLR_SHIFT	6		// for daifset/daifclr #imm shift
+#define	DAIF_MASK		(DAIF_D | DAIF_A | DAIF_I | DAIF_F)
 
 AARCH64REG_READ_INLINE(elr_el1)		// Exception Link Register
 AARCH64REG_WRITE_INLINE(elr_el1)
@@ -1555,11 +1555,28 @@ AARCH64REG_READ_INLINE(cntfrq_el0)
 
 AARCH64REG_READ_INLINE(cnthctl_el2)
 AARCH64REG_WRITE_INLINE(cnthctl_el2)
-
-#define	CNTHCTL_EVNTDIR		__BIT(3)
-#define	CNTHCTL_EVNTEN		__BIT(2)
-#define	CNTHCTL_EL1PCEN		__BIT(1)
-#define	CNTHCTL_EL1PCTEN	__BIT(0)
+/*
+ * Common fields independent of FEAT_VHE configuration
+ */
+#define CNTHCTL_EL2_CNTPMASK       __BIT(19)
+#define CNTHCTL_EL2_CNTVMASK       __BIT(18)
+#define CNTHCTL_EL2_EVNTIS         __BIT(17)
+#define CNTHCTL_EL2_EL1NVVCT       __BIT(16)
+#define CNTHCTL_EL2_EL1NVPCT       __BIT(15)
+#define CNTHCTL_EL2_EL1TVCT        __BIT(14)
+#define CNTHCTL_EL2_EL1TVT         __BIT(13)
+#define CNTHCTL_EL2_ECV            __BIT(12)
+#define CNTHCTL_EL2_EVNTI          __BITS(7,4)
+#define CNTHCTL_EL2_EVNTDIR        __BIT(3)
+#define CNTHCTL_EL2_EVNTEN         __BIT(2)
+/* FEAT_VHE Layout (HCR_EL2.E2H == 1) */
+#define CNTHCTL_EL2_VHE_EL0PTEN    __BIT(9)
+#define CNTHCTL_EL2_VHE_EL0VTEN    __BIT(8)
+#define CNTHCTL_EL2_VHE_EL0VCTEN   __BIT(1)
+#define CNTHCTL_EL2_VHE_EL0PCTEN   __BIT(0)
+/* Non-FEAT_VHE Layout (HCR_EL2.E2H == 0) */
+#define CNTHCTL_EL2_NVHE_EL1PCEN   __BIT(1)
+#define CNTHCTL_EL2_NVHE_EL1PCTEN  __BIT(0)
 
 AARCH64REG_READ_INLINE(cntkctl_el1)
 AARCH64REG_WRITE_INLINE(cntkctl_el1)
@@ -1623,7 +1640,7 @@ AARCH64REG_WRITE_INLINE(cntvct_el0)
 #define	ID_AA64PFR0_EL1_MPAM		__BITS(43,40) // MPAM Extension
 #define	 ID_AA64PFR0_EL1_MPAM_NONE	0
 #define	 ID_AA64PFR0_EL1_MPAM_IMPL	1
-#define	ID_AA64PFR0_EL1_SEL2		__BITS(43,40) // Secure EL2
+#define	ID_AA64PFR0_EL1_SEL2		__BITS(39,36) // Secure EL2
 #define	 ID_AA64PFR0_EL1_SEL2_NONE	0
 #define	 ID_AA64PFR0_EL1_SEL2_IMPL	1
 #define	ID_AA64PFR0_EL1_SVE		__BITS(35,32) // Scalable Vector
@@ -1633,7 +1650,7 @@ AARCH64REG_WRITE_INLINE(cntvct_el0)
 #define	 ID_AA64PFR0_EL1_RAS_NONE	 0
 #define	 ID_AA64PFR0_EL1_RAS_IMPL	 1
 #define	 ID_AA64PFR0_EL1_RAS_ERX	 2
-#define	ID_AA64PFR0_EL1_GIC		__BITS(24,27) // GIC CPU IF
+#define	ID_AA64PFR0_EL1_GIC		__BITS(27,24) // GIC CPU IF
 #define	ID_AA64PFR0_EL1_GIC_SHIFT	24
 #define	 ID_AA64PFR0_EL1_GIC_CPUIF_EN	 1
 #define	 ID_AA64PFR0_EL1_GIC_CPUIF_NONE	 0

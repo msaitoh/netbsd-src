@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.476 2026/05/10 14:19:10 tls Exp $
+#	$NetBSD: Makefile,v 1.478 2026/08/02 02:59:14 brook Exp $
 #	from: @(#)Makefile	8.7 (Berkeley) 5/25/95
 
 # Environment variables without default values:
@@ -48,6 +48,9 @@ DISTRIBVER!=	${HOST_SH} ${NETBSDSRCDIR}/sys/conf/osrelease.sh
 
 GZIP_FLAGS= -9 ${GZIP_N_FLAG}
 
+HASHES+=	MD5
+HASHES+=	SHA512
+
 # Flags for creating ISO CDROM image for mac68k and macppc that require
 # tools mkhybrid(8) to create hybrid ISO9660/HFS images.
 MKISOFS?=	${TOOL_MKHYBRID}
@@ -61,7 +64,7 @@ MKISOFS_FLAGS+= -J -l -r \
 .if ${MKISOFS_FLAGS:N-v}
 MKISOFS_FLAGS+=	-quiet
 .endif
- 
+
 # Reproducible build parameters
 .if ${MKREPRO:Uno} == "no"
 BUILDER!=	echo $${USER-root}@$$(hostname)
@@ -339,7 +342,7 @@ install-etc-files: .PHONY .MAKE check_DESTDIR MAKEDEV
 			/dev/null ${DESTDIR}${file}; \
 	else true; fi
 .endfor
-.for subdir in . defaults autofs bluetooth iscsi mtree namedb pam.d powerd rc.d root skel ssh
+.for subdir in . defaults autofs bluetooth iscsi mtree namedb pam.d powerd rc.d root skel ssh unbound
 	${MAKEDIRTARGET} ${subdir} configinstall
 .endfor
 	${MAKEDIRTARGET} ${NETBSDSRCDIR}/external/bsd/dhcpcd/sbin/dhcpcd configinstall
@@ -697,7 +700,7 @@ install-debugkernels:
 	done
 .	for k in ${ALL_KERNELS}
 install-debugkernels: ${DESTDIR}${DEBUGDIR}/netbsd-${k}.debug
-		
+
 ${DESTDIR}${DEBUGDIR}/netbsd-${k}.debug:
 	${_MKTARGET_INSTALL}
 	touch ${.TARGET}

@@ -1,4 +1,4 @@
-#	$NetBSD: 3RDPARTY,v 1.2220 2026/06/18 06:31:05 kre Exp $
+#	$NetBSD: 3RDPARTY,v 1.2234 2026/07/21 22:53:03 kim Exp $
 #
 # This file contains a list of the software that has been integrated into
 # NetBSD where we are not the primary maintainer.
@@ -127,7 +127,7 @@ Notes:
 bc includes dc, both of which are in the NetBSD tree.
 
 Package:	bind [named and utils]
-Version:	9.20.23/MPL
+Version:	9.20.24/MPL
 Current Vers:	9.20.24/9.21.23/MPL
 Maintainer:	ISC
 Archive Site:	ftp://ftp.isc.org/isc/bind9/
@@ -433,12 +433,12 @@ Location:	external/bsd/ekermit
 Notes:
 
 Package:	expat
-Version:	2.8.1
-Current Vers:	2.8.1
+Version:	2.8.2
+Current Vers:	2.8.2
 Maintainer:	Expat Project
 Archive Site:	https://github.com/libexpat/libexpat/releases
 Home Page:	http://www.libexpat.org/
-Date:		2026-05-11
+Date:		2026-06-25
 Mailing List:	expat-discuss@libexpat.org
 Responsible:	mrg
 License:	MIT
@@ -748,11 +748,11 @@ Talk to mrg before importing any new version.
 
 Package:	libarchive
 Version:	3.8.7
-Current Vers:	3.8.7
+Current Vers:	3.8.8
 Maintainer:	kientzle@freebsd.org, joerg@NetBSD.org
 Archive Site:	https://github.com/libarchive/libarchive/releases
 Home Page: 	http://www.libarchive.org
-Date:		2026-05-03
+Date:		2026-06-24
 Responsible:	joerg
 License:	BSD (2-clause)
 Location:	external/bsd/libarchive/dist
@@ -775,20 +775,17 @@ The lvm2tools and the libdevmapper are now distributed as one source
 repository. See the lvm2tools Notes for more information.
 
 Package:	libevent
-Version:	2.1.12-stable
-Current Vers:	2.1.12-stable
+Version:	2.1.13-stable
+Current Vers:	2.1.13-stable
 Maintainer:	Niels Provos <provos@citi.umich.edu>
 Archive Site:	http://www.monkey.org/~provos/libevent/
 Home Page:	http://www.monkey.org/~provos/libevent/
-Date:		2026-05-03
+Date:		2026-07-08
 Responsible:
 License:	BSD (3/4-clause)
 Location:	external/bsd/libevent/dist
 Notes:
 - Run the libevent2netbsd script
-- Build the doxygen man pages. Edit the Doxyfile to GENERATE_MAN=yes.
-  man pages are in doxygen/man/man3. Remove the extra man pages that are
-  .so'ing only. Copy the rest to man.
 
 Package:	llvm
 Version:	10.0.0git (01f3a59fb3e2542fce74c768718f594d0debd0da)
@@ -1118,11 +1115,11 @@ Patch applied after OpenSSH import.
 
 Package:	OpenSSH
 Version:	10.3
-Current Vers:	10.3 / portable 10.3p1
+Current Vers:	10.4 / portable 10.4p1
 Maintainer:	OpenSSH
 Archive Site:	http://www.openssh.com/ftp.html
 Home Page:	http://www.openssh.com/portable.html
-Date:		2026-04-08
+Date:		2026-07-06
 Mailing List:	openssh-unix-announce@mindrot.org
 Responsible:	thorpej, christos, elric
 License:	BSD. See src/crypto/external/bsd/openssh/dist/LICENSE
@@ -1145,6 +1142,7 @@ markus is very cooperative about it):
   (see if there is any difference between the current version of opensshX.Yp1
    and the new opensshZ.Wp1) and apply them.
 - added LDAP from portable openssh.
+- added rlimit sandbox from portable openssh.
 - conditionalize login_cap
 - conditionalize bsd_auth
 - restore krb5, krb4, afs, skey
@@ -1292,11 +1290,11 @@ now to do a new import.
 
 Package:	Postfix
 Version:	3.11.2
-Current Vers:	3.11.4
+Current Vers:	3.11.5
 Maintainer:	Wietse Venema <wietse@porcupine.org>
 Archive Site:
 Home Page:	https://www.postfix.org/
-Date: 		2026-06-17
+Date: 		2026-07-06
 Mailing List:	postfix-users@postfix.org
 Responsible:	christos
 License:	IBM Public License. See also src/external/ibm-public/postfix/dist.
@@ -1440,11 +1438,11 @@ purposes.
 
 Package:	tmux
 Version:	3.6b
-Current Vers:	3.6b
+Current Vers:	3.7b
 Maintainer:	Nicholas Marriott <nicholas.marriott@gmail.com>
 Archive site:	https://github.com/tmux/tmux
 Home page:	http://tmux.github.io
-Date: 		2026-05-26
+Date: 		2026-07-01
 Mailing List:	tmux-users@googlegroups.com
 Responsible:	christos
 License:	BSD
@@ -1495,8 +1493,8 @@ Location:	external/bsd/tradcpp
 Notes:
 
 Package:	tz
-Version:	tzcode2026b / tzdata2026bgtz
-Current Vers:	tzcode2026b / tzdata2026b
+Version:	tzcode2026c / tzdata2026cgtz
+Current Vers:	tzcode2026c / tzdata2026c
 Maintainer:	Paul Eggert <eggert@cs.ucla.edu>
 Archive Site:	ftp://ftp.iana.org/tz/releases/
 Archive Site:	ftp://munnari.oz.au/pub/oldtz/
@@ -1588,6 +1586,7 @@ Notes:
    - add alias carp to vrrp
    - put back 240 (pfsync), splitting the unassigned entries
    - put back NetBSD RCSID
+6. Fix non ascii chars in services (4 bullets currently)
 
 Package:	pigz
 Version:	2.3.1

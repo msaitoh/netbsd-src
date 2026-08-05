@@ -1,4 +1,4 @@
-# $NetBSD: GENERIC,v 1.248 2026/06/04 13:59:46 jdc Exp $
+# $NetBSD: GENERIC,v 1.250 2026/07/26 12:55:51 jdc Exp $
 #
 # GENERIC machine description file
 #
@@ -22,7 +22,7 @@ include 	"arch/sparc64/conf/std.sparc64"
 
 options 	INCLUDE_CONFIG_FILE	# embed config file in kernel binary
 
-#ident		"GENERIC-$Revision: 1.248 $"
+#ident		"GENERIC-$Revision: 1.250 $"
 
 maxusers	64
 
@@ -438,6 +438,10 @@ pseudo-device	accf_http		# "httpready" accept filter
 pseudo-device	vnd
 #options 	VND_COMPRESSION		# compressed vnd(4)
 
+## RAID control device driver
+
+pseudo-device 	bio
+
 ## Concatenated and striped disks; with this, you can create a software-based
 ## disk array similar to a "RAID 0" setup.  See ccd(4).
 
@@ -840,6 +844,8 @@ adt7462sm* 	at iic? addr?	# U45
 seeprom*	at iic? addr?	# i2c-at24c64 fru's
 pcagpio* 	at iic? addr?	# V210/V240 GPIO's
 pcf8574io* 	at iic? addr?	# E250 GPIO's
+
+auxfan* 	at iic? addr?	# iic fan sensor found on SB2500
 
 ### Other pseudo-devices
 

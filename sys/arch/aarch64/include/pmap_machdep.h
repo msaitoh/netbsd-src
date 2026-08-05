@@ -1,4 +1,4 @@
-/*	$NetBSD: pmap_machdep.h,v 1.21 2026/06/15 15:18:04 skrll Exp $	*/
+/*	$NetBSD: pmap_machdep.h,v 1.23 2026/07/11 11:39:47 skrll Exp $	*/
 
 /*-
  * Copyright (c) 2022 The NetBSD Foundation, Inc.
@@ -74,6 +74,9 @@
 #define	__HAVE_PMAP_PV_TRACK
 #define	__HAVE_PMAP_MD
 
+/* XXX temporary */
+#define	__HAVE_UNLOCKED_PMAP
+
 #define	PMAP_PAGE_INIT(pp)				\
 do {							\
 	(pp)->pp_md.mdpg_first.pv_next = NULL;		\
@@ -133,8 +136,8 @@ struct pmap_page {
 
 #define	LX_BLKPAG_OS_MODEMUL	LX_BLKPAG_OS_0
 
-#define	PMAP_PTE_OS0	"modemul"
-#define	PMAP_PTE_OS1	"(unused)"
+#define	PMAP_PTE_OS0		"modemul"
+#define	PMAP_PTE_OS1		"(unused)"
 
 static inline paddr_t
 pmap_l0pa(struct pmap *pm)

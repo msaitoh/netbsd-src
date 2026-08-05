@@ -1,4 +1,4 @@
-#      $NetBSD: bsd.own.mk,v 1.1482 2026/05/10 14:19:10 tls Exp $
+#      $NetBSD: bsd.own.mk,v 1.1485 2026/08/01 20:48:03 thorpej Exp $
 
 # This needs to be before bsd.init.mk
 .if defined(BSD_MK_COMPAT_FILE)
@@ -281,7 +281,7 @@ USE_SSP?=	yes
 # built-in to libc from 2005 (pre version 3).
 #
 .if \
-    ${MACHINE} == "sun2" || \
+    ${MACHINE_ARCH} == "m68000" || \
     ${MACHINE_ARCH} == "vax"
 HAVE_JEMALLOC?=		100
 .else
@@ -733,7 +733,7 @@ TOOL_ZIC=		zic
 .if defined(BINDIR) && ${BINDIR} == "/usr/mdec"
 NOCTF=			# defined
 NOPIE=			# defined
-.elif ${MACHINE} == "sun2"
+.elif ${MACHINE_ARCH} == "m68000"
 NOPIE=			# we don't have PIC, so no PIE
 .endif
 
@@ -808,7 +808,7 @@ MACHINES.coldfire=	evbcf
 MACHINES.hppa=		hppa
 MACHINES.i386=		i386
 MACHINES.ia64=		ia64
-MACHINES.m68000=	sun2
+MACHINES.m68000=	sun2 hb68k
 MACHINES.m68k=		amiga atari cesfic hp300 luna68k mac68k \
 			mvme68k news68k next68k sun3 virt68k x68k
 MACHINES.m68ksf=	mac68k
@@ -1364,6 +1364,7 @@ _MKVARS.yes= \
 	MKPROFILE \
 	MKPTYFS \
 	MKQEMUFWCFG \
+	MKRAID \
 	MKRUMP \
 	MKSHARE \
 	MKSKEY \
@@ -1422,6 +1423,7 @@ MKPF.m68000?=		no
 MKPOSTFIX.m68000?=	no
 MKPROCFS.m68000?=	no
 MKQEMUFWCFG.m68000?=	no
+MKRAID.m68000?=		no
 MKRUMP.m68000?=		no
 MKSSH.m68000?=		no
 MKSYSVBFS.m68000?=	no
