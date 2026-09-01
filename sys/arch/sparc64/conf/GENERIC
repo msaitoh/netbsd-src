@@ -1,4 +1,4 @@
-# $NetBSD: GENERIC,v 1.250 2026/07/26 12:55:51 jdc Exp $
+# $NetBSD: GENERIC,v 1.255 2026/08/31 20:06:32 palle Exp $
 #
 # GENERIC machine description file
 #
@@ -22,7 +22,7 @@ include 	"arch/sparc64/conf/std.sparc64"
 
 options 	INCLUDE_CONFIG_FILE	# embed config file in kernel binary
 
-#ident		"GENERIC-$Revision: 1.250 $"
+#ident		"GENERIC-$Revision: 1.255 $"
 
 maxusers	64
 
@@ -343,6 +343,7 @@ ahc*	at pci? dev ? function ?	# Adaptec [23]94x, aic78x0 SCSI
 bha*	at pci? dev ? function ?	# BusLogic 9xx SCSI UT
 dpt*	at pci? dev ? function ?	# DPT SmartCache/SmartRAID UT
 iha*	at pci? dev ? function ?	# Initio INIC-940/950 SCSI
+mpii*	at pci? dev ? function ?	# LSI Message Passing Interface II
 mpt*	at pci? dev ? function ?	# LSILogic 9x9 and 53c1030
 njs*	at pci? dev ? function ?	# Workbit NinjaSCSI-32
 pcscp*	at pci? dev ? function ?	# AMD 53c974 PCscsi-PCI SCSI
@@ -514,6 +515,7 @@ gem*	at pci? dev ? function ?	# Apple GMAC and Sun ERI gigabit enet
 gem*	at sbus? slot ? offset ?
 gsip*	at pci? dev ? function ?	# National Semiconductor DP83820 GigE
 ixg*	at pci? dev ? function ?	# Intel 8259x 10 gigabit
+ixl*	at pci?						# Intel 700 Series Ethernet UT
 mskc*	at pci? dev ? function ?	# Marvell Yukon 2 Gigabit Ethernet
 msk*	at mskc?			# Marvell Yukon 2 Gigabit Ethernet
 ne*	at pci? dev ? function ?	# NE2000-compatible Ethernet UT
@@ -561,6 +563,7 @@ tqphy*	at mii? phy ?			# TDK Semiconductor PHYs
 ukphy*	at mii? phy ?			# generic unknown PHYs
 
 # PCI USB controllers
+xhci*	at pci?	dev ? function ?	# eXtensible Host Controller
 ehci*	at pci? dev ? function ?	# Enhanced Host Controller
 ohci*	at pci? dev ? function ?	# Open Host Controller
 uhci*	at pci? dev ? function ?	# Universal Host Controller (Intel)

@@ -1,4 +1,4 @@
-# LIST OF CHANGES FROM LAST RELEASE:			<$Revision: 1.3282 $>
+# LIST OF CHANGES FROM LAST RELEASE:			<$Revision: 1.3290 $>
 #
 #
 # [Note: This file does not mention every change made to the NetBSD source tree.
@@ -32,8 +32,6 @@ Changes from NetBSD 11.0 to NetBSD 12.0:
 	binutils: Import 2.45 and switch amd64 to it  [christos 20250826]
 	gffb(4): Add backlight control to the GeForce framebuffer driver.
 		[macallan 20250830]
-	man(1): Add -l flag to parse argument as file name.
-		[christos 20250902]
 	gdb: Import 16.3 and switch everyone to it [christos 20250902]
 	openpam(3): update to 20250531 (zingiber) [christos 20250903]
 	openldap: Import 2.6.10. [christos 20250904]
@@ -44,8 +42,6 @@ Changes from NetBSD 11.0 to NetBSD 12.0:
 		controls lights depending on CPU usage. [macallan 20250908]
 	m68k: Change softfloat build to libc/softfloat. [nat 20250910]
 	fsck_ffs(8): Expand flags with -a and -i. [perseant 20250914]
-	ctype(3): New environment variable LIBC_ALLOWCTYPEABUSE.
-		[riastradh 20250915]
 	dumplfs(8): Add -n flag to allow dumping of a given inode from an
 		inode block, or every inode in a block. [perseant 20250914]
 	lfs: Add working in-kernel roll forward. [perseant 20250917]
@@ -96,12 +92,12 @@ Changes from NetBSD 11.0 to NetBSD 12.0:
 	iwm(4): Update driver code, improving performance and stability.
 		[mlelstv 20251201]
 	lfs: Various stability improvements. [perseant 20251202]
-	evbppc: Enable PaX security features in WII kernel configuration.
-		[nia 20251204]
 	viaide(4): Identify and attach VT6420 IDE (PATA) controller.
 		[andvar 20251204]
 	diff(1), diff3(1): Import BSD-licensed diff to replace GNU
 		diffutils, build with MKBSDDIFF=yes. [nia 20251204]
+	evbppc: Enable PaX security features in WII kernel configuration.
+		[nia 20251204]
 	amd64: Support ramdisks when booting in GENPVH mode.
 		[khorben 20251205]
 	ftp(1): Fix ASCII transfers with progress bar. [lukem 20251206]
@@ -124,8 +120,6 @@ Changes from NetBSD 11.0 to NetBSD 12.0:
 	sun2: Add various MK build knobs and disable them on sun2 to trim
 		down the installation. [thorpej 20251228]
 	diff(1): Switch the default to MKBSDDIFF=yes. [nia 20260102]
-	makefs(8): Honour -m option to set a maximum FS size for
-		cd9660 images. [nia 20260107]
 	i386, amd64, sparc64: Exclude various base features from the
 		CD-ROM installer and add checks that cause ISO image
 		creation to fail if the size is above 700 MB.
@@ -165,8 +159,6 @@ Changes from NetBSD 11.0 to NetBSD 12.0:
 	hppa: hyperfb: Add support for translucent fonts and the glyph
 		cache. [macallan 20260203]
 	evbppc: wiiu: Add RTC support. [jmcneill 20260203]
-	ftp(1): simplify socket buffer handling to improve performance.
-		[lukem 20260207]
 	ftp(1): send custom HTTP headers in provided order, not reverse.
 		[lukem 20260208]
 	tmux(1): Import version 3.6a. [wiz 20260209]
@@ -217,10 +209,8 @@ Changes from NetBSD 11.0 to NetBSD 12.0:
 		[skrll 20260318]
 	m68k: Refactor FP exception handling to be less
 		machine-dependent. [thorpej 20260321]
-	zfs: Improve performance of removing files. [yamt 20260322]
 	m68k: Use a common delay(9) implementation, except for atari,
 		mac68k, and virt68k. [thorpej 20260328]
-	drum(4): Make the device MPSAFE. [yamt 20260330]
 	evbarm: Add FDT-based clkgate, power and sleep controller, and
 		interrupt controller drivers for am18xx.
 		[yurix 20260330]
@@ -270,8 +260,6 @@ Changes from NetBSD 11.0 to NetBSD 12.0:
 	mac68k: Switch to the new machine-independent m68k pmap.
 		[thorpej 20260513]
 	bind: Import version 9.20.23. [christos 20260520]
-	kernel: tcp: Reduce the Initial RTO from 3 seconds to
-		1 second as allowed by RFC6298. [kbowling 20260520]
 	unbound(8): Import 1.25.1. [christos 20260521]
 	mkimage: New `-C <config>' option. Enables use of
 		out-of-tree config files. [riastradh 20260522]
@@ -366,3 +354,50 @@ Changes from NetBSD 11.0 to NetBSD 12.0:
 		by Mark Kettenis. [thorpej 20260718]
 	sun2, sun3: Introduce a unified pmap(9) module for all
 		68k-based Sun machines. [thorpej 20260719]
+	sparc64: Add auxfan(4), a driver for the i2c fan sensor found
+		on Sun Blade 2500 Silver machines. [jdc 20260726]
+	evbmips: Add a driver for Ingenic JZ4780 SD/MMC devices.
+		[rkujawa 20260726]
+	pppoe(4): Allow controlling which traffic triggers
+		dial-on-demand or keeps idle connections alive using
+		BPF-based packet filtering for dial-on-demand and
+		idle-timeout. [yamaguchi 20260728]
+	rge(4): Support for Realtek Killer E5000 5GB Ethernet.
+		[pgoyette 20260802]
+	hb68k: Add support for techav's Wrap030 homebrew
+		Motorola 68000 board. [thorpej 20260806]
+	rc(8): Disable ldconfig(8) a.out cache building by default.
+		Improves boot speed on slow machines.
+		[christos 20260816]
+	dhcpcd(8): Import v10.5.1 [roy 20260817]
+	gffb(4): Add hardware cursor support. [macallan 20260817]
+	crash(8): Add support for `mach cpu N' on x86 to examine
+		registers/stack of other CPUs. [riastradh 20260817]
+	evbarm: Add a SD/MMC driver for the Texas Instruments AM1808.
+		[yurix 20260819]
+	rc(8): Add an optional rcorder_cache=YES setting to cache the
+		rc.d scripts that run during boot. Reduces boot time
+		significantly on slow CPUs. [thorpej 20260820]
+	autofs(5): Support running inside a chroot.
+		[riastradh 20260820]
+	hppa: Add eager FPU switching - works around QEMU bug, and
+		safer. May eventually become the default.
+		[tls 20260821]
+	sparc64: sun4v: Ensure that all versions of the hypervisor
+		interrupt API can be used. [palle 20260821]
+	file(1): Recognize NetBSD file system snapshot files.
+		[riastradh 20260823]
+	mount_lfs(8): Add options -k, to invoke a kernel cleaner
+		thread, and -u, to invoke lfs_cleanerd(8). -k is
+		now the default. [perseant 20260825]
+	riscv: Add a driver for the JH7110 watchdog timer.
+		[riz 20260825]
+	cpuctl(8): Allow `cpuid leaf 4' to get cache parameters for
+		Zhaoxin and late VIA CPU models. [andvar 20260825]
+	mount(8): Add a -W option to show wedge names as labels
+		(NAME=xyzzy) instead of /dev/dkN. [kre 20260826]
+	nfs: New sysctl node vfs.nfsd.maxexportspermount. Defaults
+		to 256. [riastradh 20260826]
+	dd(1): Implement POSIX Issue 8 "-iflags=fullblock" option.
+		[kre 20260829]
+	bind: Import version 9.20.24. [christos 20260829]

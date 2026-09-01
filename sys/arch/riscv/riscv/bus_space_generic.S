@@ -1,4 +1,4 @@
-/*	$NetBSD: bus_space_generic.S,v 1.6 2026/03/29 12:10:50 tls Exp $	*/
+/*	$NetBSD: bus_space_generic.S,v 1.9 2026/08/25 18:16:13 skrll Exp $	*/
 
 /*-
  * Copyright (c) 2022 The NetBSD Foundation, Inc.
@@ -33,7 +33,7 @@
 #include <riscv/asm.h>
 #include "assym.h"
 
-RCSID("$NetBSD: bus_space_generic.S,v 1.6 2026/03/29 12:10:50 tls Exp $")
+RCSID("$NetBSD: bus_space_generic.S,v 1.9 2026/08/25 18:16:13 skrll Exp $")
 
 
 /* void bs_c_1(a0: tag, a1: src, srcoffset, dst, dstoffset, count); */
@@ -72,7 +72,11 @@ ENTRY_NP(generic_bs_r_4)
 	PTR_L	a5, BS_STRIDE(a0)	/* stride */
 	PTR_SLL	a2, a2, a5		/* offset <<= stride */
 	PTR_ADD	a2, a2, a1		/* add to address */
+#ifdef _LP64
+	lwu	a0, 0(a2)		/* load 32-bit */
+#else
 	lw	a0, 0(a2)		/* load 32-bit */
+#endif
 	ret
 END(generic_bs_r_4)
 
@@ -104,12 +108,13 @@ ENTRY_NP(generic_bs_rm_1)
 	add	a4, a4, -1		/* count-- */
 	bnez	a4, 1b
 	ret
+#ifdef DIAGNOSTIC
 2:
 	la	a0, 3f
 	tail	_C_LABEL(panic)
 3:
 	.asciz	"_bs_rm_1: count == 0"
-	.balign 4, 0
+#endif
 END(generic_bs_rm_1)
 
 
@@ -128,12 +133,13 @@ ENTRY_NP(generic_bs_rm_2)
 	add	a4, a4, -1		/* count-- */
 	bnez	a4, 1b
 	ret
+#ifdef DIAGNOSTIC
 2:
 	la	a0, 3f
 	tail	_C_LABEL(panic)
 3:
 	.asciz	"_bs_rm_2: count == 0"
-	.balign 4, 0
+#endif
 END(generic_bs_rm_2)
 
 
@@ -152,12 +158,13 @@ ENTRY_NP(generic_bs_rm_4)
 	add	a4, a4, -1		/* count-- */
 	bnez	a4, 1b
 	ret
+#ifdef DIAGNOSTIC
 2:
 	la	a0, 3f
 	tail	_C_LABEL(panic)
 3:
 	.asciz	"_bs_rm_4: count == 0"
-	.balign 4, 0
+#endif
 END(generic_bs_rm_4)
 
 
@@ -177,12 +184,13 @@ ENTRY_NP(generic_bs_rm_8)
 	add	a4, a4, -1		/* count-- */
 	bnez	a4, 1b
 	ret
+#ifdef DIAGNOSTIC
 2:
 	la	a0, 3f
 	tail	_C_LABEL(panic)
 3:
 	.asciz	"_bs_rm_8: count == 0"
-	.balign 4, 0
+#endif
 END(generic_bs_rm_8)
 #endif
 
@@ -194,7 +202,7 @@ ENTRY_NP(generic_bs_rr_1)
 #endif
 	PTR_L	a5, BS_STRIDE(a0)	/* stride */
 	li	t0, 1
-	srl	t0, t0, a5		/* delta = 1 << stride */
+	sll	t0, t0, a5		/* delta = 1 << stride */
 	PTR_SLL	a2, a2, a5		/* offset <<= stride */
 	PTR_ADD	a2, a2, a1		/* add to address */
 1:
@@ -205,12 +213,13 @@ ENTRY_NP(generic_bs_rr_1)
 	add	a4, a4, -1		/* count-- */
 	bnez	a4, 1b
 	ret
+#ifdef DIAGNOSTIC
 2:
 	la	a0, 3f
 	tail	_C_LABEL(panic)
 3:
 	.asciz	"_bs_rr_1: count == 0"
-	.balign 4, 0
+#endif
 END(generic_bs_rr_1)
 
 
@@ -220,11 +229,8 @@ ENTRY_NP(generic_bs_rr_2)
 	beqz	a4, 2f
 #endif
 	PTR_L	a5, BS_STRIDE(a0)	/* stride */
-	li	t0, 1
-	srl	t0, t0, a5		/* delta = 1 << stride */
-// if (delta < 2)
-//     delta = 2
-
+	li	t0, 2
+	sll	t0, t0, a5		/* delta = 2 << stride */
 
 	PTR_SLL	a2, a2, a5		/* offset <<= stride */
 	PTR_ADD	a2, a2, a1		/* add to address */
@@ -236,18 +242,18 @@ ENTRY_NP(generic_bs_rr_2)
 	add	a4, a4, -1		/* count-- */
 	bnez	a4, 1b
 	ret
+#ifdef DIAGNOSTIC
 2:
 	la	a0, 3f
 	tail	_C_LABEL(panic)
 3:
 	.asciz	"_bs_rr_2: count == 0"
-	.balign 4, 0
+#endif
 END(generic_bs_rr_2)
 
 
 /* void bs_rr_4(a0: tag, a1: addr, a2: offset, a3: datap, a4: count); */
 /* void bs_rr_8(a0: tag, a1: addr, a2: offset, a3: datap, a4: count); */
-
 
 
 /* void bs_w_1(a0: tag, a1: addr, a2: offset, a3: value); */
@@ -307,12 +313,13 @@ ENTRY_NP(generic_bs_wm_1)
 	add	a4, a4, -1		/* count-- */
 	bnez	a4, 1b
 	ret
+#ifdef DIAGNOSTIC
 2:
 	la	a0, 3f
 	tail	_C_LABEL(panic)
 3:
 	.asciz	"_bs_wm_1: count == 0"
-	.balign 4, 0
+#endif
 END(generic_bs_wm_1)
 
 
@@ -331,12 +338,13 @@ ENTRY_NP(generic_bs_wm_2)
 	add	a4, a4, -1		/* count-- */
 	bnez	a4, 1b
 	ret
+#ifdef DIAGNOSTIC
 2:
 	la	a0, 3f
 	tail	_C_LABEL(panic)
 3:
 	.asciz	"_bs_wm_2: count == 0"
-	.balign 4, 0
+#endif
 END(generic_bs_wm_2)
 
 
@@ -355,12 +363,13 @@ ENTRY_NP(generic_bs_wm_4)
 	add	a4, a4, -1		/* count-- */
 	bnez	a4, 1b
 	ret
+#ifdef DIAGNOSTIC
 2:
 	la	a0, 3f
 	tail	_C_LABEL(panic)
 3:
 	.asciz	"_bs_wm_4: count == 0"
-	.balign 4, 0
+#endif
 END(generic_bs_wm_4)
 
 
@@ -380,12 +389,13 @@ ENTRY_NP(generic_bs_wm_8)
 	add	a4, a4, -1		/* count-- */
 	bnez	a4, 1b
 	ret
+#ifdef DIAGNOSTIC
 2:
 	la	a0, 3f
 	tail	_C_LABEL(panic)
 3:
 	.asciz	"_bs_wm_8: count == 0"
-	.balign 4, 0
+#endif
 END(generic_bs_wm_8)
 #endif
 

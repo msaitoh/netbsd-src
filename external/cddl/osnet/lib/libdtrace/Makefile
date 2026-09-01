@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.35 2026/08/02 14:27:57 riastradh Exp $
+#	$NetBSD: Makefile,v 1.37 2026/08/25 13:39:55 wiz Exp $
 
 # $FreeBSD: head/cddl/lib/libdtrace/Makefile 314654 2017-03-04 11:30:04Z ngie $
 
