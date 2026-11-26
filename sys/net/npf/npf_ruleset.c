@@ -34,7 +34,7 @@
 
 #ifdef _KERNEL
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: npf_ruleset.c,v 1.57 2025/10/09 15:30:18 joe Exp $");
+__KERNEL_RCSID(0, "$NetBSD: npf_ruleset.c,v 1.59 2026/11/07 17:22:58 alnsn Exp $");
 
 #include <sys/param.h>
 #include <sys/types.h>
@@ -733,7 +733,7 @@ npf_rule_setcode(npf_rule_t *rl, const int type, void *code, size_t size)
 	rl->r_type = type;
 	rl->r_code = code;
 	rl->r_clen = size;
-	rl->r_jcode = npf_bpf_compile(code, size);
+	rl->r_jcode = npf_bpf_compile(code, size / sizeof(struct bpf_insn));
 }
 
 void
@@ -984,7 +984,7 @@ npf_ruleset_inspect(npf_cache_t *npc, const npf_ruleset_t *rlset,
  * for passing, we set the STATEFULNESS for TCP connection establishment
  * if ret == 0, it is for a pass to be changed to block
  * non-zero ret indicates a block to pass
- * when we change to block, we assume the default RST rerturn for TCP
+ * when we change to block, we assume the default RST return for TCP
  * when we change to pass, we ensure no bit field for RST for tcp and ICMP for udp
  * finally change the ret condition too
  */

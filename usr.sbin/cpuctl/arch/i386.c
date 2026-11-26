@@ -1,4 +1,4 @@
-/*	$NetBSD: i386.c,v 1.149 2026/08/25 22:14:26 andvar Exp $	*/
+/*	$NetBSD: i386.c,v 1.152 2026/10/05 06:28:24 andvar Exp $	*/
 
 /*-
  * Copyright (c) 1999, 2000, 2001, 2006, 2007, 2008 The NetBSD Foundation, Inc.
@@ -57,7 +57,7 @@
 
 #include <sys/cdefs.h>
 #ifndef lint
-__RCSID("$NetBSD: i386.c,v 1.149 2026/08/25 22:14:26 andvar Exp $");
+__RCSID("$NetBSD: i386.c,v 1.152 2026/10/05 06:28:24 andvar Exp $");
 #endif /* not lint */
 
 #include <sys/types.h>
@@ -284,7 +284,7 @@ const struct cpu_cpuid_nameclass i386_cpuid_cpus[] = {
 				[0x0a] = "Pentium III Xeon (Cascades)",
 				[0x0b] = "Pentium III (Tualatin)",
 				[0x0d] = "Pentium M (Dothan)",
-				[0x0e] = "Pentium Core Duo, Core solo",
+				[0x0e] = "Pentium Dual-Core, Core Duo, Core solo",
 				[0x0f] = "Xeon 30xx, 32xx, 51xx, 53xx, 73xx, "
 					 "Core 2 Quad 6xxx, "
 					 "Core 2 Extreme 6xxx, "
@@ -348,6 +348,7 @@ const struct cpu_cpuid_nameclass i386_cpuid_cpus[] = {
 				[0x7e] = "10th gen Core (Ice Lake)",
 				[0x85] = "Xeon Phi 7215, 7285, 7295 (Knights Mill)",
 				[0x86] = "Atom (Tremont)",
+				[0x8a] = "Core i3/i5 L1xGx (Lakefield)",
 				[0x8c] = "11th gen Core (Tiger Lake)",
 				[0x8d] = "11th gen Core (Tiger Lake)",
 				[0x8e] = "7th or 8th gen Core (Kaby Lake, Coffee Lake) or Xeon E (Coffee Lake)",
@@ -362,11 +363,21 @@ const struct cpu_cpuid_nameclass i386_cpuid_cpus[] = {
 				[0xa7] = "11th gen Core (Rocket Lake)",
 				[0xa8] = "11th gen Core (Rocket Lake)",
 				[0xaa] = "Core Ultra 7 (Meteor Lake)",
+				[0xad] = "6th gen Intel Xeon Scalable (Granite Rapids)",
+				[0xae] = "Intel Xeon 6 SoC for Networking and Edge (Granite Rapids-D)",
+				[0xaf] = "6th gen Intel Xeon Scalable (Sierra Forest)",
+				[0xb5] = "Core Ultra 200U (Arrow Lake-U)",
 				[0xb7] = "13th gen Core (Raptor Lake)",
 				[0xba] = "13th gen Core (Raptor Lake)",
+				[0xbd] = "Core Ultra 200V (Lunar Lake-MX)",
 				[0xbe] = "Core i3-N3xx N[12]xx Nxx Atom x7xxxE (Alder Lake-N)",
 				[0xbf] = "13th gen Core (Raptor Lake)",
+				[0xc5] = "Core Ultra 200H (Arrow Lake-H)",
+				[0xc6] = "Core Ultra 200HX (Arrow Lake-HX)",
+				[0xcc] = "Core Ultra Series 3 (Panther Lake)",
 				[0xcf] = "5th gen Xeon Scalable (Emerald Rapids)",
+				[0xd5] = "Core Series 3 (Wildcat Lake)",
+				[0xdd] = "Xeon 6900E+ (Clearwater Forest)",
 			},
 			"Pentium Pro, II or III",	/* Default */
 			NULL,
@@ -467,7 +478,7 @@ const struct cpu_cpuid_nameclass i386_cpuid_cpus[] = {
 		{
 			CPUCLASS_586,
 			{
-				0, 0, "6x86", 0,
+				0, 0, "6x86", "6x86",
 				"MMX-enhanced MediaGX (GXm)", /* or Geode? */
 				0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 			},
@@ -480,7 +491,7 @@ const struct cpu_cpuid_nameclass i386_cpuid_cpus[] = {
 		{
 			CPUCLASS_686,
 			{
-				"6x86MX", 0, 0, 0, 0, 0, 0, 0,
+				"6x86MX/MII", "MII/MIIv", 0, 0, 0, "III (Joshua)", 0, 0,
 				0, 0, 0, 0, 0, 0, 0, 0,
 			},
 			"6x86MX",		/* Default */
@@ -650,17 +661,17 @@ const struct cpu_cpuid_nameclass i386_cpuid_cpus[] = {
 			NULL,
 			NULL,
 		},
-		/* Family > 6, not yet available from Transmeta */
+		/* Family > 6 */
 		{
 			CPUCLASS_686,
 			{
 				0, 0, 0, 0, 0, 0, 0, 0,
 				0, 0, 0, 0, 0, 0, 0, 0,
 			},
-			"Pentium Pro compatible",	/* Default */
+			"Efficeon",	/* Default */
 			NULL,
 			NULL,
-			NULL,
+			transmeta_cpu_info,
 		} }
 	}
 };
@@ -831,7 +842,10 @@ amd_amd64_name(struct cpu_info *ci)
 		case 0x27:	/* rev DH-E4, SH-E4 */
 			return "Athlon 64 or Athlon 64 FX or Opteron";
 		case 0x48:	/* rev BH-F2 */
-			return "Turion 64 X2";
+		case 0x68:	/* rev BH-G1 (Tyler) */
+			return "Turion 64 X2 or Athlon 64 X2";
+		case 0x4c: /* rev DH-F2 (Richmond) */
+			return "Mobile Athlon 64 or Mobile Sempron";
 		case 0x04:	/* rev SH-B0/C0/CG (ClawHammer) */
 		case 0x07:	/* rev SH-CG (ClawHammer) */
 		case 0x0b:	/* rev CH-CG */
@@ -855,8 +869,13 @@ amd_amd64_name(struct cpu_info *ci)
 		case 0x2f:	/* rev DH-E3/E6 (Venice/Palermo) */
 		case 0x4f:	/* rev DH-F2 (Orleans/Manila) */
 		case 0x5f:	/* rev DH-F2 (Orleans/Manila) */
-		case 0x6f:	/* rev DH-G1 */
+		case 0x6f:	/* rev DH-G1 (Lima) */
+		case 0x7f:	/* rev DH-G2 (Lima) */
 			return "Athlon 64 or Sempron";
+		case 0x7c:	/* rev DH-G2 (Sherman) */
+			return "Athlon 64 or Mobile Sempron";
+		case 0xc1:	/* rev JH-F3 (Windsor FX) */
+			return "Athlon 64 FX";
 		default:
 			break;
 		}
@@ -1484,20 +1503,40 @@ static void
 transmeta_cpu_info(struct cpu_info *ci)
 {
 	u_int descs[4], nreg;
-	u_int frequency, voltage, percentage;
+	u_int frequency, voltage, percentage, revision;
 
 	x86_cpuid(0x80860000, descs);
 	nreg = descs[0];
 	if (nreg >= 0x80860001) {
 		x86_cpuid(0x80860001, descs);
-		aprint_verbose_dev(ci->ci_dev, "Processor revision %u.%u.%u.%u\n",
-		    (descs[1] >> 24) & 0xff,
-		    (descs[1] >> 16) & 0xff,
-		    (descs[1] >> 8) & 0xff,
-		    descs[1] & 0xff);
+		revision = descs[1];
+
+		/*
+		 * On Efficeon the hardware revision is in cpuid leaf 0x80860002
+		 * register EAX, indicated by the value 0x02000000 here.
+		 */
+		if (revision != 0x02000000)
+			aprint_verbose_dev(ci->ci_dev, "Processor revision %u.%u.%u.%u\n",
+			    (revision >> 24) & 0xff,
+			    (revision >> 16) & 0xff,
+			    (revision >> 8) & 0xff,
+			    revision & 0xff);
 	}
 	if (nreg >= 0x80860002) {
 		x86_cpuid(0x80860002, descs);
+
+		/*
+		 * Efficeon hardware revision format is described in
+		 * https://www.sandpile.org/x86/cpuid.htm#leaf_8086_0002h
+		 * https://web.archive.org/web/20260925233921/https://www.sandpile.org/x86/cpuid.htm#leaf_8086_0002h
+		 * Major revision is bits 31..29, minor is bits 28..25.
+		 * Bits 11..8 encode the package type.
+		 * All other bits are reserved.
+		 */
+		if (revision == 0x02000000)
+			aprint_verbose_dev(ci->ci_dev, "Processor revision %u.%u (0x%08x)\n",
+			    descs[0] >> 29, (descs[0] >> 25) & 0xf, descs[0]);
+
 		aprint_verbose_dev(ci->ci_dev, "Code Morphing Software Rev: %u.%u.%u-%u-%u\n",
 		    (descs[1] >> 24) & 0xff,
 		    (descs[1] >> 16) & 0xff,

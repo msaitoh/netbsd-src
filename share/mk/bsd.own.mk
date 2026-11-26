@@ -1,4 +1,4 @@
-#      $NetBSD: bsd.own.mk,v 1.1485 2026/08/01 20:48:03 thorpej Exp $
+#      $NetBSD: bsd.own.mk,v 1.1493 2026/11/02 23:47:33 thorpej Exp $
 
 # This needs to be before bsd.init.mk
 .if defined(BSD_MK_COMPAT_FILE)
@@ -90,12 +90,6 @@ TOOLCHAIN_MISSING?=	no
 #
 # What GCC is used?
 #
-.if \
-    ${MACHINE} == "alpha" || \
-    ${MACHINE_CPU} == "m68k"
-HAVE_GCC?=	12
-.endif
-
 HAVE_GCC?=	14
 
 #
@@ -266,14 +260,12 @@ HAVE_LIBGCC_EH?=	yes
 # Coverity does not like SSP
 .if defined(COVERITY_TOP_CONFIG) || \
     ${MACHINE} == "alpha" || \
-    ${MACHINE} == "hppa" || \
     ${MACHINE} == "ia64"
 HAVE_SSP?=	no
 .else
 HAVE_SSP?=	yes
-.if !defined(NOFORT) && ${USE_FORT:Uno} != "no"
-USE_SSP?=	yes
-.endif
+USE_SSP_DEFAULT?=	no
+USE_SSP?=	${!defined(NOFORT) && ${USE_FORT:Uno} != "no":?yes:${USE_SSP_DEFAULT}}
 .endif
 
 #
@@ -285,12 +277,12 @@ USE_SSP?=	yes
     ${MACHINE_ARCH} == "vax"
 HAVE_JEMALLOC?=		100
 .else
-HAVE_JEMALLOC?=		531
+HAVE_JEMALLOC?=		540
 .endif
 
-.if ${HAVE_JEMALLOC} == 531 || ${HAVE_JEMALLOC} == 100
+.if ${HAVE_JEMALLOC} == 540 || ${HAVE_JEMALLOC} == 100
 EXTERNAL_JEMALLOC_SUBDIR = jemalloc
-.elif ${HAVE_JEMALLOC} == 530
+.elif ${HAVE_JEMALLOC} == 531
 EXTERNAL_JEMALLOC_SUBDIR = jemalloc.old
 .else
 EXTERNAL_JEMALLOC_SUBDIR = /does/not/exist
@@ -552,6 +544,7 @@ TOOL_M68KELF2AOUT=	${TOOLDIR}/bin/${_TOOL_PREFIX}m68k-elf2aout
 TOOL_MACPPCFIXCOFF=	${TOOLDIR}/bin/${_TOOL_PREFIX}macppc-fixcoff
 TOOL_MACPPCINSTALLBOOT=	${TOOLDIR}/bin/${_TOOL_PREFIX}macppc_installboot
 TOOL_MACPPCMKBOOTHFS=	${TOOLDIR}/bin/${_TOOL_PREFIX}macppc_mkboothfs
+TOOL_MAKEDOC=		${TOOLDIR}/bin/${_TOOL_PREFIX}makedoc
 TOOL_MAKEFS=		${TOOLDIR}/bin/${_TOOL_PREFIX}makefs
 TOOL_MAKEINFO=		${TOOLDIR}/bin/${_TOOL_PREFIX}makeinfo
 TOOL_MAKEKEYS=		${TOOLDIR}/bin/${_TOOL_PREFIX}makekeys
@@ -672,6 +665,7 @@ TOOL_LLVM_TBLGEN=	llvm-tblgen
 TOOL_M4=		m4
 TOOL_M68KELF2AOUT=	m68k-elf2aout
 TOOL_MACPPCFIXCOFF=	macppc-fixcoff
+TOOL_MAKEDOC=		makedoc
 TOOL_MAKEFS=		makefs
 TOOL_MAKEINFO=		makeinfo
 TOOL_MAKEKEYS=		makekeys
@@ -992,11 +986,6 @@ MKPROFILE.or1k=	no
 .if ${MACHINE_ARCH} == "m68000"
 NOPIC=		# defined
 MKISCSI=	no
-# XXX GCC 4 outputs mcount() calling sequences that try to load values
-# from over 64KB away and this fails to assemble.
-.if defined(HAVE_GCC)
-NOPROFILE=	# defined
-.endif
 .endif
 
 #

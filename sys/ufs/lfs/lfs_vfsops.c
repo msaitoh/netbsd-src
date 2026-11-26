@@ -1,4 +1,4 @@
-/*	$NetBSD: lfs_vfsops.c,v 1.401 2026/08/28 06:06:53 perseant Exp $	*/
+/*	$NetBSD: lfs_vfsops.c,v 1.409 2026/11/01 20:01:40 perseant Exp $	*/
 
 /*-
  * Copyright (c) 1999, 2000, 2001, 2002, 2003, 2007, 2007
@@ -61,7 +61,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: lfs_vfsops.c,v 1.401 2026/08/28 06:06:53 perseant Exp $");
+__KERNEL_RCSID(0, "$NetBSD: lfs_vfsops.c,v 1.409 2026/11/01 20:01:40 perseant Exp $");
 
 #if defined(_KERNEL_OPT)
 #include "opt_lfs.h"
@@ -439,7 +439,7 @@ lfs_writerd(void *arg)
  	for (;;) {
 		KASSERT(mutex_owned(&lfs_lock));
 		if (wrote_something == 0)
-			cv_timedwait(&lfs_writerd_cv, &lfs_lock, hz/10 + 1);
+			cv_timedwait(&lfs_writerd_cv, &lfs_lock, 2 * hz);
 		KASSERT(mutex_owned(&lfs_lock));
 		wrote_something = 0;
 
@@ -913,7 +913,7 @@ lfs_mountfs(struct vnode *devvp, struct mount *mp, struct lwp *l)
 	struct ulfsmount *ump;
 	struct vnode *vp;
 	dev_t dev;
-	int error, i, ronly, fsbsize;
+	int error, i, ronly, fsbsize, rfw;
 	kauth_cred_t cred;
 	CLEANERINFO *cip;
 	SEGUSE *sup;
@@ -934,6 +934,7 @@ lfs_mountfs(struct vnode *devvp, struct mount *mp, struct lwp *l)
 		return (error);
 
 	ronly = (mp->mnt_flag & MNT_RDONLY) != 0;
+	rfw = (mp->mnt_flag & MNT_LOG) != 0;
 
 	/* Don't free random space on error. */
 	primarybuf = NULL;
@@ -1246,12 +1247,12 @@ lfs_mountfs(struct vnode *devvp, struct mount *mp, struct lwp *l)
 		if (changed)
 			LFS_WRITESEGENTRY(sup, fs, i, bp);
 		else
-			brelse(bp, 0);
+			LFS_RELEASESEGENTRY(sup, fs, i, bp);
 	}
 	/* Set lastcleaned to an invalid value */
 	fs->lfs_lastcleaned = (uint32_t)-1;
 
-	if (!ronly) {
+	if (rfw && !ronly) {
 		/* Roll forward */
 		lfs_roll_forward(fs, mp, l);
 		lfs_reset_avail(fs);
@@ -1398,7 +1399,7 @@ lfs_reset_avail(struct lfs *fs)
 					- lfs_sb_gets0addr(fs);
 		}
 
-		brelse(bp, 0);
+		LFS_RELEASESEGENTRY(sup, fs, sn, bp);
 	}
 
 	/* Also may be available bytes in current seg */
@@ -1796,7 +1797,7 @@ lfs_loadvnode(struct mount *mp, struct vnode *vp,
 			&lfs_lock);
 	mutex_exit(&lfs_lock);
 
-	KASSERT(ino >= LFS_IFILE_INUM);
+	KASSERTMSG(ino >= LFS_IFILE_INUM, "ino=%lld", (long long)ino);
 	/* LFS_ASSERT_MAXINO(fs, ino); */
 
 	/* Translate the inode number to a disk address. */
@@ -1809,8 +1810,8 @@ lfs_loadvnode(struct mount *mp, struct vnode *vp,
 			ts.tv_sec = lfs_if_getatime_sec(fs, ifp);
 			ts.tv_nsec = lfs_if_getatime_nsec(fs, ifp);
 		}
+		LFS_RELEASEIENTRY(ifp, fs, ino, bp);
 
-		brelse(bp, 0);
 		if (DADDR_IS_BAD(daddr))
 			return (ENOENT);
 	}
@@ -2549,7 +2550,7 @@ lfs_resize_fs(struct lfs *fs, int newnsegs)
 			uint32_t bytes;
 			LFS_SEGENTRY(sup, fs, i, bp);
 			bytes = sup->su_nbytes;
-			brelse(bp, 0);
+			LFS_RELEASESEGENTRY(sup, fs, i, bp);
 			if (bytes > 0) {
 				if ((error = lfs_rewrite_segment(fs, i, NULL, NOCRED, curlwp)) != 0)
 					goto out;
@@ -2577,7 +2578,7 @@ lfs_resize_fs(struct lfs *fs, int newnsegs)
 				csbbytes += LFS_SBPAD;
 		} else
 			dirtysums += sup->su_nsums;
-		brelse(bp, 0);
+		LFS_RELEASESEGENTRY(sup, fs, i, bp);
 		if (badnews) {
 			error = EBUSY;
 			goto out;
@@ -2596,7 +2597,6 @@ lfs_resize_fs(struct lfs *fs, int newnsegs)
 	 * is holding Ifile buffers, so we get each one, to drain them.
 	 * (XXX this could be done better.)
 	 */
-	rw_enter(&fs->lfs_iflock, RW_WRITER);
 	for (i = 0; i < ilast; i++) {
 		/* XXX what to do if bread fails? */
 		bread(ivp, i, lfs_sb_getbsize(fs), 0, &bp);
@@ -2719,9 +2719,6 @@ lfs_resize_fs(struct lfs *fs, int newnsegs)
 	lfs_ci_setclean(fs, cip, lfs_sb_getnclean(fs));
 	lfs_ci_setdirty(fs, cip, lfs_sb_getnseg(fs) - lfs_sb_getnclean(fs));
 	VOP_BWRITE(bp->b_vp, bp);
-
-	/* Let Ifile accesses proceed */
-	rw_exit(&fs->lfs_iflock);
 
     out:
 	lfs_segunlock(fs);

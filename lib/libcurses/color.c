@@ -1,4 +1,4 @@
-/*	$NetBSD: color.c,v 1.50 2026/08/04 07:36:08 blymn Exp $	*/
+/*	$NetBSD: color.c,v 1.52 2026/11/08 05:08:11 blymn Exp $	*/
 
 /*
  * Copyright (c) 2000 The NetBSD Foundation, Inc.
@@ -31,7 +31,7 @@
 
 #include <sys/cdefs.h>
 #ifndef lint
-__RCSID("$NetBSD: color.c,v 1.50 2026/08/04 07:36:08 blymn Exp $");
+__RCSID("$NetBSD: color.c,v 1.52 2026/11/08 05:08:11 blymn Exp $");
 #endif				/* not lint */
 
 #include "curses.h"
@@ -39,7 +39,6 @@ __RCSID("$NetBSD: color.c,v 1.50 2026/08/04 07:36:08 blymn Exp $");
 
 /* Have we initialised colours? */
 int	__using_color = 0;
-int	__do_color_init = 0; /* force refresh to init color in all cells */
 
 /* Default colour number */
 attr_t	__default_color = 0;
@@ -125,14 +124,6 @@ start_color(void)
 	_cursesi_screen->COLOR_PAIRS = COLOR_PAIRS;
 	_cursesi_screen->curpair = -1;
 
-	/* Reset terminal colour and colour pairs. */
-	if (orig_colors != NULL)
-		tputs(orig_colors, 0, __cputchar);
-	if (orig_pair != NULL) {
-		tputs(orig_pair, 0, __cputchar);
-		curscr->wattr &= _cursesi_screen->mask_op;
-	}
-
 	/* Type of colour manipulation - ANSI/TEK/HP/other */
 	if (set_a_foreground != NULL && set_a_background != NULL)
 		_cursesi_screen->color_type = COLOR_ANSI;
@@ -144,6 +135,10 @@ start_color(void)
 		_cursesi_screen->color_type = COLOR_OTHER;
 	else
 		return(ERR);		/* Unsupported colour method */
+
+	/* Reset terminal colour and colour pairs. */
+	if (orig_colors != NULL)
+		tputs(orig_colors, 0, __cputchar);
 
 #ifdef DEBUG
 	__CTRACE(__CTRACE_COLOR, "start_color: COLORS = %d, COLOR_PAIRS = %d",
@@ -241,7 +236,7 @@ start_color(void)
 	    __default_pair.flags;
 
 	__using_color = 1;
-	__do_color_init = 1;
+	__unset_color(curscr);
 
 	/* Set all positions on all windows to curses default colours. */
 	for (wlp = _cursesi_screen->winlistp; wlp != NULL; wlp = wlp->nextp) {
@@ -536,8 +531,7 @@ __set_color( /*ARGSUSED*/ WINDOW *win, attr_t attr)
 {
 	short	pair;
 
-	if ((__do_color_init != 1) &&
-	    ((curscr->wattr & __COLOR) == (attr & __COLOR)))
+	if ((curscr->wattr & __COLOR) == (attr & __COLOR))
 		return;
 
 	pair = PAIR_NUMBER((uint32_t)attr);
@@ -588,6 +582,42 @@ __set_color( /*ARGSUSED*/ WINDOW *win, attr_t attr)
 	curscr->wattr &= ~__COLOR;
 	curscr->wattr |= attr & __COLOR;
 }
+/*
+ * unset_color_pair --
+ *	Reset colors to the defaults.  If start_color() has been
+ *	called, then we use the colors stored in __default_pair
+ *	(white on black, if not changed by the application).  If
+ *	either color is -1 (indicates we should use the terminal
+ *	default for that value) we emit orig_pair to reset both
+ *	foreground and background to the terminal default and then
+ *	override the terminal default for any color that is not -1.
+ *	(-1 values can be established with the use_default_colors()
+ *	 or assume_default_colors() APIs.)
+ *
+ *	If start_color() has not been called, we just use orig_pair.
+ */
+static void
+unset_color_pair(WINDOW *win, const char *set_fg, const char *set_bg)
+{
+	if (__using_color) {
+		/* emit orig_pair if terminal default is used */
+		if (__default_pair.fore == -1 || __default_pair.back == -1) {
+			if (orig_pair)
+				tputs(orig_pair, 0, __cputchar);
+		}
+		if (__default_pair.fore >= 0 && set_fg)
+			tputs(tiparm(set_fg, (int)__default_pair.fore),
+				0, __cputchar);
+		if (__default_pair.back >= 0 && set_bg)
+			tputs(tiparm(set_bg, (int)__default_pair.back),
+				0, __cputchar);
+	} else {
+		if (orig_pair)
+			tputs(orig_pair, 0, __cputchar);
+	}
+	win->wattr &= __mask_op;
+	curscr->wattr &= __mask_op;
+}
 
 /*
  * __unset_color --
@@ -600,11 +630,9 @@ __unset_color(WINDOW *win)
 	switch (_cursesi_screen->color_type) {
 	/* Clear ANSI foreground and background colours */
 	case COLOR_ANSI:
-		if (orig_pair != NULL) {
-			tputs(orig_pair, 0, __cputchar);
-			win->wattr &= __mask_op;
-			curscr->wattr &= __mask_op;
-		}
+		unset_color_pair(win,
+			t_set_a_foreground(_cursesi_screen->term),
+			t_set_a_background(_cursesi_screen->term));
 		break;
 	case COLOR_HP:
 		/* XXX: need to support HP style */
@@ -613,10 +641,9 @@ __unset_color(WINDOW *win)
 		/* XXX: need to support Tek style */
 		break;
 	case COLOR_OTHER:
-		if (orig_pair != NULL) {
-			tputs(orig_pair, 0, __cputchar);
-			win->wattr &= __mask_op;
-		}
+		unset_color_pair(win,
+			t_set_foreground(_cursesi_screen->term),
+			t_set_background(_cursesi_screen->term));
 		break;
 	}
 

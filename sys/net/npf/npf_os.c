@@ -33,7 +33,7 @@
 
 #ifdef _KERNEL
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: npf_os.c,v 1.23 2025/07/01 18:42:37 joe Exp $");
+__KERNEL_RCSID(0, "$NetBSD: npf_os.c,v 1.30 2026/11/07 17:12:41 joe Exp $");
 
 #ifdef _KERNEL_OPT
 #include "pf.h"
@@ -78,10 +78,10 @@ __KERNEL_RCSID(0, "$NetBSD: npf_os.c,v 1.23 2025/07/01 18:42:37 joe Exp $");
  * So we make this misc; a better way would be to have early boot and late
  * boot drivers.
  */
-MODULE(MODULE_CLASS_MISC, npf, "bpf");
+MODULE(MODULE_CLASS_MISC, npf, "bpf_filter");
 #else
 /* This module autoloads via /dev/npf so it needs to be a driver */
-MODULE(MODULE_CLASS_DRIVER, npf, "bpf");
+MODULE(MODULE_CLASS_DRIVER, npf, "bpf_filter");
 #endif
 
 #define	NPF_IOCTL_DATA_LIMIT	(4 * 1024 * 1024)
@@ -278,6 +278,9 @@ npf_dev_ioctl(dev_t dev, u_long cmd, void *data, int flag, lwp_t *l)
 		return npfctl_table(npf, data);
 	case IOC_NPF_STATS:
 		return npf_stats_export(npf, data);
+	case IOC_NPF_STATS_RESET:
+		npfk_stats_clear(npf);
+		return 0;
 	case IOC_NPF_LOAD:
 	case IOC_NPF_SAVE:
 	case IOC_NPF_RULE:
@@ -467,7 +470,7 @@ register_etherpfil_hook(npf_t *npf, ifnet_t *ifp, int i)
 }
 
 static int
-get_etherpfil_head(npf_t *npf)
+register_etherpfil_hooks(npf_t *npf)
 {
 	int error = 0, i = 0;
 	ifnet_t *ifp;
@@ -476,7 +479,7 @@ get_etherpfil_head(npf_t *npf)
 	IFNET_GLOBAL_LOCK();
 	IFNET_WRITER_FOREACH(ifp) {
 		error = register_etherpfil_hook(npf, ifp, i);
-		if (!error)
+		if (error)
 			break;
 		i++;
 	}
@@ -557,7 +560,7 @@ npf_pfil_register(bool init)
 		KASSERT(error == 0);
 	}
 
-	get_etherpfil_head(npf);
+	register_etherpfil_hooks(npf);
 
 	/*
 	 * It is necessary to re-sync all/any interface address tables,

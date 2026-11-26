@@ -1,4 +1,4 @@
-/*	$NetBSD: cryptodev.c,v 1.135 2026/07/05 15:34:13 riastradh Exp $ */
+/*	$NetBSD: cryptodev.c,v 1.139 2026/09/22 14:46:27 riastradh Exp $ */
 /*	$FreeBSD: src/sys/opencrypto/cryptodev.c,v 1.4.2.4 2003/06/03 00:09:02 sam Exp $	*/
 /*	$OpenBSD: cryptodev.c,v 1.53 2002/07/10 22:21:30 mickey Exp $	*/
 
@@ -64,7 +64,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: cryptodev.c,v 1.135 2026/07/05 15:34:13 riastradh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: cryptodev.c,v 1.139 2026/09/22 14:46:27 riastradh Exp $");
 
 #include <sys/param.h>
 
@@ -103,6 +103,8 @@ __KERNEL_RCSID(0, "$NetBSD: cryptodev.c,v 1.135 2026/07/05 15:34:13 riastradh Ex
 #include <opencrypto/xform.h>
 
 #include "ioconf.h"
+
+#define	CRYPTOP_IOV_MAX	(256*1024 - 4) /* XXX ??? */
 
 static kmutex_t cryptodev_mtx;
 
@@ -231,6 +233,9 @@ static int	cryptodev_getstatus(struct fcrypt *, struct crypt_result *);
 static struct cryptop_data *
 cod_ctor(struct cryptop_data *cod, struct csession *cse, size_t iov_len)
 {
+
+	KASSERT(iov_len <= CRYPTOP_IOV_MAX);
+
 	memset(cod, 0, sizeof(*cod));
 	cod->cse = cse;
 	cod->iov_len = iov_len;
@@ -535,7 +540,7 @@ cryptodev_op(struct csession *cse, struct crypt_op *cop, struct lwp *l)
 	int flags=0;
 	size_t dst_len;	/* copyout size */
 
-	if (cop->len > 256*1024-4)
+	if (cop->len > CRYPTOP_IOV_MAX || cop->dst_len > CRYPTOP_IOV_MAX)
 		return E2BIG;
 
 	if (cse->txform) {
@@ -1148,22 +1153,23 @@ cryptodev_mop(struct fcrypt *fcr,
 		if (cse == NULL) {
 			DPRINTF("cse_find failed %#x\n", cnop[req].ses);
 			cnop[req].status = SET_ERROR(EINVAL);
-			continue;
+			goto bail;
 		}
 
-		if (cnop[req].len > 256*1024-4) {
+		if (cnop[req].len > CRYPTOP_IOV_MAX ||
+		    cnop[req].dst_len > CRYPTOP_IOV_MAX) {
 			DPRINTF("length failed\n");
 			cnop[req].status = SET_ERROR(EINVAL);
-			continue;
+			goto bail;
 		}
 		if (cse->txform) {
-			if (cnop[req].len < cse->txform->blocksize -
+			if (cnop[req].len < cse->txform->blocksize +
 			    (cnop[req].iv ? 0 : cse->txform->ivsize) ||
 			    (cnop[req].len -
 			     (cnop[req].iv ? 0 : cse->txform->ivsize))
 			    % cse->txform->blocksize) {
 				cnop[req].status = SET_ERROR(EINVAL);
-				continue;
+				goto bail;
 			}
 		}
 
@@ -1346,7 +1352,8 @@ cryptodev_mop(struct fcrypt *fcr,
 bail:
 		if (cnop[req].status) {
 			DPRINTF("%zu status %d\n", req, cnop[req].status);
-			cse_free(cse);
+			if (cse)
+				cse_free(cse);
 			if (cod)
 				cod_dtor(cod);
 			if (crp)

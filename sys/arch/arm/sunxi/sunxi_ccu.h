@@ -1,4 +1,4 @@
-/* $NetBSD: sunxi_ccu.h,v 1.24 2024/09/16 23:37:13 macallan Exp $ */
+/* $NetBSD: sunxi_ccu.h,v 1.28 2026/11/23 16:35:10 martin Exp $ */
 
 /*-
  * Copyright (c) 2017 Jared McNeill <jmcneill@invisible.ca>
@@ -70,25 +70,32 @@ enum sunxi_ccu_clktype {
 struct sunxi_ccu_gate {
 	bus_size_t	reg;
 	uint32_t	mask;
+	u_int		fixed_rate;
 	const char	*parent;
 };
 
 int	sunxi_ccu_gate_enable(struct sunxi_ccu_softc *,
 			      struct sunxi_ccu_clk *, int);
+u_int	sunxi_ccu_gate_get_rate(struct sunxi_ccu_softc *,
+				struct sunxi_ccu_clk *);
 const char *sunxi_ccu_gate_get_parent(struct sunxi_ccu_softc *,
 				      struct sunxi_ccu_clk *);
 
-#define	SUNXI_CCU_GATE(_id, _name, _pname, _reg, _bit)		\
-	[_id] = {						\
-		.type = SUNXI_CCU_GATE,				\
-		.base.name = (_name),				\
-		.base.flags = CLK_SET_RATE_PARENT,		\
-		.u.gate.parent = (_pname),			\
-		.u.gate.reg = (_reg),				\
-		.u.gate.mask = __BIT(_bit),			\
-		.enable = sunxi_ccu_gate_enable,		\
-		.get_parent = sunxi_ccu_gate_get_parent,	\
+#define SUNXI_CCU_GATE_FIXED_RATE(_id, _name, _pname, _reg, _bit, _fixed_rate)	\
+	[_id] = {								\
+		.type = SUNXI_CCU_GATE,						\
+		.base.name = (_name),						\
+		.base.flags = CLK_SET_RATE_PARENT,				\
+		.u.gate.parent = (_pname),					\
+		.u.gate.reg = (_reg),						\
+		.u.gate.mask = __BIT(_bit),					\
+		.u.gate.fixed_rate = (_fixed_rate),				\
+		.enable = sunxi_ccu_gate_enable,				\
+		.get_rate = sunxi_ccu_gate_get_rate,				\
+		.get_parent = sunxi_ccu_gate_get_parent,			\
 	}
+#define SUNXI_CCU_GATE(_id, _name, _pname, _reg, _bit)				\
+	SUNXI_CCU_GATE_FIXED_RATE(_id, _name, _pname, _reg, _bit, 0)
 
 struct sunxi_ccu_nkmp_tbl {
 	u_int		rate;
@@ -96,6 +103,11 @@ struct sunxi_ccu_nkmp_tbl {
 	uint32_t	k;
 	uint32_t	m;
 	uint32_t	p;
+	uint32_t	pat;
+};
+
+struct sunxi_ccu_nkmp_pat {
+	bus_size_t	reg;
 };
 
 struct sunxi_ccu_nkmp {
@@ -106,8 +118,10 @@ struct sunxi_ccu_nkmp {
 	uint32_t	m;
 	uint32_t	p;
 	uint32_t	lock;
+	uint32_t	sdm_en;
 	uint32_t	enable;
 	uint32_t	flags;
+	const struct sunxi_ccu_nkmp_pat *pat;
 	const struct sunxi_ccu_nkmp_tbl *table;
 #define	SUNXI_CCU_NKMP_DIVIDE_BY_TWO		__BIT(0)
 #define	SUNXI_CCU_NKMP_FACTOR_N_EXACT		__BIT(1)
@@ -126,8 +140,9 @@ int	sunxi_ccu_nkmp_set_rate(struct sunxi_ccu_softc *,
 const char *sunxi_ccu_nkmp_get_parent(struct sunxi_ccu_softc *,
 				      struct sunxi_ccu_clk *);
 
-#define	SUNXI_CCU_NKMP_TABLE(_id, _name, _parent, _reg, _n, _k, _m, \
-		       _p, _enable, _lock, _tbl, _flags)	\
+#define	SUNXI_CCU_NKMP_SDM_TABLE(_id, _name, _parent, _reg, _n, _k, _m, \
+				 _p, _enable, _lock, _sdm_en, _pat, _tbl, \
+				 _flags) \
 	[_id] = {						\
 		.type = SUNXI_CCU_NKMP,				\
 		.base.name = (_name),				\
@@ -140,6 +155,8 @@ const char *sunxi_ccu_nkmp_get_parent(struct sunxi_ccu_softc *,
 		.u.nkmp.enable = (_enable),			\
 		.u.nkmp.flags = (_flags),			\
 		.u.nkmp.lock = (_lock),				\
+		.u.nkmp.sdm_en = (_sdm_en),			\
+		.u.nkmp.pat = (_pat),				\
 		.u.nkmp.table = (_tbl),				\
 		.enable = sunxi_ccu_nkmp_enable,		\
 		.get_rate = sunxi_ccu_nkmp_get_rate,		\
@@ -147,6 +164,10 @@ const char *sunxi_ccu_nkmp_get_parent(struct sunxi_ccu_softc *,
 		.get_parent = sunxi_ccu_nkmp_get_parent,	\
 	}
 
+#define	SUNXI_CCU_NKMP_TABLE(_id, _name, _parent, _reg, _n, _k, _m, \
+			     _p, _enable, _lock, _tbl, _flags)	\
+	SUNXI_CCU_NKMP_SDM_TABLE(_id, _name, _parent, _reg, _n, _k, _m, \
+				 _p, _enable, _lock, 0, NULL, _tbl, _flags)
 #define	SUNXI_CCU_NKMP(_id, _name, _parent, _reg, _n, _k, _m,	\
 		       _p, _enable, _flags)			\
 	SUNXI_CCU_NKMP_TABLE(_id, _name, _parent, _reg, _n, _k, _m, \
@@ -198,6 +219,12 @@ const char *sunxi_ccu_nm_get_parent(struct sunxi_ccu_softc *,
 		.set_parent = sunxi_ccu_nm_set_parent,		\
 		.get_parent = sunxi_ccu_nm_get_parent,		\
 	}
+#define	SUNXI_CCU_M(_id, _name, _parents, _reg, _m, _sel,	\
+		    _flags)					\
+	SUNXI_CCU_NM(_id, _name, _parents, _reg, 0, _m, _sel, 0, _flags)
+#define	SUNXI_CCU_M_GATE(_id, _name, _parents, _reg, _m, _sel,	\
+			 _enable, _flags)			\
+	SUNXI_CCU_NM(_id, _name, _parents, _reg, 0, _m, _sel, _enable, _flags)
 
 struct sunxi_ccu_div {
 	bus_size_t	reg;

@@ -1,4 +1,4 @@
-/*	$NetBSD: locore.S,v 1.107 2026/07/11 12:23:51 skrll Exp $	*/
+/*	$NetBSD: locore.S,v 1.111 2026/11/06 07:14:04 skrll Exp $	*/
 
 /*
  * Copyright (c) 2017 Ryo Shimizu
@@ -35,10 +35,9 @@
 #include "opt_multiprocessor.h"
 
 #include <aarch64/asm.h>
-#include <aarch64/hypervisor.h>
 #include "assym.h"
 
-RCSID("$NetBSD: locore.S,v 1.107 2026/07/11 12:23:51 skrll Exp $")
+RCSID("$NetBSD: locore.S,v 1.111 2026/11/06 07:14:04 skrll Exp $")
 
 #ifdef AARCH64_DEVICE_MEM_NONPOSTED
 #define	MAIR_DEVICE_MEM		MAIR_DEVICE_nGnRnE
@@ -164,7 +163,6 @@ ASENTRY_NP(aarch64_start)
 	DPRINTREG("CurrentEL        = ", x20)
 #endif /* LOCORE_EL2 */
 
-
 	bl	mmu_disable
 	bl	init_sysregs
 	bl	init_mmutable
@@ -193,6 +191,7 @@ aarch64_fatal:
  */
 vstart:
 	DPRINTREG("PC               = ", x20)
+	DPRINTREG("SP               = ", sp)
 
 	/* set exception vector */
 	adrl	x0, _C_LABEL(el1_vectors)
@@ -444,6 +443,13 @@ ENTRY_NP(cpu_mpstart)
 	CPU_DPRINTSREG("SCTLR_EL1        = ", sctlr_el1)
 	CPU_DPRINTSREG("MIDR_EL1         = ", midr_el1)
 	CPU_DPRINTSREG("MPIDR_EL1        = ", mpidr_el1)
+	CPU_DPRINTSREG("ID_AA64MPFR0_EL1 = ", id_aa64pfr0_el1)
+	CPU_DPRINTSREG("ID_AA64MPFR1_EL1 = ", id_aa64pfr1_el1)
+	CPU_DPRINTSREG("ID_AA64ISAR0_EL1 = ", id_aa64isar0_el1)
+	CPU_DPRINTSREG("ID_AA64ISAR1_EL1 = ", id_aa64isar1_el1)
+	CPU_DPRINTSREG("ID_AA64MMFR0_EL1 = ", id_aa64mmfr0_el1)
+	CPU_DPRINTSREG("ID_AA64MMFR1_EL1 = ", id_aa64mmfr1_el1)
+
 
 #ifdef LOCORE_EL2
 	CPU_DPRINT("Drop to EL1...\n")
@@ -811,7 +817,6 @@ load_ttbrs:
 	msr	ttbr1_el1, x1
 	ret
 
-
 init_mmutable:
 	stp	x26, lr, [sp, #-16]!
 
@@ -948,7 +953,6 @@ mmu_enable:
 
 	ret
 
-
 	.align 3
 mair_setting:
 	.quad (						\
@@ -995,7 +999,6 @@ tcr_setting:
 #else
 #define SCTLR_SA_CONFIG		0
 #endif
-
 
 sctlr_set:
 	.quad ( \

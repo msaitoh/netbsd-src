@@ -1,4 +1,4 @@
-/*	$NetBSD: reenter_syscall.s,v 1.7 2021/02/23 16:54:17 tsutsui Exp $	*/
+/*	$NetBSD: reenter_syscall.s,v 1.9 2026/11/14 19:02:12 thorpej Exp $	*/
 
 /*
  * Written by ITOH Yasufumi.
@@ -43,19 +43,14 @@ ENTRY_NOPROFILE(reenter_syscall)
 	movel	(%sp),-(%sp)		| push syscall no (original d0 value)
 	jbsr	_C_LABEL(syscall)	| re-enter syscall()
 	addql	#4,%sp			| pop syscall no
-#ifdef DEBUG
-	tstw	FR_ADJ(%sp)		| stack adjust must be zero
-	jeq	.Ladjzero
-	PANIC("reenter_syscall")
-.Ladjzero:
-#endif
 	moveal	FR_SP(%sp),%a0		| grab and restore
 	movel	%a0,%usp		|   user SP
 	movw	FR_ADJ(%sp),%d0		| need to adjust stack?
 	jne	.Ladjstk		| yes, go to it
+	CHECK_ASTPENDING(%a0)		| check for AST
 	moveml	(%sp)+,#0x7FFF		| restore user registers
 	addql	#8,%sp			| pop SP and stack adjust
-	jra	_ASM_LABEL(rei)		| rte
+	RTE_AST
 .Ladjstk:
 	lea	FR_HW(%sp),%a1		| pointer to HW frame
 	addql	#8,%a1			| source pointer
@@ -64,6 +59,7 @@ ENTRY_NOPROFILE(reenter_syscall)
 	movl	-(%a1),-(%a0)		| copy
 	movl	-(%a1),-(%a0)		|  8 bytes
 	movl	%a0,FR_SP(%sp)		| new SSP
+	CHECK_ASTPENDING(%a0)		| check for AST
 	moveml	(%sp)+,#0x7FFF		| restore user register
 	movl	(%sp),%sp		| and do real RTE
-	jra	_ASM_LABEL(rei)		| rte
+	RTE_AST

@@ -1,4 +1,4 @@
-/*	$NetBSD: intr.c,v 1.74 2026/08/30 19:17:15 palle Exp $ */
+/*	$NetBSD: intr.c,v 1.76 2026/10/17 11:40:27 palle Exp $ */
 
 /*
  * Copyright (c) 1992, 1993
@@ -41,7 +41,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: intr.c,v 1.74 2026/08/30 19:17:15 palle Exp $");
+__KERNEL_RCSID(0, "$NetBSD: intr.c,v 1.76 2026/10/17 11:40:27 palle Exp $");
 
 #include "opt_ddb.h"
 #include "opt_multiprocessor.h"
